@@ -42,6 +42,17 @@ pub mod model_flags {
     pub const TRANSLUCENT: u32 = 1024;
     pub const BASEMAPALPHA_PHONGMASK: u32 = 2048;
     pub const VERTEX_COLOR: u32 = 4096;
+    /// Phong exponent (red) and albedo tint mask (green) from a texture.
+    pub const EXPONENT_TEXTURE: u32 = 8192;
+    /// Specular takes on the base colour where the exponent texture's green is set.
+    pub const ALBEDO_TINT: u32 = 16384;
+    /// Diffuse from local lights uses half-Lambert, (N·L / 2 + 1/2)².
+    pub const HALF_LAMBERT: u32 = 32768;
+    /// Diffuse from local lights is looked up in a light warp texture.
+    pub const LIGHTWARP: u32 = 65536;
+    /// Self-illumination mask from its own texture instead of base alpha.
+    pub const SELFILLUM_MASK: u32 = 131072;
+    pub const BASEMAPLUMINANCE_PHONGMASK: u32 = 262144;
 }
 
 /// Pipeline state that cannot live in uniforms.
@@ -183,9 +194,13 @@ impl Material for WorldMaterial {
 
 #[derive(Clone, Copy, Debug, Default, ShaderType)]
 pub struct ModelLight {
+    /// xyz: position, w: kind (0 point, 1 spot, 2 directional).
     pub position: Vec4,
+    /// rgb: intensity (linear), w: spot cone falloff exponent.
     pub color: Vec4,
+    /// xyz: direction (spot / directional), w: cosine of the inner cone.
     pub direction: Vec4,
+    /// xyz: constant, linear and quadratic attenuation, w: cosine of the outer cone.
     pub attenuation: Vec4,
 }
 
@@ -194,7 +209,13 @@ pub struct ModelParams {
     pub color: Vec4,
     pub envmap_tint: Vec4,
     pub selfillum_tint: Vec4,
+    /// x: exponent (0 = from the exponent texture), y: boost.
     pub phong: Vec4,
+    /// xyz: Fresnel ranges (facing, middle, edge-on), w: how much the
+    /// ranges also scale cube map reflections (`$envmapfresnel`).
+    pub fresnel: Vec4,
+    /// rgb: `$phongtint` (white when unset).
+    pub phong_tint: Vec4,
     pub ambient: [Vec4; 6],
     pub lights: [ModelLight; 4],
     pub flags: u32,
@@ -220,6 +241,15 @@ pub struct ModelMaterial {
     #[texture(7)]
     #[sampler(8)]
     pub envmask: Option<Handle<Image>>,
+    #[texture(9)]
+    #[sampler(10)]
+    pub exponent: Option<Handle<Image>>,
+    #[texture(11)]
+    #[sampler(12)]
+    pub selfillum_mask: Option<Handle<Image>>,
+    #[texture(13)]
+    #[sampler(14)]
+    pub lightwarp: Option<Handle<Image>>,
     pub alpha_mode: AlphaMode,
     pub cull: Option<Face>,
     pub depth_bias: i32,
@@ -232,7 +262,9 @@ impl Default for ModelMaterial {
                 color: Vec4::ONE,
                 envmap_tint: Vec4::ONE,
                 selfillum_tint: Vec4::ONE,
-                phong: Vec4::new(5.0, 1.0, 0.0, 1.0),
+                phong: Vec4::new(5.0, 1.0, 0.0, 0.0),
+                fresnel: Vec4::new(0.0, 0.5, 1.0, 0.0),
+                phong_tint: Vec4::ONE,
                 ambient: [Vec4::splat(0.2); 6],
                 alpha_ref: 0.5,
                 ..default()
@@ -241,6 +273,9 @@ impl Default for ModelMaterial {
             bump: None,
             envmap: None,
             envmask: None,
+            exponent: None,
+            selfillum_mask: None,
+            lightwarp: None,
             alpha_mode: AlphaMode::Opaque,
             cull: Some(Face::Back),
             depth_bias: 0,

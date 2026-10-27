@@ -288,11 +288,9 @@ impl MaterialCache {
                     m.bump = Some(t.handle);
                     p.flags |= model_flags::BUMP;
                 }
-                if let Some(env) = ctx.cubemap(vmt, "$envmap").or_else(|| {
-                    vmt.get("$envmap").is_some_and(|e| e.eq_ignore_ascii_case("env_cubemap")).then(|| self.default_cubemap.clone()).flatten()
-                }) {
-                    m.envmap = Some(env);
-                    p.flags |= model_flags::ENVMAP;
+                // Reflection settings are kept even when the cube map itself only
+                // arrives per instance (`env_cubemap` resolved near the model).
+                if vmt.get("$envmap").is_some() {
                     p.envmap_tint = vmt.get_vec3("$envmaptint").unwrap_or(Vec3::ONE).extend(1.0);
                     if let Some(t) = ctx.tex(vmt, "$envmapmask", false) {
                         m.envmask = Some(t.handle);
@@ -305,22 +303,59 @@ impl MaterialCache {
                         p.flags |= model_flags::NORMALALPHA_ENVMAPMASK;
                     }
                 }
+                if let Some(env) = ctx.cubemap(vmt, "$envmap").or_else(|| {
+                    vmt.get("$envmap").is_some_and(|e| e.eq_ignore_ascii_case("env_cubemap")).then(|| self.default_cubemap.clone()).flatten()
+                }) {
+                    m.envmap = Some(env);
+                    p.flags |= model_flags::ENVMAP;
+                }
                 if vmt.get_bool("$phong") {
                     p.flags |= model_flags::PHONG;
-                    let fresnel = vmt.get_vec3("$phongfresnelranges").unwrap_or(Vec3::new(0.0, 0.5, 1.0));
-                    p.phong = Vec4::new(
-                        vmt.get_f32("$phongexponent").unwrap_or(5.0),
-                        vmt.get_f32("$phongboost").unwrap_or(1.0),
-                        fresnel.x,
-                        fresnel.z,
-                    );
+                    // A constant exponent overrides the exponent texture's red channel.
+                    let exponent_texture = ctx.tex(vmt, "$phongexponenttexture", false);
+                    let exponent = match (vmt.get_f32("$phongexponent"), &exponent_texture) {
+                        (Some(e), _) => e,
+                        (None, Some(_)) => 0.0,
+                        (None, None) => 5.0,
+                    };
+                    if let Some(t) = exponent_texture {
+                        m.exponent = Some(t.handle);
+                        p.flags |= model_flags::EXPONENT_TEXTURE;
+                    }
+                    p.phong = Vec4::new(exponent, vmt.get_f32("$phongboost").unwrap_or(1.0), 0.0, 0.0);
+                    p.fresnel = vmt
+                        .get_vec3("$phongfresnelranges")
+                        .unwrap_or(Vec3::new(0.0, 0.5, 1.0))
+                        .extend(vmt.get_f32("$envmapfresnel").unwrap_or(0.0));
+                    if vmt.get_bool("$phongalbedotint") {
+                        p.flags |= model_flags::ALBEDO_TINT;
+                    } else if let Some(tint) = vmt.get_vec3("$phongtint") {
+                        p.phong_tint = tint.extend(1.0);
+                    }
                     if vmt.get_bool("$basemapalphaphongmask") {
                         p.flags |= model_flags::BASEMAPALPHA_PHONGMASK;
                     }
+                    if vmt.get_bool("$basemapluminancephongmask") {
+                        p.flags |= model_flags::BASEMAPLUMINANCE_PHONGMASK;
+                    }
+                    // Phong materials light their diffuse with half-Lambert unless told not to.
+                    if !vmt.get_bool("$phongdisablehalflambert") {
+                        p.flags |= model_flags::HALF_LAMBERT;
+                    }
+                    if let Some(t) = ctx.tex(vmt, "$lightwarptexture", true) {
+                        m.lightwarp = Some(t.handle);
+                        p.flags |= model_flags::LIGHTWARP;
+                    }
+                } else if vmt.get_bool("$halflambert") {
+                    p.flags |= model_flags::HALF_LAMBERT;
                 }
                 if vmt.get_bool("$selfillum") {
                     p.flags |= model_flags::SELFILLUM;
                     p.selfillum_tint = vmt.get_vec3("$selfillumtint").unwrap_or(Vec3::ONE).extend(1.0);
+                    if let Some(t) = ctx.tex(vmt, "$selfillummask", false) {
+                        m.selfillum_mask = Some(t.handle);
+                        p.flags |= model_flags::SELFILLUM_MASK;
+                    }
                 }
                 let color = vmt.get_vec3("$color2").or_else(|| vmt.get_vec3("$color")).unwrap_or(Vec3::ONE);
                 p.color = color.extend(vmt.get_f32("$alpha").unwrap_or(1.0));

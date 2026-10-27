@@ -1,0 +1,7 @@
+# Model shading checks: the first-person portal gun (viewmodel shown) in the
+# dark start area and in the lit test chamber of sp_a2_laser_intro, and the
+# vertical door frame at the start of sp_a1_wakeup.
+# name map x y z pitch yaw roll [console commands]
+sp_a2_laser_intro_viewmodel sp_a2_laser_intro 464.0 1108.0 56.0 0.0 270.0 0 r_drawviewmodel 1
+sp_a2_laser_intro_viewmodel_lit sp_a2_laser_intro 56.2 21.8 -128.0 16.7 -110.6 0 r_drawviewmodel 1
+sp_a1_wakeup_start sp_a1_wakeup 6976.0 496.6 384.0 0.0 89.0 0

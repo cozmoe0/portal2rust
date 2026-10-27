@@ -873,30 +873,37 @@ impl Bsp {
         self.leafs.get(self.find_leaf(point)).map(|l| l.contents).unwrap_or(0)
     }
 
-    /// Samples the leaf ambient cube nearest to `point` (linear RGB, 6 directions).
+    /// Leaf ambient lighting at `point` (linear RGB, 6 directions). Like the
+    /// engine, this blends every sample of the containing leaf, each weighted
+    /// by 1 / (distance² + 1). A leaf without samples of its own may name
+    /// another leaf (in `first_sample`) whose samples it borrows.
     pub fn ambient_cube(&self, point: Vec3) -> Option<[Vec3; 6]> {
-        let leaf_index = self.find_leaf(point);
-        let leaf = self.leafs.get(leaf_index)?;
-        let idx = self.leaf_ambient_index.get(leaf_index)?;
+        let mut leaf_index = self.find_leaf(point);
+        let mut idx = *self.leaf_ambient_index.get(leaf_index)?;
+        if idx.sample_count == 0 && idx.first_sample != 0 {
+            leaf_index = idx.first_sample as usize;
+            idx = *self.leaf_ambient_index.get(leaf_index)?;
+        }
         if idx.sample_count == 0 {
             return None;
         }
+        let leaf = self.leafs.get(leaf_index)?;
         let mins = Vec3::new(leaf.mins[0] as f32, leaf.mins[1] as f32, leaf.mins[2] as f32);
         let maxs = Vec3::new(leaf.maxs[0] as f32, leaf.maxs[1] as f32, leaf.maxs[2] as f32);
-        let mut best = None;
-        let mut best_d = f32::MAX;
-        for s in &self.leaf_ambient_samples
-            [idx.first_sample as usize..(idx.first_sample + idx.sample_count) as usize]
-        {
+        let first = idx.first_sample as usize;
+        let samples = self.leaf_ambient_samples.get(first..first + idx.sample_count as usize)?;
+        let mut cube = [Vec3::ZERO; 6];
+        let mut total = 0.0;
+        for s in samples {
             let t = Vec3::new(s.pos[0] as f32, s.pos[1] as f32, s.pos[2] as f32) / 255.0;
             let p = mins + (maxs - mins) * t;
-            let d = p.distance_squared(point);
-            if d < best_d {
-                best_d = d;
-                best = Some(s.cube);
+            let w = 1.0 / (p.distance_squared(point) + 1.0);
+            total += w;
+            for (dst, src) in cube.iter_mut().zip(s.cube) {
+                *dst += src * w;
             }
         }
-        best
+        Some(cube.map(|c| c / total))
     }
 
     /// Lightmap samples of a face for one style: `w*h` linear RGB values.

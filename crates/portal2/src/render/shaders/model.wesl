@@ -9,7 +9,7 @@ import bevy_pbr::render::mesh_view_bindings::fog;
 struct ModelLight {
     // xyz: position, w: kind (0 point, 1 spot, 2 directional)
     position: vec4<f32>,
-    // rgb: intensity (linear), w: unused
+    // rgb: intensity (linear), w: spot cone falloff exponent
     color: vec4<f32>,
     // xyz: direction (spot / directional), w: cos inner cone
     direction: vec4<f32>,
@@ -21,8 +21,12 @@ struct ModelParams {
     color: vec4<f32>,
     envmap_tint: vec4<f32>,
     selfillum_tint: vec4<f32>,
-    // x: exponent, y: boost, z: fresnel min, w: fresnel max
+    // x: exponent (0 = exponent texture), y: boost
     phong: vec4<f32>,
+    // xyz: Fresnel ranges (facing, middle, edge-on), w: share applied to cube map reflections
+    fresnel: vec4<f32>,
+    // rgb: specular tint
+    phong_tint: vec4<f32>,
     ambient: array<vec4<f32>, 6>,
     lights: array<ModelLight, 4>,
     flags: u32,
@@ -44,6 +48,12 @@ const FLAG_BAKED: u32 = 512u;
 const FLAG_TRANSLUCENT: u32 = 1024u;
 const FLAG_BASEMAPALPHA_PHONGMASK: u32 = 2048u;
 const FLAG_VERTEX_COLOR: u32 = 4096u;
+const FLAG_EXPONENT_TEXTURE: u32 = 8192u;
+const FLAG_ALBEDO_TINT: u32 = 16384u;
+const FLAG_HALF_LAMBERT: u32 = 32768u;
+const FLAG_LIGHTWARP: u32 = 65536u;
+const FLAG_SELFILLUM_MASK: u32 = 131072u;
+const FLAG_BASEMAPLUMINANCE_PHONGMASK: u32 = 262144u;
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> material: ModelParams;
 @group(constants::MATERIAL_BIND_GROUP) @binding(1) var base_tex: texture_2d<f32>;
@@ -54,6 +64,12 @@ const FLAG_VERTEX_COLOR: u32 = 4096u;
 @group(constants::MATERIAL_BIND_GROUP) @binding(6) var envmap_samp: sampler;
 @group(constants::MATERIAL_BIND_GROUP) @binding(7) var envmask_tex: texture_2d<f32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(8) var envmask_samp: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(9) var exponent_tex: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(10) var exponent_samp: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(11) var selfillum_mask_tex: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(12) var selfillum_mask_samp: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(13) var lightwarp_tex: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(14) var lightwarp_samp: sampler;
 
 fn has(flag: u32) -> bool {
     return (material.flags & flag) != 0u;
@@ -77,14 +93,27 @@ fn light_falloff(light: ModelLight, p: vec3<f32>) -> vec4<f32> {
     let dist = max(length(d), 0.001);
     let l = d / dist;
     let a = light.attenuation;
-    var atten = 1.0 / max(a.x + a.y * dist + a.z * dist * dist, 1e-4);
+    var atten = 1.0 / max(a.x + a.y * dist + a.z * dist * dist, 1e-6);
     if kind == 1u {
+        // Linear across the cone edge, shaped by the falloff exponent.
         let cos_angle = dot(-l, light.direction.xyz);
         let inner = light.direction.w;
         let outer = a.w;
-        atten = atten * saturate((cos_angle - outer) / max(inner - outer, 1e-4));
+        let edge = max((cos_angle - outer) / max(inner - outer, 1e-4), 1e-4);
+        atten = atten * min(pow(edge, light.color.w), 1.0);
     }
     return vec4<f32>(l, atten);
+}
+
+// Phong Fresnel term: (1 - N·V)² picks a point on two lines, from the facing
+// value to the middle one and from the middle one to the edge-on value.
+fn fresnel_ranges(n_dot_v: f32) -> f32 {
+    let f = (1.0 - n_dot_v) * (1.0 - n_dot_v);
+    let r = material.fresnel.xyz;
+    if f <= 0.5 {
+        return mix(r.x, r.y, 2.0 * f);
+    }
+    return mix(r.y, r.z, 2.0 * f - 1.0);
 }
 
 // Source-style distance fog by view depth: min(max density, (depth - start)
@@ -130,9 +159,19 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
             n = normalize(t * tn.x + b * tn.y + n * tn.z);
         }
     }
+    var exponent_map = vec4<f32>(1.0);
+    if has(FLAG_EXPONENT_TEXTURE) {
+        exponent_map = textureSample(exponent_tex, exponent_samp, uv);
+    }
+    // A constant exponent wins over the map, whose red spans 1..150.
+    var exponent = material.phong.x;
+    if exponent <= 0.0 {
+        exponent = 1.0 + 149.0 * exponent_map.r;
+    }
 
     let p = in.world_position.xyz;
     let v = normalize(view.world_position - p);
+    let n_dot_v = saturate(dot(n, v));
     var diffuse = vec3<f32>(0.0);
     var specular = vec3<f32>(0.0);
     if has(FLAG_UNLIT) {
@@ -147,11 +186,22 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
         for (var i = 0u; i < material.num_lights; i = i + 1u) {
             let light = material.lights[i];
             let la = light_falloff(light, p);
-            let ndl = saturate(dot(n, la.xyz));
-            diffuse = diffuse + light.color.rgb * ndl * la.w;
+            let lit = light.color.rgb * la.w;
+            let n_dot_l = dot(n, la.xyz);
+            var shade = saturate(n_dot_l);
+            if has(FLAG_HALF_LAMBERT) {
+                shade = saturate(n_dot_l * 0.5 + 0.5);
+            }
+            if has(FLAG_LIGHTWARP) {
+                diffuse = diffuse + lit * 2.0 * textureSample(lightwarp_tex, lightwarp_samp, vec2<f32>(shade, shade)).rgb;
+            } else if has(FLAG_HALF_LAMBERT) {
+                diffuse = diffuse + lit * shade * shade;
+            } else {
+                diffuse = diffuse + lit * shade;
+            }
             if has(FLAG_PHONG) {
-                let s = pow(saturate(dot(r, la.xyz)), max(material.phong.x, 1.0));
-                specular = specular + light.color.rgb * s * la.w * ndl;
+                let s = pow(saturate(dot(r, la.xyz)), exponent);
+                specular = specular + lit * s * saturate(n_dot_l);
             }
         }
     }
@@ -162,18 +212,39 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     }
 
     var color = albedo * diffuse;
-    if has(FLAG_PHONG) {
-        var mask = bump.a;
-        if has(FLAG_BASEMAPALPHA_PHONGMASK) {
-            mask = base.a;
+    if has(FLAG_SELFILLUM) {
+        var mask = vec3<f32>(base.a);
+        if has(FLAG_SELFILLUM_MASK) {
+            mask = textureSample(selfillum_mask_tex, selfillum_mask_samp, uv).rgb;
         }
-        let fresnel = mix(material.phong.z, material.phong.w, pow(1.0 - saturate(dot(n, v)), 5.0));
-        color = color + specular * material.phong.y * mask * fresnel;
+        color = mix(color, base.rgb * material.selfillum_tint.rgb, mask);
+    }
+    var fresnel = 1.0;
+    var phong_mask = bump.a;
+    if has(FLAG_PHONG) {
+        if has(FLAG_BASEMAPALPHA_PHONGMASK) {
+            phong_mask = base.a;
+        }
+        if has(FLAG_BASEMAPLUMINANCE_PHONGMASK) {
+            phong_mask = dot(base.rgb, vec3<f32>(0.3, 0.59, 0.11));
+        }
+        var tint = material.phong_tint.rgb;
+        if has(FLAG_ALBEDO_TINT) {
+            tint = mix(vec3<f32>(1.0), base.rgb, exponent_map.g);
+        }
+        fresnel = fresnel_ranges(n_dot_v);
+        color = color + specular * material.phong.y * phong_mask * tint * fresnel;
     }
     if has(FLAG_ENVMAP) {
         let r = reflect(-v, n);
-        var spec = textureSample(envmap_tex, envmap_samp, r).rgb;
+        var spec = textureSample(envmap_tex, envmap_samp, r).rgb * material.envmap_tint.rgb;
         var mask = vec3<f32>(1.0);
+        if has(FLAG_PHONG) {
+            // Phong materials mask reflections like their highlights unless
+            // told to use the base alpha, and can share the Fresnel ranges.
+            mask = vec3<f32>(phong_mask);
+            spec = spec * mix(1.0, fresnel, material.fresnel.w);
+        }
         if has(FLAG_ENVMAPMASK) {
             mask = textureSample(envmask_tex, envmask_samp, uv).rgb;
         }
@@ -183,10 +254,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
         if has(FLAG_NORMALALPHA_ENVMAPMASK) {
             mask = vec3<f32>(bump.a);
         }
-        color = color + spec * material.envmap_tint.rgb * mask;
-    }
-    if has(FLAG_SELFILLUM) {
-        color = mix(color, albedo * material.selfillum_tint.rgb, base.a);
+        color = color + spec * mask;
     }
     return vec4<f32>(apply_source_fog(color * view.exposure, in.world_position.xyz), alpha);
 }
