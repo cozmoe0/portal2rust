@@ -1,7 +1,8 @@
 """Capture reference screenshots from the installed game for parity checks.
 
 Reads a shot list (one view per line: name map x y z pitch yaw roll, the
-position being the player's feet as with `setpos`), launches the game
+position being the player's feet as with `setpos`, optionally followed by
+console commands to run at that view, e.g. `r_drawviewmodel 1`), launches the game
 windowed at the same size as our renderer with its network console enabled
 (random password, so nothing else can use it), then drives it: loads each
 map, waits for the player to exist, moves to each view in noclip with the HUD
@@ -49,7 +50,7 @@ def parse_shots(path):
                 nums = [float(x) for x in parts[2:8]]
             except ValueError:
                 continue
-            shots.append((parts[0], parts[1].lower(), nums))
+            shots.append((parts[0], parts[1].lower(), nums, " ".join(parts[8:])))
     return shots
 
 
@@ -173,7 +174,7 @@ def main():
         # Not saved to the config: hide console notifications in screenshots.
         con.send("con_drawnotify 0")
         current = None
-        for name, map_name, (x, y, z, pitch, yaw, roll) in shots:
+        for name, map_name, (x, y, z, pitch, yaw, roll), commands in shots:
             if map_name != current:
                 print("loading", map_name)
                 con.take()
@@ -191,7 +192,10 @@ def main():
                 if m and m.group(1) == "OFF":
                     con.send("noclip")
                 current = map_name
-            con.send(f"setpos {x:.3f} {y:.3f} {z:.3f}; setang {pitch:.3f} {yaw:.3f} {roll:.3f}")
+            con.send(f"r_drawviewmodel 0; setpos {x:.3f} {y:.3f} {z:.3f}; setang {pitch:.3f} {yaw:.3f} {roll:.3f}")
+            # Per-shot commands run at the view, after the defaults are restored.
+            if commands:
+                con.send(commands)
             time.sleep(args.settle)
             con.send(f"cl_screenshotname p2r_{name}; screenshot")
             # The game writes <name>.tga and then tries to rename it to

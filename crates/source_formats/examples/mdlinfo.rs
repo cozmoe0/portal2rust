@@ -15,6 +15,7 @@ fn main() {
                 let tris: usize = m.meshes.iter().map(|x| x.indices.len() / 3).sum();
                 println!("{p}: bones {} meshes {} verts {verts} tris {tris} textures {} skins {} seqs {} (total {}) anims {} includes {} attachments {} poseparams {} anim_block {:?}",
                     m.mdl.bones.len(), m.meshes.len(), m.mdl.textures.len(), m.mdl.skins.len(), m.mdl.sequences.len(), m.sequence_count(), m.mdl.anims.len(), m.includes.len(), m.mdl.attachments.len(), m.mdl.pose_parameters.len(), m.anim_block_data.as_ref().map(|d| d.len()));
+                println!("   illum position {:?} hull {:?}..{:?}", m.mdl.illum_position, m.mdl.hull_min, m.mdl.hull_max);
                 for t in 0..m.mdl.textures.len() { println!("   material[{t}] -> {:?}", m.resolve_material(&fs, t)); }
                 let seqs: Vec<String> = (0..m.sequence_count().min(12)).filter_map(|i| m.sequence(i).map(|(o, l)| o.mdl.sequences[l].label.clone())).collect();
                 println!("   sequences: {seqs:?}");

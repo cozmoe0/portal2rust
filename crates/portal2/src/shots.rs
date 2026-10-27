@@ -3,9 +3,11 @@
 //! (`re/tools/capture.py` reads the same list, `re/tools/imgdiff.py`
 //! compares the results).
 //!
-//! Each line is `name map x y z pitch yaw roll`, the position being the
-//! player's feet as with `setpos`; `#` starts a comment. The player is put
-//! in noclip at each view, with the viewmodel and HUD hidden.
+//! Each line is `name map x y z pitch yaw roll [commands]`, the position
+//! being the player's feet as with `setpos`; `#` starts a comment. The player
+//! is put in noclip at each view, with the viewmodel and HUD hidden; anything
+//! after the angles is run as console commands at that view (for example
+//! `r_drawviewmodel 1` to show the first-person weapon).
 
 use std::path::PathBuf;
 
@@ -23,6 +25,8 @@ pub struct Shot {
     pub map: String,
     pub pos: Vec3,
     pub angles: Vec3,
+    /// Console commands run at this view after the defaults.
+    pub commands: String,
 }
 
 pub fn parse_shots(text: &str) -> Vec<Shot> {
@@ -39,6 +43,7 @@ pub fn parse_shots(text: &str) -> Vec<Shot> {
                 map: parts[1].to_ascii_lowercase(),
                 pos: Vec3::new(n[0], n[1], n[2]),
                 angles: Vec3::new(n[3], n[4], n[5]),
+                commands: parts[8..].join(" "),
             })
         })
         .collect()
@@ -119,6 +124,9 @@ fn run_shots(world: &mut World) {
             let loaded = world.get_resource::<CurrentMap>().is_some_and(|m| m.name == shot.map);
             if loaded {
                 crate::console::execute_now(world, "sv_cheats 1; r_drawviewmodel 0; cl_drawhud 0; crosshair 0");
+                if !shot.commands.is_empty() {
+                    crate::console::execute_now(world, &shot.commands);
+                }
                 hold_view(world, &shot);
                 Phase::Settling(world.resource::<ShotRunner>().settle)
             } else {
@@ -160,15 +168,27 @@ mod tests {
 
     #[test]
     fn parses_shot_lines() {
-        let shots = parse_shots("# comment\nstart sp_a1_intro3 1 2 3 10 90 0 # trailing\nbad line\n");
+        let shots = parse_shots(
+            "# comment\nstart sp_a1_intro3 1 2 3 10 90 0 # trailing\nbad line\ngun sp_a1_intro3 1 2 3 0 0 0 r_drawviewmodel 1\n",
+        );
         assert_eq!(
             shots,
-            vec![Shot {
-                name: "start".into(),
-                map: "sp_a1_intro3".into(),
-                pos: Vec3::new(1.0, 2.0, 3.0),
-                angles: Vec3::new(10.0, 90.0, 0.0)
-            }]
+            vec![
+                Shot {
+                    name: "start".into(),
+                    map: "sp_a1_intro3".into(),
+                    pos: Vec3::new(1.0, 2.0, 3.0),
+                    angles: Vec3::new(10.0, 90.0, 0.0),
+                    commands: String::new(),
+                },
+                Shot {
+                    name: "gun".into(),
+                    map: "sp_a1_intro3".into(),
+                    pos: Vec3::new(1.0, 2.0, 3.0),
+                    angles: Vec3::ZERO,
+                    commands: "r_drawviewmodel 1".into(),
+                },
+            ]
         );
     }
 }

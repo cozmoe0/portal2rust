@@ -119,6 +119,10 @@ cargo run --release -p portal2 -- --shots re/shots/chapter1.txt
 python -I re/tools/imgdiff.py re/out/ref re/out/ours re/out/diff
 ```
 
+A shot line may end with console commands to run at that view, for example
+`r_drawviewmodel 1` to include the first-person weapon (see
+`re/shots/models.txt`, which checks model shading).
+
 Campaign checks: `--smoke sp` loads every single-player map and reports
 script errors and inputs nothing handles; `--chain sp_a1_intro1` rides each
 level's exit elevator (or takes its transition trigger) and reports whether
