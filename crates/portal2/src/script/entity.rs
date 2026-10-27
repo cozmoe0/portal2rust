@@ -147,8 +147,8 @@ pub fn register(vm: &mut Vm, vector: ObjRef) -> ScriptClasses {
         Some(entity),
         &[
             ("EstimateLength", estimate_length, 1),
-            ("IsPlayingBack", false_fn, 1),
-            ("IsPaused", false_fn, 1),
+            ("IsPlayingBack", is_playing_back, 1),
+            ("IsPaused", is_paused, 1),
             ("AddBroadcastTeamTarget", ignore, 2),
             ("RemoveBroadcastTeamTarget", ignore, 2),
             ("FindNamedEntity", find_named_entity, 2),
@@ -678,9 +678,23 @@ fn is_noclipping(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
     Ok(Value::Bool(world.get::<crate::player::Player>(e).is_some_and(|p| p.noclip)))
 }
 
-fn estimate_length(_ctx: &mut Ctx, _args: &[Value]) -> Result<Value> {
-    // Scene playback arrives with the choreography milestone.
-    Ok(Value::Float(0.0))
+/// Length of the scene in seconds (its last event's end).
+fn estimate_length(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
+    let (vm, world) = parts(ctx);
+    let e = this_entity(vm, world, args)?;
+    Ok(Value::Float(crate::entities::scenes::loaded(world, e).map_or(0.0, |s| s.duration)))
+}
+
+fn is_playing_back(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
+    let (vm, world) = parts(ctx);
+    let e = this_entity(vm, world, args)?;
+    Ok(Value::Bool(world.get::<crate::entities::scenes::ChoreoScene>(e).is_some_and(|s| s.playing)))
+}
+
+fn is_paused(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
+    let (vm, world) = parts(ctx);
+    let e = this_entity(vm, world, args)?;
+    Ok(Value::Bool(world.get::<crate::entities::scenes::ChoreoScene>(e).is_some_and(|s| s.paused)))
 }
 
 fn find_named_entity(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {

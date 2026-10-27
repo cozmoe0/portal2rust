@@ -7,6 +7,7 @@ pub mod io;
 pub mod logic;
 pub mod movers;
 pub mod props;
+pub mod scenes;
 pub mod spawner;
 pub mod templates;
 pub mod texturetoggle;
@@ -46,6 +47,7 @@ impl Plugin for EntitiesPlugin {
         templates::register(app);
         texturetoggle::register(app);
         buttons::register(app);
+        scenes::register(app);
         trains::register(app);
         transition::register(app);
         props::register(app);

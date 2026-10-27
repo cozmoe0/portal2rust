@@ -245,12 +245,15 @@ impl Kind {
     }
 }
 
-#[derive(Clone, Debug)]
-enum Source {
-    Literal(V),
-    /// Operator index, output slot, broadcast a scalar to all speakers.
-    Ref(usize, usize, bool),
+#[derive(Clone, Copy, Debug)]
+enum Comp {
+    Literal(f32),
+    /// Operator index, output slot, component of that output.
+    Ref(usize, usize, usize),
 }
+
+/// An input's components; unset ones take the operator's default.
+type Input = [Option<Comp>; 6];
 
 #[derive(Clone, Debug)]
 struct Op {
@@ -258,7 +261,7 @@ struct Op {
     kind: Kind,
     /// Inputs by lowercase name; components set individually (`input1[2]`,
     /// speaker names) are merged into a literal.
-    inputs: HashMap<String, Source>,
+    inputs: HashMap<String, Input>,
     strings: HashMap<String, String>,
     execute_once: bool,
 }
@@ -314,44 +317,47 @@ impl Stack {
                     op.strings.insert(key, v.clone());
                     continue;
                 }
-                // `input2[*]`, `input1[3]` and speaker names address components.
-                let (base, index) = match (speaker, key.find('[')) {
-                    (Some(s), _) => ("input1".to_owned(), Some(s)),
+                // Components: `input2[*]` sets all of them from one value,
+                // `input1[3]` and speaker names (which belong to `input1`)
+                // set one, a plain key sets them component-wise.
+                enum Target {
+                    All,
+                    Broadcast,
+                    One(usize),
+                }
+                let (base, target) = match (speaker, key.find('[')) {
+                    (Some(s), _) => ("input1".to_owned(), Target::One(s)),
                     (None, Some(b)) => {
                         let idx = key[b + 1..].trim_end_matches(']');
-                        (key[..b].to_owned(), if idx == "*" { None } else { idx.parse().ok() })
+                        let t = if idx == "*" { Target::Broadcast } else { idx.parse().map_or(Target::Broadcast, Target::One) };
+                        (key[..b].to_owned(), t)
                     }
-                    (None, None) => (key.clone(), Some(usize::MAX)),
+                    (None, None) => (key.clone(), Target::All),
                 };
-                let broadcast = key.ends_with("[*]");
-                let source = if let Some(reference) = v.trim().strip_prefix('@') {
-                    let (opname, out) = reference.split_once('.').unwrap_or((reference, "output"));
+                // A component value: literal, or (operator, output slot).
+                let reference = v.trim().strip_prefix('@').map(|r| {
+                    let (opname, out) = r.split_once('.').unwrap_or((r, "output"));
                     let opname = opname.to_ascii_lowercase();
-                    match names[..i].iter().rposition(|n| *n == opname).or_else(|| names.iter().position(|n| *n == opname)) {
-                        Some(j) => {
-                            let outs = kinds[j].outputs();
-                            let slot = outs.iter().position(|o| o.eq_ignore_ascii_case(out)).unwrap_or(0);
-                            Source::Ref(j, slot, broadcast)
-                        }
-                        None => Source::Literal([0.0; 6]),
-                    }
-                } else {
-                    let lit = parse_literal(v);
-                    match index {
-                        Some(usize::MAX) if broadcast => Source::Literal([lit[0]; 6]),
-                        Some(usize::MAX) => Source::Literal(lit),
-                        Some(c) if c < 6 => {
-                            let mut cur = match op.inputs.get(&base) {
-                                Some(Source::Literal(l)) => *l,
-                                _ => [0.0; 6],
-                            };
-                            cur[c] = lit[0];
-                            Source::Literal(cur)
-                        }
-                        _ => Source::Literal([lit[0]; 6]),
+                    names[..i].iter().rposition(|n| *n == opname).or_else(|| names.iter().position(|n| *n == opname)).map(|j| {
+                        let slot = kinds[j].outputs().iter().position(|o| o.eq_ignore_ascii_case(out)).unwrap_or(0);
+                        (j, slot)
+                    })
+                });
+                let lit = parse_literal(v);
+                let comp = |c: usize| -> Comp {
+                    match reference {
+                        Some(Some((j, slot))) => Comp::Ref(j, slot, c),
+                        Some(None) => Comp::Literal(0.0),
+                        None => Comp::Literal(lit[c]),
                     }
                 };
-                op.inputs.insert(base, source);
+                let entry = op.inputs.entry(base).or_insert([None; 6]);
+                match target {
+                    Target::All => (0..6).for_each(|c| entry[c] = Some(comp(c))),
+                    Target::Broadcast => (0..6).for_each(|c| entry[c] = Some(comp(0))),
+                    Target::One(c) if c < 6 => entry[c] = Some(comp(0)),
+                    Target::One(_) => {}
+                }
             }
             ops.push(op);
         }
@@ -590,14 +596,12 @@ impl Stack {
                 continue;
             }
             let input = |name: &str, default: V, inst: &Instance| -> V {
-                match op.inputs.get(name) {
-                    Some(Source::Literal(v)) => *v,
-                    Some(Source::Ref(j, slot, broadcast)) => {
-                        let v = inst.outputs[*j][*slot];
-                        if *broadcast { [v[0]; 6] } else { v }
-                    }
-                    None => default,
-                }
+                let Some(comps) = op.inputs.get(name) else { return default };
+                std::array::from_fn(|c| match comps[c] {
+                    Some(Comp::Literal(v)) => v,
+                    Some(Comp::Ref(j, slot, k)) => inst.outputs[j][slot][k],
+                    None => default[c],
+                })
             };
             let f = |name: &str, default: f32, inst: &Instance| input(name, [default; 6], inst)[0];
             if f("input_execute", 1.0, inst) <= 0.0 {
@@ -959,5 +963,46 @@ mod tests {
         // Full mono: 0.9 on both fronts, rears silent.
         let mono = spatialize(&listener, Vec3::Y, 1.0, 0.75, 2);
         assert!((mono[0] - 0.9).abs() < 1e-4 && (mono[1] - 0.9).abs() < 1e-4, "{mono:?}");
+    }
+}
+
+#[cfg(test)]
+mod install_tests {
+    use super::*;
+    use source_formats::fs::GameFileSystem;
+    use source_formats::soundscript::SoundScripts;
+
+    /// Runs an installed entry's update stack once and prints every
+    /// operator's first output (skipped without an install).
+    #[test]
+    fn dialog_stack_outputs() {
+        let Some(root) = GameFileSystem::find_install() else { return };
+        let Ok(fs) = GameFileSystem::portal2(root) else { return };
+        let scripts = SoundScripts::load(&fs).unwrap();
+        let lib = Library::load(&fs);
+        let mut mix = MixData::load(&fs);
+        mix.update_layers(false);
+        let entry = scripts.get("announcer.PreHub46").unwrap();
+        let stack = lib.compile(StackKind::Update, entry.operator_stacks.as_ref(), Some("update_default")).unwrap();
+        let mut inst = stack.instance();
+        let mut chan = Chan { entry: entry.name.clone(), volume: 1.0, level: 0.0, pitch: 1.0, ..Default::default() };
+        let listener = Listener { origin: Vec3::ZERO, forward: Vec3::X, right: Vec3::NEG_Y, velocity: Vec3::ZERO };
+        let cvar = |n: &str| match n {
+            "snd_surround_speakers" => -1.0,
+            "snd_gain" | "snd_op_test_convar" | "snd_mixer_master_level" | "snd_mixer_master_dsp" | "snd_gain_max" => 1.0,
+            "snd_refdist" => 36.0,
+            _ => 0.0,
+        };
+        let opvars = HashMap::new();
+        let mut env = Env { listener: &listener, mix: &mix, cvar: &cvar, opvars: &opvars, others: &[], now: 0.0, map: "", speaker_mode: 2, effects: Vec::new() };
+        stack.run(&mut inst, &mut chan, &mut env);
+        for (op, out) in stack.ops.iter().zip(&inst.outputs) {
+            println!("{:<32} {:?} {:?}", op.name, op.kind, out.first().map(|v| v[0]));
+        }
+        println!("speakers {:?}", chan.speakers);
+        for op in stack.ops.iter().filter(|o| o.kind == Kind::Speakers) {
+            println!("{} inputs {:?} strings {:?}", op.name, op.inputs, op.strings);
+        }
+        assert!(chan.speakers.is_some_and(|s| s[0] > 0.5), "{:?}", chan.speakers);
     }
 }

@@ -268,3 +268,28 @@ Text files (all 4860):
   `flextimingtags`, `relativetag`, `loopcount`, `pitch`, `yaw`,
   `playoverscript`, `synctofollowinggesture`, the caption flags and the old
   `ramp` shorthand, and the event types with a count of 0 above.
+
+## Playback (`logic_choreographed_scene`)
+
+What the engine's scene entity exposes, from `server.dll`'s strings, and how
+`crates/portal2/src/entities/scenes.rs` plays scenes:
+
+- Keys: `SceneFile`, `ResumeSceneFile`, `target1`..`target8`, `busyactor`,
+  `onplayerdeath`. `CreateSceneEntity(file)` in scripts makes the same
+  entity.
+- Inputs: `Start`, `Pause`, `Resume`, `Cancel`, `CancelAtNextInterrupt`,
+  `PitchShift`, `InterjectResponse`, `StopWaitingForActor`, `Trigger`,
+  `SetTarget1`..`SetTarget4`, `ScriptPlayerDeath`, `Reload`.
+- Outputs: `OnStart`, `OnCompletion`, `OnCanceled`, `OnTrigger1`..`OnTrigger16`.
+- Actor names: `!target1`..`!target8` (the keys above), `!self`, `!player`,
+  `!activator`, `!caller`, `!speechtarget`, `!friend`, `!enemy`; anything
+  else is an entity name. In the campaign maps `@glados` is a
+  `generic_actor` and `@sphere` an `npc_personality_core`.
+- Our playback: scene time follows the game clock times the `PitchShift`
+  factor. Events fire when the time passes their start: `speak` plays its
+  sound on the actor (pitch from `PitchShift`, `param2` as a sound level
+  override), `firetrigger` fires `OnTrigger<param>`, `sequence` starts the
+  named sequence on the actor. The scene completes at its end time (the
+  latest event start or end, the same value the image summary stores).
+  `Cancel` stops the scene's speech and fires `OnCanceled`. Scripts can ask
+  `EstimateLength`, `IsPlayingBack` and `IsPaused`.

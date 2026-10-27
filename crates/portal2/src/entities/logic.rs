@@ -64,7 +64,6 @@ pub fn register(app: &mut App) {
     h.register("math_counter", counter_input);
     h.register("logic_case", case_input);
     h.register("func_instance_io_proxy", proxy_input);
-    h.register("logic_choreographed_scene", scene_input);
     h.register("point_teleport", teleport_input);
     h.register("logic_random_outputs", random_outputs_input);
     h.register("logic_register_activator", register_activator_input);
@@ -780,31 +779,6 @@ fn proxy_input(world: &mut World, call: &InputCall) -> bool {
         return true;
     }
     false
-}
-
-// --------------------------------------------------- logic_choreographed_scene
-
-/// Scenes are not played yet: report a start and a completion shortly after
-/// so dependent logic keeps running.
-fn scene_input(world: &mut World, call: &InputCall) -> bool {
-    match call.input.as_str() {
-        "start" => {
-            fire_output(world, call.target, "OnStart", call.activator, None);
-            let mut queue = world.resource_mut::<super::io::EventQueue>();
-            queue.push(
-                1.0,
-                super::io::EventTarget::Entity(call.target),
-                "__scenecomplete",
-                "",
-                call.activator,
-                Some(call.target),
-            );
-        }
-        "__scenecomplete" => fire_output(world, call.target, "OnCompletion", call.activator, None),
-        "pause" | "resume" | "cancel" | "reload" | "startwaitingforactor" | "stopwaitingforactor" | "setbreakpoint" => {}
-        _ => return false,
-    }
-    true
 }
 
 // --------------------------------------------------------------- point_teleport

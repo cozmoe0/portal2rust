@@ -79,7 +79,13 @@ and mixers (`scripts/soundmixers.txt`, including the mix layers that duck
 everything else under dialogue), on a software mixer in `crates/portal2/src/audio`.
 `ambient_generic`, soundscapes, footsteps, the portal gun and portals,
 buttons and script `EmitSound` calls are wired up; room DSP and occlusion
-are not yet. `snd_list` lists the playing channels, `play <sound>` plays one.
+are not yet.
+
+Dialogue plays through choreographed scenes (`logic_choreographed_scene` and
+script `CreateSceneEntity`), read from the game's compiled
+`scenes/scenes.image`: speak events play the lines on their actors, trigger
+events fire the scene's outputs and scenes complete at their real length.
+Actor gestures, look-at and lip sync are not animated yet. `snd_list` lists the playing channels, `play <sound>` plays one.
 The volume comes from your `config.cfg` (`volume`). Portal openings are drawn
 with a simple coloured ring around the linked view.
 

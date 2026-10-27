@@ -112,3 +112,21 @@ fn decode_mp3(bytes: &[u8]) -> Option<Pcm> {
     let frames = (samples.len() / channels as usize) as u32;
     (frames > 0).then_some(Pcm { rate, channels, frames, samples, loop_start: None })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Decodes a few installed voice lines (skipped without an install).
+    #[test]
+    fn voice_over_decodes_at_full_scale() {
+        let Some(root) = GameFileSystem::find_install() else { return };
+        let Ok(fs) = GameFileSystem::portal2(root) else { return };
+        for path in ["sound/vo/announcer/prehub46.wav", "sound/vo/glados/prehub14.wav"] {
+            let Some(pcm) = load(&fs, path) else { panic!("{path} did not decode") };
+            let peak = pcm.samples.iter().map(|s| s.unsigned_abs()).max().unwrap_or(0);
+            println!("{path}: {} Hz, {} ch, {:.2} s, peak {:.3}", pcm.rate, pcm.channels, pcm.duration(), peak as f32 / 32768.0);
+            assert!(pcm.duration() > 0.5);
+        }
+    }
+}
