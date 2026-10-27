@@ -1,0 +1,12 @@
+[package]
+name = "bink"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Pure Rust decoder for Bink 1 (.bik) video and audio"
+
+[dependencies]
+thiserror.workspace = true
+
+[dev-dependencies]
+png = "0.18"
