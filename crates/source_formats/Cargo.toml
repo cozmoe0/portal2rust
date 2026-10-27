@@ -1,0 +1,13 @@
+[package]
+name = "source_formats"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Readers for Source engine file formats (VPK, KeyValues, VTF, VMT, BSP, MDL, ...)"
+
+[dependencies]
+thiserror.workspace = true
+log.workspace = true
+bytemuck.workspace = true
+glam.workspace = true
+lzma-rs = "0.3"

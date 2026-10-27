@@ -1,0 +1,12 @@
+/target
+# Copies of the original game binaries and IDA databases are for local analysis
+# only and must never be committed or redistributed.
+/re/bin/
+/re/out/
+*.i64
+*.idb
+*.id0
+*.id1
+*.id2
+*.nam
+*.til
