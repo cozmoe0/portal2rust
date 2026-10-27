@@ -20,6 +20,7 @@ pub mod soundscript;
 pub mod studio;
 pub mod text;
 pub mod vcd;
+pub mod vfont;
 pub mod vmt;
 pub mod vpk;
 pub mod vtf;

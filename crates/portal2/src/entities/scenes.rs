@@ -90,6 +90,8 @@ pub struct ChoreoScene {
     activator: Option<Entity>,
     /// Sound channels started by this scene's speak events.
     speech: Vec<u64>,
+    /// Actors this scene layers gestures on.
+    layered: Vec<Entity>,
 }
 
 fn spawn(world: &mut World, e: Entity) {
@@ -106,6 +108,7 @@ fn spawn(world: &mut World, e: Entity) {
         next: 0,
         activator: None,
         speech: Vec::new(),
+        layered: Vec::new(),
     });
 }
 
@@ -160,6 +163,7 @@ fn input(world: &mut World, call: &InputCall) -> bool {
         "cancel" => {
             if playing {
                 stop_speech(world, e);
+                update_gestures(world, e, None);
                 if let Some(mut s) = world.get_mut::<ChoreoScene>(e) {
                     s.playing = false;
                 }
@@ -250,11 +254,17 @@ fn advance(world: &mut World, e: Entity, dt: f32) {
                     continue;
                 };
                 let level = ev.param2.trim().trim_end_matches(|c: char| c.is_ascii_alphabetic()).parse::<f32>().ok();
-                let params = crate::audio::Emit { entity: Some(who), pitch: Some(pitch * 100.0), soundlevel: level, ..default() };
+                let params =
+                    crate::audio::Emit { entity: Some(who), pitch: Some(pitch * 100.0), soundlevel: level, no_caption: true, ..default() };
                 if let Some(id) = crate::audio::emit(world, &ev.param, params)
                     && let Some(mut s) = world.get_mut::<ChoreoScene>(e)
                 {
                     s.speech.push(id);
+                }
+                // The scene captions its own lines (a token may replace the sound's).
+                if ev.cc.kind == source_formats::vcd::CcType::Master {
+                    let token = if ev.cc.token.is_empty() { ev.param.as_str() } else { ev.cc.token.as_str() };
+                    crate::captions::emit(world, token, ev.duration() / pitch.max(0.01), false);
                 }
             }
             EventKind::Sequence => {
@@ -267,6 +277,15 @@ fn advance(world: &mut World, e: Entity, dt: f32) {
                     debug!("scene sequence {} missing on actor", ev.param);
                 }
             }
+            EventKind::Gesture => {
+                // Layered every tick by update_gestures; noted here for tracing.
+                let found = actor_name
+                    .as_deref()
+                    .and_then(|n| actor(world, e, n))
+                    .and_then(|w| world.get::<crate::models::StudioAnimator>(w))
+                    .map(|a| a.model.studio.find_sequence(&ev.param).is_some());
+                debug!("scene gesture {} on {actor_name:?}: sequence {found:?}", ev.param);
+            }
             EventKind::FireTrigger => {
                 let n = source_formats::kv::parse_i32_lenient(&ev.param);
                 if (1..=16).contains(&n) {
@@ -278,11 +297,68 @@ fn advance(world: &mut World, e: Entity, dt: f32) {
     }
     let Some(mut s) = world.get_mut::<ChoreoScene>(e) else { return };
     s.next = next;
-    if s.playing && next >= scene.events.len() && s.time >= scene.duration {
+    let done = s.playing && next >= scene.events.len() && s.time >= scene.duration;
+    update_gestures(world, e, (!done).then_some((&scene, time)));
+    let Some(mut s) = world.get_mut::<ChoreoScene>(e) else { return };
+    if done {
         s.playing = false;
         let file = s.file.clone();
         debug!("scene {file} completed");
         fire_output(world, e, "OnCompletion", activator, None);
+    }
+}
+
+/// Intensity of an event `local` seconds after its start: its ramp when it
+/// has one, otherwise the sequence's fade in and out at the edges.
+fn event_weight(ev: &source_formats::vcd::Event, local: f32, fades: (f32, f32)) -> f32 {
+    let s = &ev.ramp.samples;
+    if let (Some(first), Some(last)) = (s.first(), s.last()) {
+        if local <= first.time {
+            return first.value;
+        }
+        if local >= last.time {
+            return last.value;
+        }
+        let i = s.partition_point(|x| x.time <= local).max(1);
+        let (a, b) = (s[i - 1], s[i]);
+        let t = if b.time > a.time { (local - a.time) / (b.time - a.time) } else { 1.0 };
+        return a.value + (b.value - a.value) * t;
+    }
+    let fade_in = if fades.0 > 0.0 { local / fades.0 } else { 1.0 };
+    let fade_out = if fades.1 > 0.0 { (ev.duration() - local) / fades.1 } else { 1.0 };
+    fade_in.min(fade_out).clamp(0.0, 1.0)
+}
+
+/// Layers every gesture event spanning the scene time onto its actor; the
+/// gesture's sequence plays over the event's length. `None` clears them.
+fn update_gestures(world: &mut World, e: Entity, at: Option<(&LoadedScene, f32)>) {
+    use crate::models::animation::Layer;
+    let mut layers: Vec<(Entity, Layer)> = Vec::new();
+    if let Some((scene, time)) = at {
+        for (actor_name, ev) in &scene.events {
+            if ev.kind != EventKind::Gesture || ev.start > time || time >= ev.end {
+                continue;
+            }
+            let Some(who) = actor_name.as_deref().and_then(|n| actor(world, e, n)) else { continue };
+            let Some(anim) = world.get::<crate::models::StudioAnimator>(who) else { continue };
+            let Some(sequence) = anim.model.studio.find_sequence(&ev.param) else { continue };
+            let local = time - ev.start;
+            let cycle = (local / ev.duration().max(0.01)).clamp(0.0, 1.0);
+            let weight = event_weight(ev, local, anim.sequence_fades(sequence));
+            layers.push((who, Layer { sequence, cycle, weight }));
+        }
+    }
+    let previous = world.get_mut::<ChoreoScene>(e).map(|mut s| std::mem::take(&mut s.layered)).unwrap_or_default();
+    let mut touched: Vec<Entity> = layers.iter().map(|(w, _)| *w).collect();
+    touched.dedup();
+    for who in previous.iter().chain(touched.iter()) {
+        let mine: Vec<Layer> = layers.iter().filter(|(w, _)| w == who).map(|(_, l)| *l).collect();
+        if let Some(mut anim) = world.get_mut::<crate::models::StudioAnimator>(*who) {
+            anim.set_layers(mine);
+        }
+    }
+    if let Some(mut s) = world.get_mut::<ChoreoScene>(e) {
+        s.layered = touched;
     }
 }
 
@@ -314,5 +390,39 @@ mod tests {
         assert!((s.duration - 9.5).abs() < 0.5, "{}", s.duration);
         // Keys are case- and slash-insensitive, the extension optional.
         assert!(lib.load(&fs, r"Scenes\NPC\announcer\prehub46").is_some());
+    }
+}
+
+#[cfg(test)]
+mod census {
+    use super::*;
+    use source_formats::fs::GameFileSystem;
+
+    /// Which actors carry look-at, face and gesture events (run with
+    /// `--ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn animation_event_actors() {
+        let Some(root) = GameFileSystem::find_install() else { return };
+        let Ok(fs) = GameFileSystem::portal2(root) else { return };
+        let Some(Ok(image)) = ScenesImage::from_fs(&fs) else { return };
+        let mut counts: HashMap<(String, String), usize> = HashMap::new();
+        for i in 0..image.len() {
+            let Ok(scene) = image.scene(i) else { continue };
+            for a in &scene.actors {
+                for c in &a.channels {
+                    for e in &c.events {
+                        if matches!(e.kind, EventKind::LookAt | EventKind::Face | EventKind::Gesture | EventKind::Sequence) {
+                            *counts.entry((a.name.to_ascii_lowercase(), e.kind.name().to_owned())).or_default() += 1;
+                        }
+                    }
+                }
+            }
+        }
+        let mut v: Vec<_> = counts.into_iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1));
+        for ((actor, kind), n) in v.iter().take(30) {
+            println!("{n:>6} {kind:<10} {actor}");
+        }
     }
 }

@@ -34,6 +34,15 @@ pub struct AnimationEvent {
     pub options: String,
 }
 
+/// A sequence blended over the base one (scene gestures): delta sequences
+/// add to the pose, others pull it towards their own by `weight`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Layer {
+    pub sequence: usize,
+    pub cycle: f32,
+    pub weight: f32,
+}
+
 #[derive(Component)]
 pub struct StudioAnimator {
     pub model: Arc<LoadedModel>,
@@ -47,6 +56,8 @@ pub struct StudioAnimator {
     pub finished: bool,
     /// Sequence to return to after a non-looping one finishes.
     pub default_sequence: Option<usize>,
+    /// Layered sequences, applied in order after the base sequence.
+    layers: Vec<Layer>,
     /// Pose needs re-sampling even if the cycle did not move.
     dirty: bool,
 }
@@ -62,6 +73,7 @@ impl StudioAnimator {
             looping: false,
             finished: false,
             default_sequence: None,
+            layers: Vec::new(),
             dirty: true,
         };
         a.set_sequence_index(0);
@@ -102,6 +114,18 @@ impl StudioAnimator {
             }
             None => false,
         }
+    }
+
+    pub fn set_layers(&mut self, layers: Vec<Layer>) {
+        if self.layers != layers {
+            self.layers = layers;
+            self.dirty = true;
+        }
+    }
+
+    /// Fade-in and fade-out times of a sequence (seconds).
+    pub fn sequence_fades(&self, index: usize) -> (f32, f32) {
+        self.model.studio.sequence(index).map(|(m, l)| (m.mdl.sequences[l].fade_in, m.mdl.sequences[l].fade_out)).unwrap_or((0.2, 0.2))
     }
 
     pub fn sequence_name(&self) -> String {
@@ -169,6 +193,19 @@ fn animate_models(
         let bones = anim.model.bone_count();
         let mut pose = vec![(Vec3::ZERO, Quat::IDENTITY); bones];
         anim.model.studio.sample_sequence(anim.sequence, anim.cycle, &mut pose);
+        for layer in anim.layers.iter().filter(|l| l.weight > 0.0) {
+            let mut over = vec![(Vec3::ZERO, Quat::IDENTITY); bones];
+            anim.model.studio.sample_sequence(layer.sequence, layer.cycle, &mut over);
+            let w = layer.weight.min(1.0);
+            let delta = anim.sequence_flags(layer.sequence) & seq_flags::DELTA != 0;
+            for (base, (p, q)) in pose.iter_mut().zip(over) {
+                *base = if delta {
+                    (base.0 + p * w, (Quat::IDENTITY.slerp(q, w) * base.1).normalize())
+                } else {
+                    (base.0.lerp(p, w), base.1.slerp(q, w))
+                };
+            }
+        }
         for (i, &joint) in anim.joints.iter().enumerate() {
             if let (Some(&(p, q)), Ok(mut t)) = (pose.get(i), transforms.get_mut(joint)) {
                 t.translation = p;

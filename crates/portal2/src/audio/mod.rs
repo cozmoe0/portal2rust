@@ -120,6 +120,8 @@ pub struct Emit {
     pub slot: Option<i32>,
     /// Seconds.
     pub delay: f32,
+    /// The caller shows the caption itself (scene speech).
+    pub no_caption: bool,
 }
 
 /// Compiled stacks of one entry.
@@ -292,8 +294,16 @@ pub fn emit(world: &mut World, name: &str, params: Emit) -> Option<u64> {
     let player = world.resource::<EntityRegistry>().player;
     let local_player = params.entity.is_some() && params.entity == player;
     let class = class.or_else(|| local_player.then(|| "player".to_owned()));
+    let no_caption = params.no_caption;
     let mut sounds = world.get_resource_mut::<Sounds>()?;
-    sounds.start(&fs, name, params, origin, class.as_deref(), local_player)
+    let entry = sounds.scripts.get(name).map(|e| e.name.clone());
+    let id = sounds.start(&fs, name, params, origin, class.as_deref(), local_player)?;
+    // Sound entries with a caption show it while they play.
+    if let Some(entry) = entry.filter(|_| !no_caption) {
+        let length = sounds.channels.iter().find(|c| c.id == id).map_or(0.0, |c| c.chan.duration / c.pitch.max(0.01));
+        crate::captions::emit(world, &entry, length, local_player);
+    }
+    Some(id)
 }
 
 /// Stops sounds of `name` (entry or wave) on `entity` (or unattached ones).

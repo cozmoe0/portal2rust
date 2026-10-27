@@ -293,3 +293,20 @@ What the engine's scene entity exposes, from `server.dll`'s strings, and how
   latest event start or end, the same value the image summary stores).
   `Cancel` stops the scene's speech and fires `OnCanceled`. Scripts can ask
   `EstimateLength`, `IsPlayingBack` and `IsPaused`.
+- Gestures: every gesture event spanning the scene time layers its
+  sequence on the actor, played over the event's length. The weight is the
+  event's ramp (linear between samples) or, without one, the sequence's
+  fade-in and fade-out times at the edges. Delta sequences add to the pose;
+  others pull it towards their own pose by the weight.
+- Personality cores (`npc_personality_core`) use
+  `models/npcs/personality_sphere/personality_sphere_skins.mdl` (the server's
+  model string; `ModelSkin` is the skin). Its gesture sequences (`g_*`) are
+  delta sequences with the `post` flag.
+- Look-at and face: the server drives `head_yaw`, `head_pitch`,
+  `head_roll`, `body_yaw`, `body_pitch`, `aim_yaw` and `aim_pitch` pose
+  parameters. The core model defines no pose parameters at all and `@glados`
+  is an invisible `generic_actor`, so these events have no visible effect on
+  the campaign's main actors; they are not played.
+- Event census over `scenes.image`: gestures 5764 on `@sphere`, 319 on
+  `@core02`, 29 on `glados01`, 25 on `!target1`; sequences 624 on `@sphere`;
+  look-at 53 and face 52 on `!target1`, look-at 3 on `glados01`.
