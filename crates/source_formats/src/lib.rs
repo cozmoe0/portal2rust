@@ -6,10 +6,12 @@
 
 pub mod bsp;
 pub mod captions;
+pub mod dmx;
 pub mod fgd;
 pub mod fs;
 pub mod kv;
 pub mod mdl;
+pub mod pcf;
 pub mod phy;
 pub mod reader;
 pub mod scenes_image;
