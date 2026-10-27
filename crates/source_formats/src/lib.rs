@@ -5,12 +5,15 @@
 //! all content is read at runtime from a local installation.
 
 pub mod bsp;
+pub mod captions;
 pub mod fgd;
 pub mod fs;
 pub mod kv;
 pub mod mdl;
 pub mod phy;
 pub mod reader;
+pub mod soundscape;
+pub mod soundscript;
 pub mod studio;
 pub mod text;
 pub mod vmt;
@@ -19,6 +22,7 @@ pub mod vtf;
 pub mod vhv;
 pub mod vtx;
 pub mod vvd;
+pub mod wav;
 pub mod zip;
 
 #[derive(Debug, thiserror::Error)]
