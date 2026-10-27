@@ -296,17 +296,30 @@ What the engine's scene entity exposes, from `server.dll`'s strings, and how
 - Gestures: every gesture event spanning the scene time layers its
   sequence on the actor, played over the event's length. The weight is the
   event's ramp (linear between samples) or, without one, the sequence's
-  fade-in and fade-out times at the edges. Delta sequences add to the pose;
-  others pull it towards their own pose by the weight.
+  fade-in and fade-out times at the edges. The layer is accumulated like any
+  sequence (per-bone weights, delta and `post` handling, its own automatic
+  layers; see `studio_animation.md`).
 - Personality cores (`npc_personality_core`) use
   `models/npcs/personality_sphere/personality_sphere_skins.mdl` (the server's
   model string; `ModelSkin` is the skin). Its gesture sequences (`g_*`) are
-  delta sequences with the `post` flag.
+  delta sequences with the `post` flag. Through its animation include it has
+  `aim_yaw` and `aim_pitch` (-1..1) and three 3x3 aim matrices
+  (`sphere_aimmatrix_neutral`, `_eyeball`, `sphere_plug_aimmatrix_neutral`),
+  but neither server nor client code names them or sets those parameters:
+  Wheatley's looks are the hand-made gestures in his scenes (`g_angle_*`,
+  `g_eye_look_*`, ...).
 - Look-at and face: the server drives `head_yaw`, `head_pitch`,
-  `head_roll`, `body_yaw`, `body_pitch`, `aim_yaw` and `aim_pitch` pose
-  parameters. The core model defines no pose parameters at all and `@glados`
-  is an invisible `generic_actor`, so these events have no visible effect on
-  the campaign's main actors; they are not played.
+  `head_roll`, `body_yaw`, `body_pitch` (and `aim_*`) pose parameters. No
+  compiled scene with a look-at or face event is named by a single-player
+  map (`SceneFile`) or script: they belong to co-op and old test scenes
+  (`!target1` with `mbot`/`obot` expressions, `glados01`, `jack`). They are
+  not played.
+- Flex animation and lip sync: no compiled scene has a `flexanimation`
+  event, and none of the 2709 voice waves under `sound/vo` has a `VDAT`
+  (phoneme) chunk; no single-player model has a mouth. The only flexed
+  single-player models are the toxin tubes and tanks (`props_destruction`),
+  whose flexes nothing drives; Chell's model has two eyeballs (drawn by the
+  eye shader) and no vertex flexes.
 - Event census over `scenes.image`: gestures 5764 on `@sphere`, 319 on
   `@core02`, 29 on `glados01`, 25 on `!target1`; sequences 624 on `@sphere`;
   look-at 53 and face 52 on `!target1`, look-at 3 on `glados01`.

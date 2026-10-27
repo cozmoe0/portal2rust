@@ -1,0 +1,8 @@
+# Security cameras: name map x y z pitch yaw roll (feet origin, as setpos).
+# Each camera seen from 120 units in front and 40 below; '_side' views stand off to its left.
+cam_intro2_static sp_a1_intro2 -224.0 -136.0 62.8 -18.4 -90.0 0
+cam_bridge_intro sp_a2_bridge_intro 280.0 -776.0 232.0 -18.4 -90.0 0
+cam_bridge_intro_side sp_a2_bridge_intro 170.0 -826.0 222.0 -21.0 -32.5 0
+cam_turret_intro sp_a2_turret_intro 1032.0 -296.0 128.0 -18.4 0.0 0
+cam_fizzler_intro sp_a2_fizzler_intro 368.0 -24.0 312.0 -18.4 90.0 0
+cam_fizzler_intro_side sp_a2_fizzler_intro 478.0 26.0 302.0 -21.0 147.5 0

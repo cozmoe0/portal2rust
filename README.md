@@ -86,7 +86,10 @@ script `CreateSceneEntity`), read from the game's compiled
 `scenes/scenes.image`: speak events play the lines on their actors, trigger
 events fire the scene's outputs and scenes complete at their real length.
 Gestures layer onto the actors (Wheatley and the other cores now appear
-with their model); look-at, flex and lip sync are not animated yet.
+with their model). Models blend their sequences by pose parameter, with
+per-bone weights and automatic and autoplay layers; security cameras use
+this to turn and watch the player. The single-player scenes have no look-at,
+flex or lip-sync data, so nothing of that kind is played.
 `closecaption 1` shows captions in the game's own panel layout and font. `snd_list` lists the playing channels, `play <sound>` plays one.
 The volume comes from your `config.cfg` (`volume`). Portal openings are drawn
 with a simple coloured ring around the linked view.

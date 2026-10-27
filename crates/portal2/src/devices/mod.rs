@@ -1,11 +1,12 @@
 //! Puzzle devices: lasers and their receivers, light bridges, excursion
-//! funnels, faith plates and turrets. Shared here: tracing beams that pass
+//! funnels, faith plates, turrets and security cameras. Shared here: tracing beams that pass
 //! through linked portals, and the glowing effect material.
 
 pub mod bridge;
 pub mod catapult;
 pub mod funnel;
 pub mod laser;
+pub mod security_camera;
 pub mod turret;
 
 use bevy::asset::RenderAssetUsages;
@@ -32,6 +33,7 @@ impl Plugin for DevicesPlugin {
                 funnel::FunnelPlugin,
                 catapult::CatapultPlugin,
                 turret::TurretPlugin,
+                security_camera::SecurityCameraPlugin,
             ));
     }
 }

@@ -18,11 +18,36 @@ pub mod anim_flags {
 pub mod seq_flags {
     pub const LOOPING: i32 = 0x0001;
     pub const SNAP: i32 = 0x0002;
+    /// Adds to the pose instead of replacing it.
     pub const DELTA: i32 = 0x0004;
+    /// Always layered on top, whatever else plays.
     pub const AUTOPLAY: i32 = 0x0008;
+    /// Delta applied in the bone's own frame (after the base rotation).
     pub const POST: i32 = 0x0010;
     pub const ALLZEROS: i32 = 0x0020;
+    /// The cycle is the setting of pose parameter `cycle_pose`.
+    pub const CYCLEPOSE: i32 = 0x0080;
+    /// The cycle follows the clock.
+    pub const REALTIME: i32 = 0x0100;
+    /// Has local-context layers (applied to its own pose before blending).
+    pub const LOCAL: i32 = 0x0200;
     pub const HIDDEN: i32 = 0x0800;
+    /// Blends in world space.
+    pub const WORLD: i32 = 0x4000;
+}
+
+/// Flags of a sequence's automatic layers.
+pub mod autolayer_flags {
+    /// Ramp is smoothed (3t² - 2t³).
+    pub const SPLINE: i32 = 0x0040;
+    /// Ramp-out is pre-biased for a second layer cross-fading in.
+    pub const XFADE: i32 = 0x0080;
+    /// Ignores the parent sequence's weight.
+    pub const NOBLEND: i32 = 0x0200;
+    /// Applied to the parent sequence's own pose (local context).
+    pub const LOCAL: i32 = 0x1000;
+    /// Ramp follows a pose parameter instead of the cycle.
+    pub const POSE: i32 = 0x4000;
 }
 
 #[derive(Clone, Debug)]
@@ -93,6 +118,22 @@ pub struct Event {
     pub name: String,
 }
 
+/// A sequence layered automatically while its parent sequence plays.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AutoLayer {
+    /// Sequence index within the model that owns the parent sequence.
+    pub sequence: i16,
+    /// Pose parameter index within that model (for `POSE` layers).
+    pub pose: i16,
+    pub flags: i32,
+    /// Ramp over the parent's cycle (or the pose value): influence starts at
+    /// `start`, is full from `peak` to `tail` and ends at `end`.
+    pub start: f32,
+    pub peak: f32,
+    pub tail: f32,
+    pub end: f32,
+}
+
 #[derive(Clone, Debug)]
 pub struct Sequence {
     pub label: String,
@@ -106,9 +147,19 @@ pub struct Sequence {
     /// Blend grid of animation indices (groupsize[0] x groupsize[1]).
     pub anims: Vec<i16>,
     pub group_size: [i32; 2],
+    /// Pose parameter (of the owning model) along each grid axis, or -1.
     pub param_index: [i32; 2],
+    /// Pose values at the first and last grid column/row.
     pub param_start: [f32; 2],
     pub param_end: [f32; 2],
+    /// Pose values of each grid line when they are not evenly spaced
+    /// (`groupsize[0]` for axis 0, then `groupsize[1]` for axis 1).
+    pub pose_keys: Vec<f32>,
+    /// Blend weight per bone of the owning model (empty: all 1).
+    pub weights: Vec<f32>,
+    pub autolayers: Vec<AutoLayer>,
+    /// Pose parameter that gives the cycle of `CYCLEPOSE` sequences.
+    pub cycle_pose: i32,
     pub fade_in: f32,
     pub fade_out: f32,
     pub entry_node: i32,
@@ -378,9 +429,42 @@ impl Mdl {
             let node_flags = s.i32()?;
             s.skip(12)?; // entry/exit phase, last frame
             let next_seq = s.i32()?;
-            s.skip(28)?; // pose, ik rules, autolayers, weightlist, posekey, iklocks
+            s.skip(8)?; // pose, ik rules
+            let num_autolayers = s.i32()?;
+            let autolayer_index = s.i32()?;
+            let weightlist_index = s.i32()?;
+            let posekey_index = s.i32()?;
+            s.skip(8)?; // ik locks
             let kv_index = s.i32()?;
             let kv_size = s.i32()?;
+            let cycle_pose = s.i32()?;
+            let mut autolayers = Vec::with_capacity(num_autolayers.max(0) as usize);
+            for l in 0..num_autolayers.max(0) as usize {
+                let mut lr = Reader::at(d, base + autolayer_index as usize + l * 24);
+                autolayers.push(AutoLayer {
+                    sequence: lr.i16()?,
+                    pose: lr.i16()?,
+                    flags: lr.i32()?,
+                    start: lr.f32()?,
+                    peak: lr.f32()?,
+                    tail: lr.f32()?,
+                    end: lr.f32()?,
+                });
+            }
+            let mut weights = Vec::new();
+            if weightlist_index > 0 {
+                let mut wr = Reader::at(d, base + weightlist_index as usize);
+                for _ in 0..num_bones.max(0) {
+                    weights.push(wr.f32()?);
+                }
+            }
+            let mut pose_keys = Vec::new();
+            if posekey_index > 0 {
+                let mut pr = Reader::at(d, base + posekey_index as usize);
+                for _ in 0..group_size[0].max(0) + group_size[1].max(0) {
+                    pose_keys.push(pr.f32()?);
+                }
+            }
             let mut events = Vec::with_capacity(num_events.max(0) as usize);
             for e in 0..num_events.max(0) as usize {
                 let eb = base + event_index as usize + e * 80;
@@ -419,6 +503,10 @@ impl Mdl {
                 param_index,
                 param_start,
                 param_end,
+                pose_keys,
+                weights,
+                autolayers,
+                cycle_pose,
                 fade_in,
                 fade_out,
                 entry_node,

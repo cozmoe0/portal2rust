@@ -89,13 +89,14 @@ fn build_loaded_model(
     let inverse: Vec<Mat4> = bones.iter().map(|b| b.pose_to_bone).collect();
     let inverse_bindposes = bindposes.add(SkinnedMeshInverseBindposes::from(inverse));
 
-    // Default pose: first frame of the first sequence (falls back to bind pose).
-    let mut local = vec![(Vec3::ZERO, Quat::IDENTITY); bones.len()];
+    // Default pose: first frame of the first sequence with the autoplay
+    // layers on top (falls back to bind pose).
+    let mut local = studio.bind_pose();
     if studio.sequence_count() > 0 {
         studio.sample_sequence(0, 0.0, &mut local);
-    } else {
-        for (i, b) in bones.iter().enumerate() {
-            local[i] = (b.pos, b.quat);
+        let settings = studio.default_pose_settings();
+        for &(seq, _) in &studio.autoplay {
+            studio.accumulate_sequence(&mut local, seq, 0.0, 1.0, &settings);
         }
     }
     let default_pose = studio.bone_matrices(&local);

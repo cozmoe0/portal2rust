@@ -1,5 +1,7 @@
-//! Sequence playback for studio models: advances the cycle, samples bone
-//! poses into joint entities and reports sequence completion and events.
+//! Sequence playback for studio models: advances the cycle, blends the
+//! sequence, scene gesture layers and the model's autoplay sequences (by pose
+//! parameter) into joint entities, and reports sequence completion and
+//! events.
 
 use std::sync::Arc;
 
@@ -34,8 +36,8 @@ pub struct AnimationEvent {
     pub options: String,
 }
 
-/// A sequence blended over the base one (scene gestures): delta sequences
-/// add to the pose, others pull it towards their own by `weight`.
+/// A sequence blended over the base one (scene gestures), accumulated like
+/// any other sequence with `weight`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Layer {
     pub sequence: usize,
@@ -58,12 +60,16 @@ pub struct StudioAnimator {
     pub default_sequence: Option<usize>,
     /// Layered sequences, applied in order after the base sequence.
     layers: Vec<Layer>,
+    /// Pose parameter settings (0..=1 across each parameter's range), in
+    /// the order of the model's pose parameters.
+    pose: Vec<f32>,
     /// Pose needs re-sampling even if the cycle did not move.
     dirty: bool,
 }
 
 impl StudioAnimator {
     pub fn new(model: Arc<LoadedModel>, joints: Vec<Entity>) -> Self {
+        let pose = model.studio.default_pose_settings();
         let mut a = Self {
             model,
             joints,
@@ -74,6 +80,7 @@ impl StudioAnimator {
             finished: false,
             default_sequence: None,
             layers: Vec::new(),
+            pose,
             dirty: true,
         };
         a.set_sequence_index(0);
@@ -123,6 +130,24 @@ impl StudioAnimator {
         }
     }
 
+    /// Sets pose parameter `name` to `value` (in the parameter's own units);
+    /// false when the model has no such parameter.
+    pub fn set_pose_parameter(&mut self, name: &str, value: f32) -> bool {
+        let Some(i) = self.model.studio.find_pose_parameter(name) else { return false };
+        let setting = self.model.studio.pose_setting(i, value);
+        if self.pose.get(i) != Some(&setting) {
+            self.pose[i] = setting;
+            self.dirty = true;
+        }
+        true
+    }
+
+    /// Current value of pose parameter `name`, in its own units.
+    pub fn pose_parameter(&self, name: &str) -> Option<f32> {
+        let i = self.model.studio.find_pose_parameter(name)?;
+        Some(self.model.studio.pose_value(i, *self.pose.get(i)?))
+    }
+
     /// Fade-in and fade-out times of a sequence (seconds).
     pub fn sequence_fades(&self, index: usize) -> (f32, f32) {
         self.model.studio.sequence(index).map(|(m, l)| (m.mdl.sequences[l].fade_in, m.mdl.sequences[l].fade_out)).unwrap_or((0.2, 0.2))
@@ -147,6 +172,7 @@ fn animate_models(
     mut events: MessageWriter<AnimationEvent>,
 ) {
     let dt = time.delta_secs();
+    let now = time.elapsed_secs();
     for (entity, mut anim) in &mut animators {
         let duration = anim.duration();
         let previous = anim.cycle;
@@ -186,25 +212,23 @@ fn animate_models(
                 anim.set_sequence_index(default);
             }
         }
+        // Autoplay sequences run on the clock, so they keep the pose moving.
+        let studio = &anim.model.studio;
+        if studio.autoplay.iter().any(|&(_, cps)| cps > 0.0) {
+            anim.dirty = true;
+        }
         if !anim.dirty || anim.joints.is_empty() {
             continue;
         }
         anim.dirty = false;
-        let bones = anim.model.bone_count();
-        let mut pose = vec![(Vec3::ZERO, Quat::IDENTITY); bones];
-        anim.model.studio.sample_sequence(anim.sequence, anim.cycle, &mut pose);
-        for layer in anim.layers.iter().filter(|l| l.weight > 0.0) {
-            let mut over = vec![(Vec3::ZERO, Quat::IDENTITY); bones];
-            anim.model.studio.sample_sequence(layer.sequence, layer.cycle, &mut over);
-            let w = layer.weight.min(1.0);
-            let delta = anim.sequence_flags(layer.sequence) & seq_flags::DELTA != 0;
-            for (base, (p, q)) in pose.iter_mut().zip(over) {
-                *base = if delta {
-                    (base.0 + p * w, (Quat::IDENTITY.slerp(q, w) * base.1).normalize())
-                } else {
-                    (base.0.lerp(p, w), base.1.slerp(q, w))
-                };
-            }
+        let studio = &anim.model.studio;
+        let mut pose = studio.bind_pose();
+        studio.accumulate_sequence(&mut pose, anim.sequence, anim.cycle, 1.0, &anim.pose);
+        for layer in &anim.layers {
+            studio.accumulate_sequence(&mut pose, layer.sequence, layer.cycle, layer.weight, &anim.pose);
+        }
+        for &(seq, cps) in &studio.autoplay {
+            studio.accumulate_sequence(&mut pose, seq, (now * cps).fract(), 1.0, &anim.pose);
         }
         for (i, &joint) in anim.joints.iter().enumerate() {
             if let (Some(&(p, q)), Ok(mut t)) = (pose.get(i), transforms.get_mut(joint)) {
