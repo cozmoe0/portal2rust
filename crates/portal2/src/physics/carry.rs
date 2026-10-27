@@ -55,6 +55,7 @@ fn use_or_grab(
     mut out: MessageWriter<FireOutput>,
     mut commands: Commands,
     mut auto: ResMut<crate::player::autopilot::AutoUse>,
+    mut sounds: MessageWriter<crate::audio::SoundRequest>,
 ) {
     let pressed = buttons.just_pressed("use") || std::mem::take(&mut auto.0);
     if !pressed {
@@ -62,6 +63,7 @@ fn use_or_grab(
     }
     let Ok((pe, p)) = players.single() else { return };
     if let Some(held) = holding.entity.take() {
+        sounds.write(crate::audio::SoundRequest::stop("Weapon_Portalgun.HoldSound", pe));
         release(&mut commands, held);
         out.write(FireOutput::new(held, "OnPhysGunDrop").with_activator(Some(pe)));
         return;
@@ -71,7 +73,10 @@ fn use_or_grab(
     let r = Vec3::splat(2.0);
     let tr = physics.trace(eye, eye + dir * REACH, -r, r, mask::SOLID_ALL, &[pe]);
     debug!("use: eye {eye:.0?} dir {dir:.2?} fraction {:.2} entity {:?} body {:?}", tr.fraction, tr.entity, tr.entity.map(|e| props.get(e).map(|p| *p.2)));
-    let Some(target) = tr.entity else { return };
+    let Some(target) = tr.entity else {
+        sounds.write(crate::audio::SoundRequest::on("PortalPlayer.UseDeny", pe));
+        return;
+    };
     match props.get(target) {
         Ok((col, gt, body)) if *body == RigidBody::Dynamic => {
             let prop_yaw = quat_to_angles(gt.compute_transform().rotation).y;
@@ -82,6 +87,7 @@ fn use_or_grab(
                 GravityScale(0.0),
                 layers_for(layers::HELD, layers::WORLD | layers::PROP | layers::MOVER),
             ));
+            sounds.write(crate::audio::SoundRequest::on("Weapon_Portalgun.HoldSound", pe));
             out.write(FireOutput::new(target, "OnPlayerPickup").with_activator(Some(pe)));
             out.write(FireOutput::new(target, "OnPhysGunPickup").with_activator(Some(pe)));
         }

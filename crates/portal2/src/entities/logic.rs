@@ -74,8 +74,6 @@ pub fn register(app: &mut App) {
         "env_shake",
         "logic_achievement",
         "logic_autosave",
-        "ambient_generic",
-        "env_soundscape",
         "env_tonemap_controller",
         "light",
         "light_spot",

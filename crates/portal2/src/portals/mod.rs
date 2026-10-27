@@ -237,12 +237,16 @@ fn apply_placements(
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<PortalMaterial>>,
+    mut sounds: MessageWriter<crate::audio::SoundRequest>,
 ) {
     for req in requests.read() {
         let rotation = req.frame.rotation();
+        let open = if req.slot == 0 { "Portal.open_blue" } else { "Portal.open_red" };
+        sounds.write(crate::audio::SoundRequest::at(open, req.frame.center));
         if let Some(e) = portals.entities[req.slot]
             && let Ok(mut p) = existing.get_mut(e)
         {
+            sounds.write(crate::audio::SoundRequest::at("Portal.fizzle_moved", p.frame.center));
             p.frame = req.frame;
             p.opened_at = time.elapsed_secs_f64();
             if let Ok(mut t) = transforms.get_mut(e) {
@@ -308,6 +312,7 @@ fn apply_placements(
             .add_child(surface)
             .id();
         portals.entities[req.slot] = Some(e);
+        sounds.write(crate::audio::SoundRequest::on("Portal.ambient_loop", e));
     }
 }
 
@@ -316,6 +321,7 @@ fn fizzle_portals(
     mut requests: MessageReader<FizzlePortals>,
     mut portals: ResMut<Portals>,
     query: Query<&Portal>,
+    mut sounds: MessageWriter<crate::audio::SoundRequest>,
 ) {
     for req in requests.read() {
         for slot in 0..2 {
@@ -325,6 +331,8 @@ fn fizzle_portals(
             if let Some(e) = portals.entities[slot].take() {
                 if let Ok(p) = query.get(e) {
                     commands.entity(p.camera).despawn();
+                    let close = if slot == 0 { "Portal.close_blue" } else { "Portal.close_red" };
+                    sounds.write(crate::audio::SoundRequest::at(close, p.frame.center));
                 }
                 commands.entity(e).despawn();
             }
@@ -426,6 +434,7 @@ fn teleport_player(
     mut players: Query<(Entity, &mut Player)>,
     mut input: ResMut<PlayerInput>,
     mut cooldown: Local<u32>,
+    mut sounds: MessageWriter<crate::audio::SoundRequest>,
 ) {
     let Some(frames) = linked_frames(&portals, &query) else { return };
     let Ok((pe, mut p)) = players.single_mut() else { return };
@@ -466,6 +475,8 @@ fn teleport_player(
             }
         }
         *cooldown = TELEPORT_COOLDOWN_TICKS;
+        sounds.write(crate::audio::SoundRequest::on("PortalPlayer.EnterPortal", pe));
+        sounds.write(crate::audio::SoundRequest::on("PortalPlayer.ExitPortal", pe));
         p.previous_origin = p.state.origin;
         p.state.velocity = m.transform_vector3(p.state.velocity);
         p.state.on_ground = false;

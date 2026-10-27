@@ -176,9 +176,17 @@ fn apply_fog(world: &mut World) {
     let mut cameras = world.query_filtered::<(Entity, &GlobalTransform, Option<&DistanceFog>), With<Camera3d>>();
     let views: Vec<(Entity, Vec3, bool)> = cameras.iter(world).map(|(e, gt, f)| (e, gt.forward().into(), f.is_some())).collect();
     for (e, forward, has_fog) in views {
+        // The world and model shaders read the fog uniform, which only exists
+        // on views with fog, so views without fog get a zero-density one.
         let Some(c) = &fog else {
-            if has_fog {
-                world.entity_mut(e).remove::<DistanceFog>();
+            let clear = DistanceFog {
+                color: Color::NONE,
+                directional_light_color: Color::NONE,
+                directional_light_exponent: 0.0,
+                falloff: FogFalloff::Linear { start: 1.0e9, end: 2.0e9 },
+            };
+            if !has_fog || world.get::<DistanceFog>(e).is_some_and(|f| f.directional_light_exponent != 0.0) {
+                world.entity_mut(e).insert(clear);
             }
             continue;
         };

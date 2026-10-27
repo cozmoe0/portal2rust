@@ -190,6 +190,7 @@ fn fire_gun(
     mut place: MessageWriter<PlacePortal>,
     mut animators: Query<&mut StudioAnimator>,
     mut auto: ResMut<crate::player::autopilot::AutoFire>,
+    mut sounds: MessageWriter<crate::audio::SoundRequest>,
 ) {
     let slot = if let Some(slot) = auto.0.take() {
         slot
@@ -206,6 +207,7 @@ fn fire_gun(
     }
     let (Ok((pe, p)), Some(map)) = (players.single(), map) else { return };
     gun.next_fire = now + FIRE_DELAY;
+    sounds.write(crate::audio::SoundRequest::on(if slot == 0 { "Weapon_Portalgun.fire_blue" } else { "Weapon_Portalgun.fire_red" }, pe));
     if let Some(vm) = gun.viewmodel
         && let Ok(mut a) = animators.get_mut(vm)
     {
@@ -263,7 +265,11 @@ fn fire_gun(
             info!("portal {slot} placed at {:.0?} facing {:.2?}", frame.center, frame.forward);
             place.write(PlacePortal { slot, frame });
         }
-        Err(e) => info!("portal {slot} shot failed: {e:?}"),
+        Err(e) => {
+            info!("portal {slot} shot failed: {e:?}");
+            let tr = physics.trace(eye, eye + dir * 56756.0, Vec3::ZERO, Vec3::ZERO, crate::collision::mask::SOLID_ALL, &[pe]);
+            sounds.write(crate::audio::SoundRequest::at("Portal.fizzle_invalid_surface", tr.end));
+        }
     }
 }
 

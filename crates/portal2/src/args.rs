@@ -20,6 +20,11 @@ pub struct Args {
     pub exposure: f32,
     /// Ignore lightmaps and draw every material unlit (debugging).
     pub fullbright: bool,
+    /// No audio output (`--nosound`, also implied by the batch modes).
+    pub nosound: bool,
+    /// `--snd-record <file.wav>`: write the first `snd_seconds` of the mix.
+    pub snd_record: Option<String>,
+    pub snd_seconds: f32,
     /// Bitmask of world material flags to clear (A/B debugging of shader features).
     pub strip_flags: u32,
     /// Log every output firing (`--io-debug`).
@@ -72,6 +77,9 @@ impl Default for Args {
             height: 900,
             exposure: 3.0,
             fullbright: false,
+            nosound: false,
+            snd_record: None,
+            snd_seconds: 10.0,
             strip_flags: 0,
             io_debug: false,
             no_static_props: false,
@@ -124,6 +132,9 @@ impl Args {
                 "--ang" | "--angles" => args.angles = it.next().as_deref().and_then(parse_vec3),
                 "--noclip" => args.noclip = true,
                 "--fullbright" => args.fullbright = true,
+                "--nosound" | "-nosound" => args.nosound = true,
+                "--snd-record" => args.snd_record = it.next(),
+                "--snd-seconds" => args.snd_seconds = it.next().and_then(|s| s.parse().ok()).unwrap_or(10.0),
                 "--io-debug" => args.io_debug = true,
                 "--no-static-props" => args.no_static_props = true,
                 "--no-entity-models" => args.no_entity_models = true,

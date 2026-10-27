@@ -452,7 +452,7 @@ impl SoundEntry {
 }
 
 /// All sound entries from the manifest, keyed by lowercase name.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct SoundScripts {
     entries: Vec<SoundEntry>,
     index: HashMap<String, usize>,

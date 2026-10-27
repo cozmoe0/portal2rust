@@ -4,6 +4,7 @@
 //! textures, sounds, scripts) is read from it at runtime.
 
 mod args;
+mod audio;
 mod camera;
 mod chain;
 mod clock;
@@ -47,7 +48,9 @@ fn main() {
                 .set(bevy::log::LogPlugin {
                     filter: std::env::var("PORTAL2_LOG").unwrap_or_else(|_| "wgpu=error,naga=warn,bevy_render=info,portal2=info".into()),
                     ..default()
-                }),
+                })
+                // Sound has its own mixer (crate::audio).
+                .disable::<bevy::audio::AudioPlugin>(),
         )
         .insert_resource(entities::io::IoDebug(args.io_debug))
         .insert_resource(args)
@@ -55,7 +58,7 @@ fn main() {
             (clock::ClockPlugin, vfs::VfsPlugin, console::ConsolePlugin),
             (render::RenderSetupPlugin, world::WorldPlugin, models::ModelsPlugin, collision::CollisionPlugin),
             (entities::EntitiesPlugin, script::ScriptPlugin, player::PlayerPlugin, physics::GamePhysicsPlugin),
-            (portals::PortalsPlugin, devices::DevicesPlugin, screen::ScreenPlugin, render::fog::FogPlugin),
+            (portals::PortalsPlugin, devices::DevicesPlugin, screen::ScreenPlugin, render::fog::FogPlugin, audio::AudioPlugin),
             (camera::CameraPlugin, screenshot::ScreenshotPlugin, shots::ShotsPlugin, smoke::SmokePlugin, chain::ChainPlugin, probe::ProbePlugin),
         ))
         .run();

@@ -29,6 +29,9 @@ pub fn register(c: &mut Console) {
     c.register_command("setang", setang);
     c.register_command("getpos", getpos);
     c.register_command("p2r_stuck", stuck);
+    c.register_command("snd_list", snd_list);
+    c.register_command("play", play);
+    c.register_command("playvol", play);
     c.register_command("noclip", noclip);
     c.register_command("god", god);
     c.register_command("ent_fire", ent_fire);
@@ -233,6 +236,26 @@ fn getpos(world: &mut World, _args: &CommandArgs) {
 
 /// Development aid: lists the solid static volumes and entities the player's
 /// hull overlaps.
+/// Lists the playing sound channels.
+fn snd_list(world: &mut World, _args: &CommandArgs) {
+    let lines = crate::audio::list(world);
+    print(world, format!("{} channels", lines.len()));
+    for l in lines {
+        print(world, l);
+    }
+}
+
+/// `play <sound>` / `playvol <sound> <volume>`: plays a sound without
+/// spatialisation.
+fn play(world: &mut World, args: &CommandArgs) {
+    let name = args.arg(1).to_owned();
+    if name.is_empty() {
+        return;
+    }
+    let volume = Some(args.arg(2)).filter(|v| !v.is_empty()).map(source_formats::kv::parse_f32_lenient);
+    crate::audio::emit(world, &name, crate::audio::Emit { volume, soundlevel: Some(0.0), ..Default::default() });
+}
+
 fn stuck(world: &mut World, _args: &CommandArgs) {
     let Some(state) = player_mut(world).map(|p| p.state) else { return };
     let (mins, maxs) = state.hull();

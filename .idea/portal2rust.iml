@@ -2,6 +2,9 @@
 <module type="EMPTY_MODULE" version="4">
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/crates/bink/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/bink/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/bink/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/crates/portal2/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/source_formats/examples" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/source_formats/src" isTestSource="false" />

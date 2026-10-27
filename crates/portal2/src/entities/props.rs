@@ -113,6 +113,9 @@ fn physics_prop_input(world: &mut World, call: &InputCall) -> bool {
     {
         holding.entity = None;
     }
+    if let Some(at) = crate::audio::sound_origin(world, e) {
+        crate::audio::emit(world, "Prop.Fizzled", crate::audio::Emit { origin: Some(at), ..default() });
+    }
     fire_output(world, e, "OnFizzled", call.activator, None);
     super::despawn_entity(world, e);
     true
@@ -303,7 +306,11 @@ fn pedestal_button_input(world: &mut World, call: &InputCall) -> bool {
             if let Some(mut anim) = world.get_mut::<StudioAnimator>(e) {
                 anim.set_sequence("down");
             }
+            crate::audio::emit(world, "Portal.button_down", crate::audio::Emit { entity: Some(e), ..default() });
             fire_output(world, e, "OnPressed", call.activator, None);
+        }
+        "press" if locked && !busy => {
+            crate::audio::emit(world, "Portal.button_locked", crate::audio::Emit { entity: Some(e), ..default() });
         }
         "press" => {}
         "lock" | "unlock" => {
@@ -327,6 +334,7 @@ fn button_timers(
     mut doors: Query<(Entity, &PendingDoorReport, &StudioAnimator), Without<PedestalButton>>,
     mut commands: Commands,
     mut out: MessageWriter<FireOutput>,
+    mut sounds: MessageWriter<crate::audio::SoundRequest>,
 ) {
     for (e, mut b, anim) in &mut buttons {
         if b.pressed_until.is_some_and(|t| clock.due(t)) {
@@ -334,6 +342,7 @@ fn button_timers(
             if let Some(mut anim) = anim {
                 anim.set_sequence("up");
             }
+            sounds.write(crate::audio::SoundRequest::on("Portal.button_up", e));
             out.write(FireOutput::new(e, "OnButtonReset"));
         }
     }
@@ -383,6 +392,7 @@ pub fn set_floor_button(world: &mut World, e: Entity, pressed: bool, activator: 
     if let Some(mut anim) = world.get_mut::<StudioAnimator>(e) {
         anim.set_sequence(if pressed { "down" } else { "up" });
     }
+    crate::audio::emit(world, if pressed { "Portal.button_down" } else { "Portal.button_up" }, crate::audio::Emit { entity: Some(e), ..default() });
     fire_output(world, e, if pressed { "OnPressed" } else { "OnUnPressed" }, activator, None);
 }
 

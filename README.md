@@ -52,6 +52,8 @@ Useful options:
 | `--shots <file>` | Visit each view in a shot list and save `re/out/ours/<name>.png` (parity checks) |
 | `--smoke sp\|<maps>` | Run each map briefly and write `re/out/smoke.txt` (script errors, unhandled inputs) |
 | `--chain <map>` | Take every level's exit from `<map>` on through the campaign at `--chain-speed` (default 8) times real time, for `--chain-count` maps; writes `re/out/chain.txt` (ride times, next maps, arrival placement) |
+| `--nosound` | No audio output (the batch modes above never open the device) |
+| `--snd-record <file.wav> [--snd-seconds n]` | Also write the first `n` seconds (default 10) of the mixed output to a WAV file |
 
 Controls come from your own `portal2/cfg/config.cfg` key bindings, as in the
 original game (`+forward`, `+jump`, `+attack`, `+use`, ...). Click to capture
@@ -67,15 +69,29 @@ sequence (`config.cfg`, then `valve.rc`). Map scripts run on
 embeds), with the game's VScript bindings in `crates/portal2/src/script`.
 
 The portal gun is available from the start unless the map has one to pick
-up; override with `--portalgun none|blue|both`. Portal openings are drawn
+up; override with `--portalgun none|blue|both`.
+
+## Sound
+
+Sounds play from the installed WAV and MP3 files through the game's own
+sound scripts, sound operator stacks (`scripts/sound_operator_stacks.txt`)
+and mixers (`scripts/soundmixers.txt`, including the mix layers that duck
+everything else under dialogue), on a software mixer in `crates/portal2/src/audio`.
+`ambient_generic`, soundscapes, footsteps, the portal gun and portals,
+buttons and script `EmitSound` calls are wired up; room DSP and occlusion
+are not yet. `snd_list` lists the playing channels, `play <sound>` plays one.
+The volume comes from your `config.cfg` (`volume`). Portal openings are drawn
 with a simple coloured ring around the linked view.
 
 ## Layout
 
 - `crates/source_formats` – engine-agnostic readers: KeyValues, VPK, VTF, VMT,
-  BSP, MDL/VVD/VTX, map pakfiles and the layered game filesystem.
+  BSP, MDL/VVD/VTX, map pakfiles and the layered game filesystem, plus sounds,
+  sound scripts, soundscapes, captions, choreographed scenes (VCD and
+  `scenes.image`) and particle definitions (DMX/PCF).
 - `crates/squirrel` – the Squirrel 2.2 interpreter (tables keep the original's
   slot layout, so iteration order matches).
+- `crates/bink` – a Bink 1 video and audio decoder.
 - `crates/portal2` – the Bevy game: rendering, world loading, entities and
   I/O, scripting, console, cameras.
 - `re/tools` – analysis and parity helpers: `convar_dump.py` (console

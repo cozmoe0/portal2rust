@@ -100,9 +100,9 @@ pub fn register(vm: &mut Vm, vector: ObjRef) -> ScriptClasses {
             ("GetModelName", get_model_name, 1),
             ("SetModel", set_model, 2),
             ("EmitSound", emit_sound, 2),
-            ("StopSound", ignore, 2),
+            ("StopSound", stop_sound, 2),
             ("PrecacheSoundScript", ignore, 2),
-            ("GetSoundDuration", zero_float, 3),
+            ("GetSoundDuration", sound_duration, 3),
             ("ConnectOutput", connect_output, 3),
             ("DisconnectOutput", disconnect_output, 3),
             ("Destroy", destroy, 1),
@@ -535,8 +535,25 @@ fn set_model(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
 
 fn emit_sound(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
     let sound = arg_string(ctx, args, 1)?;
-    debug!("script EmitSound {sound}");
+    let (vm, world) = parts(ctx);
+    let e = this_entity(vm, world, args)?;
+    crate::audio::emit(world, &sound, crate::audio::Emit { entity: Some(e), ..Default::default() });
     Ok(Value::Null)
+}
+
+fn stop_sound(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
+    let sound = arg_string(ctx, args, 1)?;
+    let (vm, world) = parts(ctx);
+    let e = this_entity(vm, world, args)?;
+    crate::audio::stop(world, Some(e), &sound);
+    Ok(Value::Null)
+}
+
+/// `GetSoundDuration(sound, actormodel)`: length of the entry's wave.
+fn sound_duration(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
+    let sound = arg_string(ctx, args, 1)?;
+    let (_, world) = parts(ctx);
+    Ok(Value::Float(crate::audio::duration(world, &sound)))
 }
 
 /// `ConnectOutput(output, function)`: an output connection that calls the

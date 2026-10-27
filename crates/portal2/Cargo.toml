@@ -13,3 +13,5 @@ log.workspace = true
 bytemuck.workspace = true
 avian3d = "0.8"
 half = "2"
+cpal = "0.17"
+symphonia = { version = "0.5.4", default-features = false, features = ["mp3"] }
