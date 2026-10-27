@@ -112,6 +112,13 @@ fn surface_info(path: &str, vmt: Option<&Vmt>) -> SurfaceInfo {
     }
 }
 
+impl MaterialCache {
+    /// The world material a handle belongs to, by name.
+    pub fn world_by_handle(&self, handle: &Handle<WorldMaterial>) -> Option<&WorldMaterialInfo> {
+        self.world.values().find(|i| i.handle == *handle)
+    }
+}
+
 impl MaterialContext<'_> {
     fn tex(&mut self, vmt: &Vmt, param: &str, srgb: bool) -> Option<TextureInfo> {
         let path = vmt.texture_path(param)?;

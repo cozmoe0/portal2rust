@@ -1,5 +1,5 @@
 //! Picking up, carrying and dropping physics props, plus pushing props by
-//! walking into them. `E` also still "uses" non-prop entities.
+//! walking into them. `+use` also uses non-prop entities.
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -45,7 +45,7 @@ fn prop_radius(col: &TraceCollider) -> f32 {
 
 #[allow(clippy::too_many_arguments)]
 fn use_or_grab(
-    keys: Res<ButtonInput<KeyCode>>,
+    buttons: Res<crate::console::binds::Buttons>,
     mut holding: ResMut<Holding>,
     physics: Physics,
     players: Query<(Entity, &Player)>,
@@ -56,7 +56,7 @@ fn use_or_grab(
     mut commands: Commands,
     mut auto: ResMut<crate::player::autopilot::AutoUse>,
 ) {
-    let pressed = keys.just_pressed(KeyCode::KeyE) || std::mem::take(&mut auto.0);
+    let pressed = buttons.just_pressed("use") || std::mem::take(&mut auto.0);
     if !pressed {
         return;
     }

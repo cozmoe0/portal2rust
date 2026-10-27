@@ -1,0 +1,17 @@
+# Micro cases to find what the game's compiler rejects.
+local t = {}
+local t = {}; print(1)
+for (local i = 0; i < 3; i++) print(i)
+local t = {}; t["a"] <- 1; print(t.a)
+foreach (k, v in {a=1}) print(k)
+local t = {}; for (local i = 0; i < 3; i++) t["k" + i] <- i; foreach (k, v in t) print(k)
+try { print(1) } catch (e) { print(e) }
+try { throw "x" } catch (e) { print(e) }
+local x = {}; try { x.y } catch (e) { print(e) }
+print(0.1 + 0.2)
+print(1.0 / 3)
+local a = 1; a++; print(a)
+local s = "ab"; foreach (i, c in s) print(c)
+print(-7 / 2)
+print([].len())
+local t = {a=1,b=2,c=3,d=4,e=5}; delete t.c; foreach (k, v in t) print(k)

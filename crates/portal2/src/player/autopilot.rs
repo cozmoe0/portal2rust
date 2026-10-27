@@ -173,16 +173,27 @@ fn log_state(
         } else {
             "-".into()
         };
+        let describe = |e: Option<Entity>| match e {
+            Some(e) => entities
+                .get(e)
+                .map(|m| format!("{} '{}'", m.classname, m.targetname.as_deref().unwrap_or("")))
+                .unwrap_or_else(|_| "entity".into()),
+            None => "world".into(),
+        };
+        let inside: Vec<String> =
+            physics.overlapping(s.origin, mins, maxs, crate::collision::mask::PLAYER_SOLID).into_iter().map(describe).collect();
         info!(
-            "player at ({:.1}, {:.1}, {:.1}) speed {:.1} vz {:.1} ground {} ducked {} ahead {}",
+            "player at ({:.1}, {:.1}, {:.1}) speed {:.1} vz {:.1} ground {} on {} ducked {} ahead {} inside [{}]",
             s.origin.x,
             s.origin.y,
             s.origin.z,
             s.velocity.truncate().length(),
             s.velocity.z,
             s.on_ground,
+            s.ground_entity.map(|g| describe(Some(g))).unwrap_or_else(|| "-".into()),
             s.ducked,
-            blocker
+            blocker,
+            inside.join(", ")
         );
         let mut cubes: Vec<String> = props
             .iter()

@@ -48,10 +48,23 @@ Useful options:
 | `--io-debug` | Log every entity output as it fires |
 | `--probe` | Log what the view ray hits (distance and owning entity) |
 | `--no-static-props` / `--no-entity-models` | Skip prop rendering (debugging) |
+| `+command args` | Console command run once the first map has loaded, e.g. `+sv_cheats 1 +setpos 0 0 64` |
+| `--shots <file>` | Visit each view in a shot list and save `re/out/ours/<name>.png` (parity checks) |
+| `--smoke sp\|<maps>` | Run each map briefly and write `re/out/smoke.txt` (script errors, unhandled inputs) |
+| `--chain <map>` | Take every level's exit from `<map>` on through the campaign at `--chain-speed` (default 8) times real time, for `--chain-count` maps; writes `re/out/chain.txt` (ride times, next maps, arrival placement) |
 
-Controls: click to capture the mouse, `WASD` move, `Space` jump, `Ctrl`
-crouch, `E` use or pick up / drop, left / right mouse button fire the two portals, `V` toggle
-noclip, `Esc` release the mouse.
+Controls come from your own `portal2/cfg/config.cfg` key bindings, as in the
+original game (`+forward`, `+jump`, `+attack`, `+use`, ...). Click to capture
+the mouse, `Esc` releases it, `V` toggles noclip.
+
+## Console and scripts
+
+The engine has the original's console: console variables with the game's
+defaults, commands (`map`, `changelevel`, `setpos`, `ent_fire`, `noclip`,
+`give_portalgun`, ...), aliases, `bind`, `exec`, `wait`, and the startup
+sequence (`config.cfg`, then `valve.rc`). Map scripts run on
+`crates/squirrel`, an interpreter for Squirrel 2.2 (the version the game
+embeds), with the game's VScript bindings in `crates/portal2/src/script`.
 
 The portal gun is available from the start unless the map has one to pick
 up; override with `--portalgun none|blue|both`. Portal openings are drawn
@@ -61,10 +74,31 @@ with a simple coloured ring around the linked view.
 
 - `crates/source_formats` – engine-agnostic readers: KeyValues, VPK, VTF, VMT,
   BSP, MDL/VVD/VTX, map pakfiles and the layered game filesystem.
-- `crates/portal2` – the Bevy game: rendering, world loading, cameras.
-- `re/tools` – small static-analysis helpers (for example `convar_dump.py`,
-  which lists console variables and their defaults from a game DLL).
+- `crates/squirrel` – the Squirrel 2.2 interpreter (tables keep the original's
+  slot layout, so iteration order matches).
+- `crates/portal2` – the Bevy game: rendering, world loading, entities and
+  I/O, scripting, console, cameras.
+- `re/tools` – analysis and parity helpers: `convar_dump.py` (console
+  variables and defaults from a game DLL), `capture.py` (reference screenshots
+  from the installed game at the views of a shot list, driven through its
+  password-protected local network console; your settings files are backed up
+  and restored), `imgdiff.py` (side-by-side comparison with ours),
+  `vscript_oracle.py` (runs Squirrel snippets in the game's VM and ours).
+- `re/shots/` – shot lists for parity checks.
 - `docs/` – notes on formats and engine behaviour, written in our own words.
+
+## Parity checks
+
+```bash
+python -I re/tools/capture.py re/shots/chapter1.txt
+cargo run --release -p portal2 -- --shots re/shots/chapter1.txt
+python -I re/tools/imgdiff.py re/out/ref re/out/ours re/out/diff
+```
+
+Campaign checks: `--smoke sp` loads every single-player map and reports
+script errors and inputs nothing handles; `--chain sp_a1_intro1` rides each
+level's exit elevator (or takes its transition trigger) and reports whether
+the map's own logic changed to the right next level.
 
 Copies of game binaries and analysis databases used during reverse engineering
 live in `re/bin/`, which is git-ignored and must never be committed.

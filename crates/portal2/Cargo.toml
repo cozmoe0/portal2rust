@@ -8,6 +8,7 @@ description = "A Portal 2 engine reimplementation written in Rust on top of Bevy
 [dependencies]
 bevy.workspace = true
 source_formats = { path = "../source_formats" }
+squirrel = { path = "../squirrel" }
 log.workspace = true
 bytemuck.workspace = true
 avian3d = "0.8"

@@ -1,24 +1,61 @@
-//! Logic entities: relays, timers, branches, comparisons, counters, cases,
-//! instance I/O proxies and teleport points.
+//! Logic entities: map start triggers, global states, relays, timers,
+//! branches, comparisons, counters, cases, instance I/O proxies and teleport
+//! points.
+
+use std::collections::HashMap;
 
 use bevy::prelude::*;
 
-use super::io::{FireOutput, InputCall, InputHandlers, fire_output};
-use super::{EntityRegistry, IoSet, MapEntity, SpawnHandlers, despawn_entity, world_transform};
+use super::io::{EventQueue, EventTarget, FireOutput, InputCall, InputHandlers, fire_output};
+use super::{EntityRegistry, MapEntity, SpawnHandlers, despawn_entity, world_transform};
+use crate::clock::{GameClock, ThinkSet};
+use crate::world::{CurrentMap, MapLoadType};
 
 pub fn register(app: &mut App) {
-    app.add_systems(Update, tick_timers.before(IoSet));
+    app.init_resource::<GlobalStates>().add_systems(FixedUpdate, tick_timers.in_set(ThinkSet));
     let world = app.world_mut();
     {
         let mut spawn = world.resource_mut::<SpawnHandlers>();
+        spawn.register("logic_auto", spawn_auto);
+        spawn.register("env_global", spawn_global);
         spawn.register("logic_relay", spawn_relay);
         spawn.register("logic_timer", spawn_timer);
         spawn.register("logic_branch", spawn_branch);
         spawn.register("logic_branch_listener", spawn_branch_listener);
         spawn.register("logic_compare", spawn_compare);
         spawn.register("math_counter", spawn_counter);
+        spawn.register("point_teleport", spawn_point_teleport);
+        spawn.register("logic_random_outputs", spawn_random_outputs);
+        spawn.register("logic_register_activator", spawn_register_activator);
+        // Data-only classes: other systems read their keyvalues (trigger
+        // filters, teleport destinations, portal placement volumes,
+        // visibility brushes, the player start).
+        for class in [
+            "info_target",
+            "info_teleport_destination",
+            "path_corner",
+            "info_player_start",
+            "filter_activator_class",
+            "filter_activator_name",
+            "filter_activator_model",
+            "filter_multi",
+            "filter_player_held",
+            "filter_damage_type",
+            "func_noportal_volume",
+            "func_portal_bumper",
+            "func_illusionary",
+            "func_areaportal",
+            "func_areaportalwindow",
+            "info_lighting_relative",
+        ] {
+            spawn.register(class, |_, _| {});
+        }
     }
     let mut h = world.resource_mut::<InputHandlers>();
+    h.register("logic_auto", auto_input);
+    h.register("point_servercommand", command_input);
+    h.register("point_clientcommand", command_input);
+    h.register("env_global", global_input);
     h.register("logic_relay", relay_input);
     h.register("logic_timer", timer_input);
     h.register("logic_branch", branch_input);
@@ -29,21 +66,16 @@ pub fn register(app: &mut App) {
     h.register("func_instance_io_proxy", proxy_input);
     h.register("logic_choreographed_scene", scene_input);
     h.register("point_teleport", teleport_input);
+    h.register("logic_random_outputs", random_outputs_input);
+    h.register("logic_register_activator", register_activator_input);
     // Classes whose effects are not simulated yet; their inputs are accepted
     // so I/O chains continue.
     for class in [
-        "env_fade",
         "env_shake",
-        "game_text",
-        "point_clientcommand",
-        "point_servercommand",
         "logic_achievement",
         "logic_autosave",
-        "env_texturetoggle",
         "ambient_generic",
-        "logic_script",
         "env_soundscape",
-        "env_fog_controller",
         "env_tonemap_controller",
         "light",
         "light_spot",
@@ -58,16 +90,150 @@ pub fn register(app: &mut App) {
         "move_rope",
         "keyframe_rope",
     ] {
-        h.register(class, accept_all);
+        h.accept_rest(class);
     }
-}
-
-fn accept_all(_world: &mut World, _call: &InputCall) -> bool {
-    true
 }
 
 fn param_f32(call: &InputCall) -> f32 {
     source_formats::kv::parse_f32_lenient(&call.param)
+}
+
+fn curtime(world: &World) -> f64 {
+    world.resource::<GameClock>().curtime
+}
+
+// ------------------------------------------------------------------ logic_auto
+
+/// logic_auto thinks this long after the map activates, then fires.
+const AUTO_THINK_DELAY: f32 = 0.2;
+/// spawnflags: remove after firing.
+const SF_AUTO_FIRE_ONCE: u32 = 1;
+
+fn spawn_auto(world: &mut World, e: Entity) {
+    world.resource_mut::<EventQueue>().push(AUTO_THINK_DELAY, EventTarget::Entity(e), "__autothink", "", None, None);
+}
+
+fn auto_input(world: &mut World, call: &InputCall) -> bool {
+    if call.input != "__autothink" {
+        return false;
+    }
+    let e = call.target;
+    let Some(me) = world.get::<MapEntity>(e) else { return true };
+    // Optionally gated on a global state being on.
+    if let Some(state) = me.get("globalstate").filter(|s| !s.is_empty())
+        && world.resource::<GlobalStates>().get(state) != Some(GlobalState::On)
+    {
+        return true;
+    }
+    let remove = me.has_flag(SF_AUTO_FIRE_ONCE);
+    let output = match world.get_resource::<CurrentMap>().map(|m| m.load_type).unwrap_or_default() {
+        MapLoadType::NewGame => "OnNewGame",
+        MapLoadType::LoadGame => "OnLoadGame",
+        MapLoadType::Transition => "OnMapTransition",
+        MapLoadType::Background => "OnBackgroundMap",
+    };
+    fire_output(world, e, output, None, None);
+    fire_output(world, e, "OnMapSpawn", None, None);
+    if remove {
+        despawn_entity(world, e);
+    }
+    true
+}
+
+// ------------------------------------------- point_servercommand / clientcommand
+
+/// `Command`: runs the parameter as console text.
+fn command_input(world: &mut World, call: &InputCall) -> bool {
+    if call.input != "command" {
+        return false;
+    }
+    crate::console::queue_trusted(world, &call.param);
+    true
+}
+
+// ------------------------------------------------------------------ env_global
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GlobalState {
+    Off,
+    On,
+    Dead,
+}
+
+/// Named global states; they outlive map changes.
+#[derive(Resource, Default)]
+pub struct GlobalStates {
+    states: HashMap<String, (GlobalState, i32)>,
+}
+
+impl GlobalStates {
+    pub fn get(&self, name: &str) -> Option<GlobalState> {
+        self.states.get(&name.to_ascii_lowercase()).map(|s| s.0)
+    }
+
+    pub fn set(&mut self, name: &str, state: GlobalState) {
+        self.states.entry(name.to_ascii_lowercase()).or_insert((state, 0)).0 = state;
+    }
+
+    pub fn counter(&self, name: &str) -> i32 {
+        self.states.get(&name.to_ascii_lowercase()).map(|s| s.1).unwrap_or(0)
+    }
+
+    pub fn set_counter(&mut self, name: &str, value: i32) {
+        self.states.entry(name.to_ascii_lowercase()).or_insert((GlobalState::Off, 0)).1 = value;
+    }
+}
+
+/// spawnflags: create the state with its initial value if it does not exist.
+const SF_GLOBAL_SET: u32 = 1;
+
+fn global_name(world: &World, e: Entity) -> Option<String> {
+    world.get::<MapEntity>(e).and_then(|m| m.get("globalstate")).filter(|s| !s.is_empty()).map(str::to_owned)
+}
+
+fn spawn_global(world: &mut World, e: Entity) {
+    let Some(me) = world.get::<MapEntity>(e).cloned() else { return };
+    let Some(name) = global_name(world, e) else { return };
+    if !me.has_flag(SF_GLOBAL_SET) || world.resource::<GlobalStates>().get(&name).is_some() {
+        return;
+    }
+    let state = match me.get_i32("initialstate").unwrap_or(0) {
+        1 => GlobalState::On,
+        2 => GlobalState::Dead,
+        _ => GlobalState::Off,
+    };
+    let mut states = world.resource_mut::<GlobalStates>();
+    states.set(&name, state);
+    if let Some(c) = me.get_i32("counter").filter(|c| *c != 0) {
+        states.set_counter(&name, c);
+    }
+}
+
+fn global_input(world: &mut World, call: &InputCall) -> bool {
+    let Some(name) = global_name(world, call.target) else { return true };
+    let p = source_formats::kv::parse_i32_lenient(&call.param);
+    if call.input == "getcounter" {
+        let c = world.resource::<GlobalStates>().counter(&name).to_string();
+        fire_output(world, call.target, "OutCounter", call.activator, Some(&c));
+        return true;
+    }
+    let mut states = world.resource_mut::<GlobalStates>();
+    match call.input.as_str() {
+        "turnon" => states.set(&name, GlobalState::On),
+        "turnoff" => states.set(&name, GlobalState::Off),
+        "remove" => states.set(&name, GlobalState::Dead),
+        "toggle" => {
+            let next = if states.get(&name) == Some(GlobalState::On) { GlobalState::Off } else { GlobalState::On };
+            states.set(&name, next);
+        }
+        "setcounter" => states.set_counter(&name, p),
+        "addtocounter" => {
+            let c = states.counter(&name);
+            states.set_counter(&name, c + p);
+        }
+        _ => return false,
+    }
+    true
 }
 
 // ----------------------------------------------------------------- logic_relay
@@ -105,6 +271,101 @@ fn relay_input(world: &mut World, call: &InputCall) -> bool {
         "cancelpending" => world.resource_mut::<super::io::EventQueue>().cancel_from(e),
         "enablerefire" => {}
         _ => return false,
+    }
+    true
+}
+
+// -------------------------------------------------------- logic_random_outputs
+
+#[derive(Component)]
+struct RandomOutputs {
+    enabled: bool,
+}
+
+fn spawn_random_outputs(world: &mut World, e: Entity) {
+    let enabled = !world.get::<MapEntity>(e).is_some_and(|m| m.get_bool("startdisabled"));
+    world.entity_mut(e).insert(RandomOutputs { enabled });
+    fire_output(world, e, "OnSpawn", None, None);
+}
+
+/// `Trigger` fires each of `OnTrigger1..8` with its own chance; with
+/// spawnflag 1 the entity then removes itself.
+fn random_outputs_input(world: &mut World, call: &InputCall) -> bool {
+    let e = call.target;
+    match call.input.as_str() {
+        "trigger" => {
+            if !world.get::<RandomOutputs>(e).is_some_and(|r| r.enabled) {
+                return true;
+            }
+            for i in 1..=8 {
+                let chance = world.get::<MapEntity>(e).and_then(|m| m.get_f32(&format!("ontriggerchance{i}"))).unwrap_or(1.0);
+                if rand_unit() <= chance {
+                    fire_output(world, e, &format!("OnTrigger{i}"), call.activator, None);
+                }
+            }
+            if world.get::<MapEntity>(e).is_some_and(|m| m.has_flag(1)) {
+                despawn_entity(world, e);
+            }
+        }
+        "enable" | "disable" | "toggle" => {
+            if let Some(mut r) = world.get_mut::<RandomOutputs>(e) {
+                r.enabled = match call.input.as_str() {
+                    "enable" => true,
+                    "disable" => false,
+                    _ => !r.enabled,
+                };
+            }
+        }
+        "cancelpending" => world.resource_mut::<super::io::EventQueue>().cancel_from(e),
+        _ => return false,
+    }
+    true
+}
+
+// ---------------------------------------------------- logic_register_activator
+
+/// Keeps an entity to send later messages with it as the activator.
+#[derive(Component)]
+struct RegisterActivator {
+    enabled: bool,
+    registered: Option<Entity>,
+}
+
+fn spawn_register_activator(world: &mut World, e: Entity) {
+    let enabled = !world.get::<MapEntity>(e).is_some_and(|m| m.get_bool("startdisabled"));
+    world.entity_mut(e).insert(RegisterActivator { enabled, registered: None });
+}
+
+fn register_activator_input(world: &mut World, call: &InputCall) -> bool {
+    let e = call.target;
+    let input = call.input.as_str();
+    if input == "registerentity" {
+        let name = call.param.trim().to_ascii_lowercase();
+        let found = if name.is_empty() {
+            call.activator
+        } else {
+            super::io::resolve_targets(world, &name, call.activator, call.caller).into_iter().next()
+        };
+        if let Some(mut r) = world.get_mut::<RegisterActivator>(e) {
+            r.registered = found;
+        }
+    } else if let Some(n) = input.strip_prefix("fireregisteredasactivator") {
+        let Some(r) = world.get::<RegisterActivator>(e) else { return true };
+        if let (true, Some(registered)) = (r.enabled, r.registered)
+            && world.get_entity(registered).is_ok()
+        {
+            fire_output(world, e, &format!("OnRegisteredActivate{n}"), Some(registered), None);
+        }
+    } else if matches!(input, "enable" | "disable" | "toggle") {
+        if let Some(mut r) = world.get_mut::<RegisterActivator>(e) {
+            r.enabled = match input {
+                "enable" => true,
+                "disable" => false,
+                _ => !r.enabled,
+            };
+        }
+    } else {
+        return false;
     }
     true
 }
@@ -147,7 +408,7 @@ fn rand_unit() -> f32 {
 }
 
 fn spawn_timer(world: &mut World, e: Entity) {
-    let now = world.resource::<Time>().elapsed_secs_f64();
+    let now = curtime(world);
     let Some(m) = world.get::<MapEntity>(e) else { return };
     let mut t = LogicTimer {
         enabled: !m.get_bool("startdisabled"),
@@ -163,10 +424,10 @@ fn spawn_timer(world: &mut World, e: Entity) {
     world.entity_mut(e).insert(t);
 }
 
-fn tick_timers(time: Res<Time>, mut timers: Query<(Entity, &mut LogicTimer)>, mut out: MessageWriter<FireOutput>) {
-    let now = time.elapsed_secs_f64();
+fn tick_timers(clock: Res<GameClock>, mut timers: Query<(Entity, &mut LogicTimer)>, mut out: MessageWriter<FireOutput>) {
+    let now = clock.curtime;
     for (e, mut t) in &mut timers {
-        if !t.enabled || now < t.next {
+        if !t.enabled || !clock.due(t.next) {
             continue;
         }
         if t.oscillator {
@@ -181,7 +442,7 @@ fn tick_timers(time: Res<Time>, mut timers: Query<(Entity, &mut LogicTimer)>, mu
 
 fn timer_input(world: &mut World, call: &InputCall) -> bool {
     let e = call.target;
-    let now = world.resource::<Time>().elapsed_secs_f64();
+    let now = curtime(world);
     let fire_now = call.input == "firetimer";
     let Some(mut t) = world.get_mut::<LogicTimer>(e) else { return false };
     match call.input.as_str() {
@@ -550,20 +811,53 @@ fn scene_input(world: &mut World, call: &InputCall) -> bool {
 
 // --------------------------------------------------------------- point_teleport
 
+/// Where a point_teleport sends its target: its own placement when the map
+/// started, or with spawnflag 1 the target's starting placement.
+#[derive(Component, Clone, Copy)]
+struct TeleportHome {
+    origin: Vec3,
+    angles: Vec3,
+}
+
+/// point_teleport: send the target back to where it started.
+const SF_TELEPORT_HOME: u32 = 1;
+
+fn spawn_point_teleport(world: &mut World, e: Entity) {
+    let Some(t) = world.get::<Transform>(e).copied() else { return };
+    let home = TeleportHome { origin: t.translation, angles: crate::coords::quat_to_angles(t.rotation) };
+    world.entity_mut(e).insert(home);
+}
+
+/// `Teleport` (to the saved placement), `TeleportEntity` (the parameter
+/// names the entity) and `TeleportToCurrentPos`. The first entity found is
+/// moved; its velocity is kept, and entities with a parent are refused.
 fn teleport_input(world: &mut World, call: &InputCall) -> bool {
-    if call.input != "teleport" {
-        return false;
-    }
     let e = call.target;
-    let Some(target) = world.get::<MapEntity>(e).and_then(|m| m.get("target").map(|s| s.to_ascii_lowercase())) else {
-        return true;
+    let Some(me) = world.get::<MapEntity>(e) else { return false };
+    let own_target = me.get("target").map(str::to_ascii_lowercase).unwrap_or_default();
+    let teleport_home = me.spawnflags() & SF_TELEPORT_HOME != 0;
+    let (target, to_saved) = match call.input.as_str() {
+        "teleport" => (own_target, true),
+        "teleportentity" => (call.param.trim().to_ascii_lowercase(), true),
+        "teleporttocurrentpos" => (own_target, false),
+        _ => return false,
     };
-    let dest = world_transform(world, e).compute_transform();
-    for t in super::io::resolve_targets(world, &target, call.activator, Some(e)) {
-        if let Some(mut tr) = world.get_mut::<Transform>(t) {
-            tr.translation = dest.translation;
-            tr.rotation = dest.rotation;
-        }
+    let Some(t) = super::io::resolve_targets(world, &target, call.activator, Some(e)).into_iter().next() else { return true };
+    if world.get::<ChildOf>(t).is_some() {
+        warn!("point_teleport: can't teleport {target} as it has a parent");
+        return true;
     }
+    let (origin, angles) = if !to_saved {
+        let here = world_transform(world, e).compute_transform();
+        (here.translation, crate::coords::quat_to_angles(here.rotation))
+    } else {
+        let start = if teleport_home { world.get::<MapEntity>(t).map(|m| (m.origin(), m.angles())) } else { None };
+        match (start, world.get::<TeleportHome>(e)) {
+            (Some(s), _) => s,
+            (None, Some(h)) => (h.origin, h.angles),
+            (None, None) => return true,
+        }
+    };
+    super::teleport_entity(world, t, origin, Some(angles), None);
     true
 }

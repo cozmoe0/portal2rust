@@ -195,7 +195,7 @@ fn run_turrets(
             let (mins, maxs) = p.state.hull();
             let target = p.state.origin + (mins + maxs) * 0.5;
             let push = (target - eye).with_z(0.0).normalize_or_zero() * 4.0;
-            damage.write(DamagePlayer { amount: DAMAGE_PER_SECOND * dt, push });
+            damage.write(DamagePlayer { amount: DAMAGE_PER_SECOND * dt, push, source: Some(e) });
             // A tracer every few ticks.
             if (now * 20.0) as i64 % 3 == 0 {
                 let (mesh, material) = shared

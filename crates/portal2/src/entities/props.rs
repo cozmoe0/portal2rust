@@ -12,7 +12,8 @@ use source_formats::vhv::Vhv;
 
 use super::io::{FireOutput, InputCall, InputHandlers, fire_output};
 use super::spawner::{ModelOptions, attach_studio_model, clear_render_children};
-use super::{IoSet, MapEntity, SpawnHandlers};
+use super::{MapEntity, SpawnHandlers};
+use crate::clock::{GameClock, ThinkSet};
 use crate::coords::angles_to_quat;
 use crate::models::animation::AnimationFinished;
 use crate::models::lighting;
@@ -24,7 +25,8 @@ use crate::vfs::GameFs;
 use crate::world::{CurrentMap, MapObject};
 
 pub fn register(app: &mut App) {
-    app.add_systems(Update, (animation_done_outputs, button_timers).before(IoSet));
+    app.add_systems(Update, animation_done_outputs)
+        .add_systems(FixedUpdate, button_timers.in_set(ThinkSet));
     let world = app.world_mut();
     {
         let mut s = world.resource_mut::<SpawnHandlers>();
@@ -47,6 +49,9 @@ pub fn register(app: &mut App) {
         h.register(class, dynamic_input);
     }
     h.register("prop_testchamber_door", chamber_door_input);
+    for class in ["prop_weighted_cube", "prop_physics", "prop_physics_override", "prop_physics_multiplayer"] {
+        h.register(class, physics_prop_input);
+    }
     for class in ["prop_button", "prop_under_button"] {
         h.register(class, pedestal_button_input);
     }
@@ -95,6 +100,22 @@ fn attach_placeholder(world: &mut World, e: Entity) {
 /// Default handling for `prop_*` classes without a dedicated spawner.
 pub fn spawn_generic_prop(world: &mut World, e: Entity) {
     attach_entity_model(world, e, true);
+}
+
+/// `Dissolve`: the prop fizzles away (dropped first when carried).
+fn physics_prop_input(world: &mut World, call: &InputCall) -> bool {
+    if call.input != "dissolve" {
+        return false;
+    }
+    let e = call.target;
+    if let Some(mut holding) = world.get_resource_mut::<crate::physics::carry::Holding>()
+        && holding.entity == Some(e)
+    {
+        holding.entity = None;
+    }
+    fire_output(world, e, "OnFizzled", call.activator, None);
+    super::despawn_entity(world, e);
+    true
 }
 
 // ------------------------------------------------------------------ prop_dynamic
@@ -270,7 +291,7 @@ fn spawn_pedestal_button(world: &mut World, e: Entity) {
 
 fn pedestal_button_input(world: &mut World, call: &InputCall) -> bool {
     let e = call.target;
-    let now = world.resource::<Time>().elapsed_secs_f64();
+    let now = world.resource::<GameClock>().curtime;
     let Some(b) = world.get::<PedestalButton>(e) else { return false };
     let (busy, locked, delay) = (b.pressed_until.is_some(), b.locked, b.delay);
     let input = if call.input == "use" { "press" } else { call.input.as_str() };
@@ -301,15 +322,14 @@ fn pedestal_button_input(world: &mut World, call: &InputCall) -> bool {
 }
 
 fn button_timers(
-    time: Res<Time>,
+    clock: Res<GameClock>,
     mut buttons: Query<(Entity, &mut PedestalButton, Option<&mut StudioAnimator>)>,
     mut doors: Query<(Entity, &PendingDoorReport, &StudioAnimator), Without<PedestalButton>>,
     mut commands: Commands,
     mut out: MessageWriter<FireOutput>,
 ) {
-    let now = time.elapsed_secs_f64();
     for (e, mut b, anim) in &mut buttons {
-        if b.pressed_until.is_some_and(|t| now >= t) {
+        if b.pressed_until.is_some_and(|t| clock.due(t)) {
             b.pressed_until = None;
             if let Some(mut anim) = anim {
                 anim.set_sequence("up");

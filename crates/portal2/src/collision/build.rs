@@ -111,9 +111,16 @@ pub fn displacement_volumes(bsp: &Bsp) -> Vec<ConvexVolume> {
         .collect()
 }
 
-/// Collision for a studio model in model space: `.phy` hulls when present,
-/// otherwise the model's hull box. `None` when the model has neither.
-pub fn studio_volumes(fs: &GameFileSystem, path: &str) -> Option<Vec<ConvexVolume>> {
+/// `solid` keyvalue: collide with the model's hull box.
+pub const SOLID_BBOX: i32 = 2;
+
+/// Collision for a studio model in model space. Physics-solid models
+/// (`solid` 6) use their `.phy` hulls and do not collide without one, as in
+/// the original; box-solid models (`solid` 2) use the model's hull box.
+pub fn studio_volumes(fs: &GameFileSystem, path: &str, solid: i32) -> Option<Vec<ConvexVolume>> {
+    if solid == SOLID_BBOX {
+        return hull_box(fs, path);
+    }
     let base = strip_extension(path);
     if let Some(bytes) = fs.read(&format!("{base}.phy"))
         && let Ok(phy) = Phy::parse(&bytes)
@@ -138,6 +145,10 @@ pub fn studio_volumes(fs: &GameFileSystem, path: &str) -> Option<Vec<ConvexVolum
             return Some(vols);
         }
     }
+    None
+}
+
+fn hull_box(fs: &GameFileSystem, path: &str) -> Option<Vec<ConvexVolume>> {
     let mdl = Mdl::parse(fs.read(path)?).ok()?;
     let (mins, maxs) = (mdl.hull_min, mdl.hull_max);
     if (maxs - mins).min_element() <= 0.0 {
@@ -200,15 +211,16 @@ pub fn transform_volumes(vols: &[ConvexVolume], rotation: Quat, translation: Vec
 
 /// Static prop collision in world space.
 pub fn static_prop_volumes(bsp: &Bsp, fs: &GameFileSystem) -> Vec<ConvexVolume> {
-    let mut cache: std::collections::HashMap<u16, Option<Vec<ConvexVolume>>> = std::collections::HashMap::new();
+    let mut cache: std::collections::HashMap<(u16, i32), Option<Vec<ConvexVolume>>> = std::collections::HashMap::new();
     let mut out = Vec::new();
     for prop in &bsp.static_props.props {
         if prop.solid == 0 {
             continue;
         }
+        let solid = prop.solid as i32;
         let local = cache
-            .entry(prop.model)
-            .or_insert_with(|| bsp.static_props.models.get(prop.model as usize).and_then(|p| studio_volumes(fs, p)));
+            .entry((prop.model, solid))
+            .or_insert_with(|| bsp.static_props.models.get(prop.model as usize).and_then(|p| studio_volumes(fs, p, solid)));
         let Some(local) = local else { continue };
         out.extend(transform_volumes(local, angles_to_quat(prop.angles), prop.origin, prop.uniform_scale.max(0.001)));
     }

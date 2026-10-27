@@ -198,7 +198,7 @@ fn update_lasers(
                 if dist < 20.0 && (closest.z - center.z).abs() < (maxs.z - mins.z) * 0.5 {
                     let away = (center - closest).with_z(0.0).normalize_or(-seg.dir.with_z(0.0).normalize_or(Vec3::X));
                     let amount = if laser.lethal { 1000.0 } else { BURN_DPS * dt };
-                    damage.write(DamagePlayer { amount, push: away * BURN_PUSH * dt * 10.0 });
+                    damage.write(DamagePlayer { amount, push: away * BURN_PUSH * dt * 10.0, source: Some(e) });
                 }
             }
         }

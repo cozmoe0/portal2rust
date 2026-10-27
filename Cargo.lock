@@ -4923,6 +4923,7 @@ dependencies = [
  "half",
  "log",
  "source_formats",
+ "squirrel",
 ]
 
 [[package]]
@@ -5567,6 +5568,10 @@ checksum = "d9571ea910ebd84c86af4b3ed27f9dbdc6ad06f17c5f96146b2b671e2976744f"
 dependencies = [
  "bitflags 2.13.2",
 ]
+
+[[package]]
+name = "squirrel"
+version = "0.1.0"
 
 [[package]]
 name = "stable_deref_trait"

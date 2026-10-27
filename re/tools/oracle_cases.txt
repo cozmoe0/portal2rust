@@ -1,0 +1,41 @@
+# One-line Squirrel snippets compared between the game's VM and ours.
+local t = {}; for (local i = 0; i < 30; i++) t["key" + i] <- i; foreach (k, v in t) print(k + " ")
+local t = {}; foreach (w in ["alpha","beta","gamma","delta","epsilon","zeta","eta","theta"]) t[w] <- 1; foreach (k, v in t) print(k + " ")
+local t = {}; foreach (i in [5, 100, 3, 17, 64, 1, 33, 2, 8]) t[i] <- i; foreach (k, v in t) print(k + " ")
+local t = {a=1,b=2,c=3,d=4,e=5}; delete t.c; t.f <- 6; t.g <- 7; foreach (k, v in t) print(k)
+local t = {}; for (local i = 0; i < 12; i++) t["n" + i] <- i; for (local i = 0; i < 9; i++) delete t["n" + i]; foreach (k, v in t) print(k + " ")
+local t = {x = 1, y = 2, z = 3, w = 4}; local u = clone t; u.v <- 5; foreach (k, v in u) print(k)
+print(0.1 + 0.2); print(" "); print(1e6 * 1.0); print(" "); print(100000.0 * 3); print(" "); print(1.0 / 3); print(" "); print(-0.5)
+print(123456789.0); print(" "); print(0.00001234); print(" "); print(1e-5 * 1.0); print(" "); print(65536.0 * 65536.0)
+print(format("%5.2f|%d|%s|%x|%08.3f|%-4d|%e|%g", 3.14159, 42, "x", 255, 2.5, 7, 1234.5, 0.0001))
+print(-7 / 2 + " " + -7 % 2 + " " + 2147483647 + 1 + " " + (2147483647 + 1))
+print("abc".slice(1) + " " + "hello".find("l") + " " + "Hello".toupper() + " " + "  x ".len())
+try { local x = {}; x.y } catch (e) { print(e) }
+try { local a = [1]; a[3] = 1 } catch (e) { print(e) }
+try { null + 1 } catch (e) { print(e) }
+try { local s = "a" - 1 } catch (e) { print(e) }
+try { foo() } catch (e) { print(e) }
+print(typeof 1 + typeof 1.5 + typeof "s" + typeof [] + typeof {} + typeof print + typeof null + typeof true)
+print("x" + [] .len() + {}.len()); print(" "); print(1 == 1.0); print(" "); print("10".tointeger() + "2.5".tofloat())
+local a = [5, 2, 9, 1, 7]; a.sort(); foreach (v in a) print(v); print(" "); a.sort(function(x, y) { return y <=> x })
+local a = [5, 2, 9, 1, 7]; a.sort(function(x, y) { return y - x }); foreach (v in a) print(v)
+print(null < 1); print(" "); print("b" > "a"); print(" "); print(2.0 == 2)
+local s = 0; foreach (i, c in "AB") s += i * 1000 + c; print(s)
+print(rand() + " " + rand()); print(" "); srand(5); print(rand())
+# Micro cases to find what the game's compiler rejects.
+local t = {}
+local t = {}; print(1)
+for (local i = 0; i < 3; i++) print(i)
+local t = {}; t["a"] <- 1; print(t.a)
+foreach (k, v in {a=1}) print(k)
+local t = {}; for (local i = 0; i < 3; i++) t["k" + i] <- i; foreach (k, v in t) print(k)
+try { print(1) } catch (e) { print(e) }
+try { throw "x" } catch (e) { print(e) }
+local x = {}; try { x.y } catch (e) { print(e) }
+print(0.1 + 0.2)
+print(1.0 / 3)
+local a = 1; a++; print(a)
+local s = "ab"; foreach (i, c in s) print(c)
+print(-7 / 2)
+print([].len())
+local t = {a=1,b=2,c=3,d=4,e=5}; delete t.c; foreach (k, v in t) print(k)

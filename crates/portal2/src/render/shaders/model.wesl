@@ -4,6 +4,7 @@
 
 import bevy_pbr::render::forward_io::VertexOutput;
 import bevy_pbr::render::mesh_view_bindings::view;
+import bevy_pbr::render::mesh_view_bindings::fog;
 
 struct ModelLight {
     // xyz: position, w: kind (0 point, 1 spot, 2 directional)
@@ -84,6 +85,19 @@ fn light_falloff(light: ModelLight, p: vec3<f32>) -> vec4<f32> {
         atten = atten * saturate((cos_angle - outer) / max(inner - outer, 1e-4));
     }
     return vec4<f32>(l, atten);
+}
+
+// Source-style distance fog by view depth: min(max density, (depth - start)
+// / (end - start)), clamped. The maximum density rides in the fog uniform's
+// `directional_light_exponent` (see render/fog.rs).
+fn apply_source_fog(color: vec3<f32>, world_position: vec3<f32>) -> vec3<f32> {
+    if fog.mode != 1u {
+        return color;
+    }
+    let forward = -view.world_from_view[2].xyz;
+    let depth = dot(world_position - view.world_position, forward);
+    let f = saturate(min(fog.directional_light_exponent, (depth - fog.be.x) / max(fog.be.y - fog.be.x, 1.0)));
+    return mix(color, fog.base_color.rgb, f);
 }
 
 @fragment
@@ -174,5 +188,5 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     if has(FLAG_SELFILLUM) {
         color = mix(color, albedo * material.selfillum_tint.rgb, base.a);
     }
-    return vec4<f32>(color * view.exposure, alpha);
+    return vec4<f32>(apply_source_fog(color * view.exposure, in.world_position.xyz), alpha);
 }

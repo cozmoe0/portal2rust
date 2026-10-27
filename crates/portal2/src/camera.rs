@@ -32,7 +32,7 @@ impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(FlyCamera { enabled: true, speed: 400.0 })
             .add_systems(Startup, spawn_camera)
-            .add_systems(Update, (place_at_start, grab_cursor, fly_camera).chain())
+            .add_systems(Update, (place_at_start, grab_cursor, fly_camera, apply_fov).chain())
             .add_systems(PostUpdate, sync_camera_transform.before(TransformSystems::Propagate));
     }
 }
@@ -46,8 +46,7 @@ fn spawn_camera(mut commands: Commands, args: Res<Args>) {
         Camera3d::default(),
         Hdr,
         Projection::Perspective(PerspectiveProjection {
-            // fov_desired 75 is horizontal at 4:3; widescreen widens it.
-            fov: 2.0 * ((75.0f32.to_radians() * 0.5).tan() * 0.75).atan(),
+            fov: vertical_fov(75.0),
             near: 4.0,
             far: 30000.0,
             ..default()
@@ -60,6 +59,22 @@ fn spawn_camera(mut commands: Commands, args: Res<Args>) {
         bevy::camera::visibility::RenderLayers::from_layers(&[0, crate::portals::PORTAL_LAYER]),
         Transform::default(),
     ));
+}
+
+/// `fov_desired` is horizontal at 4:3; wider screens see more to the sides.
+pub fn vertical_fov(horizontal_4x3_deg: f32) -> f32 {
+    2.0 * ((horizontal_4x3_deg.to_radians() * 0.5).tan() * 0.75).atan()
+}
+
+fn apply_fov(console: Res<crate::console::Console>, mut q: Query<&mut Projection, With<MainCamera>>) {
+    let fov = vertical_fov(console.f32("fov_desired").clamp(1.0, 179.0));
+    for mut p in &mut q {
+        if let Projection::Perspective(pp) = p.as_mut()
+            && (pp.fov - fov).abs() > 1e-6
+        {
+            pp.fov = fov;
+        }
+    }
 }
 
 fn place_at_start(

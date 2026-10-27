@@ -4,12 +4,13 @@
 use bevy::prelude::*;
 
 use super::io::{FireOutput, InputCall, InputHandlers, fire_output};
-use super::{IoSet, MapEntity, SpawnHandlers};
+use super::{MapEntity, SpawnHandlers};
+use crate::clock::{GameClock, ThinkSet};
 use crate::coords::angles_forward;
 use crate::world::CurrentMap;
 
 pub fn register(app: &mut App) {
-    app.add_systems(Update, (move_doors, rotate_brushes).before(IoSet));
+    app.add_systems(FixedUpdate, (move_doors, rotate_brushes).in_set(ThinkSet));
     let world = app.world_mut();
     {
         let mut s = world.resource_mut::<SpawnHandlers>();
@@ -25,6 +26,20 @@ pub fn register(app: &mut App) {
     h.register("func_movelinear", door_input);
     h.register("func_brush", brush_input);
     h.register("func_rotating", rotating_input);
+    h.register("func_clip_vphysics", clip_input);
+}
+
+/// func_clip_vphysics: Enable / Disable its blocking volume.
+fn clip_input(world: &mut World, call: &InputCall) -> bool {
+    let enabled = match call.input.as_str() {
+        "enable" => true,
+        "disable" => false,
+        _ => return false,
+    };
+    if let Some(mut c) = world.get_mut::<crate::collision::Collider>(call.target) {
+        c.enabled = enabled;
+    }
+    true
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -214,16 +229,16 @@ fn door_input(world: &mut World, call: &InputCall) -> bool {
 }
 
 fn move_doors(
-    time: Res<Time>,
+    clock: Res<GameClock>,
     mut movers: Query<(Entity, &mut Mover, &mut Transform)>,
     mut out: MessageWriter<FireOutput>,
 ) {
-    let dt = time.delta_secs();
-    let now = time.elapsed_secs_f64();
+    let dt = clock.frametime();
+    let now = clock.curtime;
     for (e, mut m, mut t) in &mut movers {
         if m.state == MoverState::Open
             && let Some(at) = m.close_at
-            && now >= at
+            && clock.due(at)
         {
             m.close_at = None;
             if m.start(0.0).is_some() && !m.linear {
@@ -288,6 +303,11 @@ fn brush_input(world: &mut World, call: &InputCall) -> bool {
     if let Some(mut v) = world.get_mut::<Visibility>(e) {
         *v = if enabled { Visibility::Inherited } else { Visibility::Hidden };
     }
+    // Collision follows unless the brush is always solid.
+    let always_solid = world.get::<MapEntity>(e).is_some_and(|m| m.get_i32("solidity") == Some(2));
+    if !always_solid && let Some(mut c) = world.get_mut::<crate::collision::Collider>(e) {
+        c.enabled = enabled;
+    }
     true
 }
 
@@ -342,8 +362,8 @@ fn rotating_input(world: &mut World, call: &InputCall) -> bool {
     true
 }
 
-fn rotate_brushes(time: Res<Time>, mut q: Query<(&mut Rotating, &mut Transform)>) {
-    let dt = time.delta_secs();
+fn rotate_brushes(clock: Res<GameClock>, mut q: Query<(&mut Rotating, &mut Transform)>) {
+    let dt = clock.frametime();
     for (mut r, mut t) in &mut q {
         // Spin up and down over about a second rather than snapping.
         let target = if r.on { r.max_speed } else { 0.0 };

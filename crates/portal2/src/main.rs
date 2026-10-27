@@ -5,7 +5,10 @@
 
 mod args;
 mod camera;
+mod chain;
+mod clock;
 mod collision;
+mod console;
 mod coords;
 mod devices;
 mod entities;
@@ -15,7 +18,11 @@ mod player;
 mod portals;
 mod probe;
 mod render;
+mod script;
+mod screen;
 mod screenshot;
+mod shots;
+mod smoke;
 mod vfs;
 mod world;
 
@@ -30,7 +37,8 @@ fn main() {
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         title: "Portal 2 (Rust)".into(),
-                        resolution: WindowResolution::new(args.width, args.height),
+                        // Physical pixels, so screenshots match the reference captures.
+                        resolution: WindowResolution::new(args.width, args.height).with_scale_factor_override(1.0),
                         present_mode: PresentMode::AutoVsync,
                         ..default()
                     }),
@@ -44,19 +52,11 @@ fn main() {
         .insert_resource(entities::io::IoDebug(args.io_debug))
         .insert_resource(args)
         .add_plugins((
-            vfs::VfsPlugin,
-            render::RenderSetupPlugin,
-            world::WorldPlugin,
-            models::ModelsPlugin,
-            collision::CollisionPlugin,
-            entities::EntitiesPlugin,
-            player::PlayerPlugin,
-            physics::GamePhysicsPlugin,
-            portals::PortalsPlugin,
-            devices::DevicesPlugin,
-            camera::CameraPlugin,
-            screenshot::ScreenshotPlugin,
-            probe::ProbePlugin,
+            (clock::ClockPlugin, vfs::VfsPlugin, console::ConsolePlugin),
+            (render::RenderSetupPlugin, world::WorldPlugin, models::ModelsPlugin, collision::CollisionPlugin),
+            (entities::EntitiesPlugin, script::ScriptPlugin, player::PlayerPlugin, physics::GamePhysicsPlugin),
+            (portals::PortalsPlugin, devices::DevicesPlugin, screen::ScreenPlugin, render::fog::FogPlugin),
+            (camera::CameraPlugin, screenshot::ScreenshotPlugin, shots::ShotsPlugin, smoke::SmokePlugin, chain::ChainPlugin, probe::ProbePlugin),
         ))
         .run();
 }

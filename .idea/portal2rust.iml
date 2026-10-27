@@ -5,6 +5,9 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/portal2/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/source_formats/examples" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/source_formats/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/squirrel/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/squirrel/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/squirrel/tests" isTestSource="true" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

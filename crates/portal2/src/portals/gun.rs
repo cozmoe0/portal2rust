@@ -45,10 +45,12 @@ impl Plugin for GunPlugin {
             .init_resource::<PortalableCache>()
             .add_systems(Startup, spawn_viewmodel_camera)
             .add_systems(Update, (reset_gun_on_map, pick_up_gun, fire_gun, attach_viewmodel).chain())
+            .add_systems(Update, show_viewmodel)
             .add_systems(PostUpdate, place_viewmodel.after(PlayerCameraSet).before(TransformSystems::Propagate));
         let world = app.world_mut();
         world.resource_mut::<SpawnHandlers>().register("prop_portal", spawn_map_portal);
         world.resource_mut::<InputHandlers>().register("prop_portal", map_portal_input);
+        world.resource_mut::<InputHandlers>().register("player_weaponstrip", weaponstrip_input);
     }
 }
 
@@ -59,6 +61,15 @@ pub struct PortalGun {
     pub viewmodel: Option<Entity>,
     /// Map entity to walk into to receive the gun.
     pub pickup: Option<Entity>,
+}
+
+/// `player_weaponstrip`: the player loses the portal gun.
+fn weaponstrip_input(world: &mut World, call: &crate::entities::io::InputCall) -> bool {
+    if !matches!(call.input.as_str(), "strip" | "stripweaponsandsuit") {
+        return false;
+    }
+    world.resource_mut::<PortalGun>().can_fire = [false, false];
+    true
 }
 
 #[derive(Component)]
@@ -99,9 +110,14 @@ fn spawn_viewmodel_camera(mut commands: Commands) {
 
 /// Gun availability: `--portalgun none|blue|both`, a gun entity in the map
 /// to pick up, or both portals by default.
+/// Gun availability per map: `--portalgun none|blue|both` overrides; a new
+/// game starts without it (the map's transition script grants the right gun
+/// through `give_portalgun` / `upgrade_portalgun`); a level transition keeps
+/// what the player had.
 fn reset_gun_on_map(
     start: Option<Res<PlayerStart>>,
     args: Res<Args>,
+    map: Option<Res<CurrentMap>>,
     registry: Res<EntityRegistry>,
     mut gun: ResMut<PortalGun>,
 ) {
@@ -110,12 +126,13 @@ fn reset_gun_on_map(
         return;
     }
     gun.pickup = registry.by_class.get("weapon_portalgun").and_then(|l| l.first().copied());
+    let load = map.map(|m| m.load_type).unwrap_or_default();
     gun.can_fire = match args.portalgun.as_deref() {
         Some("none") => [false, false],
         Some("blue") => [true, false],
         Some("both") => [true, true],
-        _ if gun.pickup.is_some() => [false, false],
-        _ => [true, true],
+        _ if load == crate::world::MapLoadType::NewGame => [false, false],
+        _ => gun.can_fire,
     };
 }
 
@@ -159,7 +176,7 @@ fn surface_portalable(map: &CurrentMap, fs: &GameFs, surface: i32) -> bool {
 #[allow(clippy::too_many_arguments)]
 fn fire_gun(
     time: Res<Time>,
-    mouse: Res<ButtonInput<MouseButton>>,
+    buttons: Res<crate::console::binds::Buttons>,
     mut gun: ResMut<PortalGun>,
     players: Query<(Entity, &Player)>,
     input: Res<PlayerInput>,
@@ -176,9 +193,9 @@ fn fire_gun(
 ) {
     let slot = if let Some(slot) = auto.0.take() {
         slot
-    } else if mouse.just_pressed(MouseButton::Left) {
+    } else if buttons.just_pressed("attack") {
         0
-    } else if mouse.just_pressed(MouseButton::Right) {
+    } else if buttons.just_pressed("attack2") {
         1
     } else {
         return;
@@ -334,6 +351,16 @@ fn attach_viewmodel(world: &mut World) {
     }
     world.resource_mut::<PortalGun>().viewmodel = Some(root);
     info!("viewmodel ready ({} bones)", model.bone_count());
+}
+
+/// `r_drawviewmodel 0` hides the first-person weapon.
+fn show_viewmodel(console: Res<crate::console::Console>, mut cams: Query<&mut Camera, With<ViewmodelCamera>>) {
+    let show = console.bool("r_drawviewmodel");
+    for mut c in &mut cams {
+        if c.is_active != show {
+            c.is_active = show;
+        }
+    }
 }
 
 fn place_viewmodel(

@@ -106,27 +106,33 @@ fn parse_ledge(surf: &[u8], offset: usize) -> Option<ConvexPiece> {
     let _client = l.i32().ok()?;
     let _flags = l.u32().ok()?;
     let n_triangles = l.i16().ok()?.max(0) as usize;
+    let points_at = offset as isize + point_offset as isize;
+    if n_triangles == 0 || points_at < 0 {
+        return None;
+    }
+    // Triangles index the point array the solid's ledges share; keep only
+    // this ledge's points, renumbered in order of first use.
+    let mut points = Vec::new();
+    let mut remap = std::collections::HashMap::new();
     let mut triangles = Vec::with_capacity(n_triangles);
-    let mut max_index = 0u16;
     for t in 0..n_triangles {
         let mut tr = Reader::at(surf, offset + 16 + t * 16 + 4);
         let mut tri = [0u16; 3];
         for v in tri.iter_mut() {
-            let edge = tr.u32().ok()?;
-            *v = (edge & 0xFFFF) as u16;
-            max_index = max_index.max(*v);
+            let index = (tr.u32().ok()? & 0xFFFF) as usize;
+            *v = match remap.get(&index) {
+                Some(&local) => local,
+                None => {
+                    let mut pr = Reader::at(surf, points_at as usize + index * 16);
+                    let (x, y, z) = (pr.f32().ok()?, pr.f32().ok()?, pr.f32().ok()?);
+                    let local = points.len() as u16;
+                    points.push(to_source(x, y, z));
+                    remap.insert(index, local);
+                    local
+                }
+            };
         }
         triangles.push(tri);
-    }
-    let points_at = offset as isize + point_offset as isize;
-    if triangles.is_empty() || points_at < 0 {
-        return None;
-    }
-    let mut points = Vec::with_capacity(max_index as usize + 1);
-    for i in 0..=max_index as usize {
-        let mut pr = Reader::at(surf, points_at as usize + i * 16);
-        let (x, y, z) = (pr.f32().ok()?, pr.f32().ok()?, pr.f32().ok()?);
-        points.push(to_source(x, y, z));
     }
     Some(ConvexPiece { points, triangles })
 }

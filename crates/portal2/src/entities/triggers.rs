@@ -7,6 +7,7 @@ use bevy::prelude::*;
 use super::io::{FireOutput, InputCall, InputHandlers, fire_output};
 use super::props::FloorButton;
 use super::{EntityRegistry, MapEntity, SpawnHandlers};
+use crate::clock::GameClock;
 use crate::collision::Physics;
 use crate::models::StudioAnimator;
 use crate::player::health::DamagePlayer;
@@ -117,22 +118,45 @@ fn trigger_input(world: &mut World, call: &InputCall) -> bool {
     true
 }
 
-/// Evaluates `filter_activator_name` / `filter_activator_class` style filters.
+/// Something that can touch a trigger this tick.
+struct Toucher {
+    entity: Entity,
+    is_player: bool,
+    center: Vec3,
+    half: Vec3,
+}
+
+/// Filter entity evaluation: class, name and model filters, held-object
+/// filters and `filter_multi` combinations, each optionally negated.
 fn passes_filter(
     filter: &Option<String>,
     activator: Entity,
+    is_player: bool,
     registry: &EntityRegistry,
     entities: &Query<&MapEntity>,
-    is_player: bool,
+    held: Option<Entity>,
 ) -> bool {
     let Some(name) = filter else { return true };
+    filter_named(name, activator, is_player, registry, entities, held, 0)
+}
+
+fn filter_named(
+    name: &str,
+    activator: Entity,
+    is_player: bool,
+    registry: &EntityRegistry,
+    entities: &Query<&MapEntity>,
+    held: Option<Entity>,
+    depth: u32,
+) -> bool {
     let Some(&f) = registry.by_name.get(name).and_then(|l| l.first()) else { return true };
     let Ok(fe) = entities.get(f) else { return true };
     let negate = fe.get_bool("negated");
+    let act = entities.get(activator).ok();
     let result = match fe.classname.as_str() {
         "filter_activator_class" => {
             let class = fe.get("filterclass").unwrap_or("").to_ascii_lowercase();
-            let act_class = if is_player { "player".to_owned() } else { entities.get(activator).map(|m| m.classname.clone()).unwrap_or_default() };
+            let act_class = if is_player { "player".to_owned() } else { act.map(|m| m.classname.clone()).unwrap_or_default() };
             class == act_class
         }
         "filter_activator_name" => {
@@ -140,89 +164,142 @@ fn passes_filter(
             if is_player {
                 wanted == "!player" || wanted == "player"
             } else {
-                entities.get(activator).ok().and_then(|m| m.targetname.clone()).is_some_and(|n| n == wanted)
+                act.and_then(|m| m.targetname.clone()).is_some_and(|n| match wanted.strip_suffix('*') {
+                    Some(prefix) => n.starts_with(prefix),
+                    None => n == wanted,
+                })
             }
+        }
+        "filter_activator_model" => {
+            let wanted = fe.get("model").unwrap_or("").to_ascii_lowercase();
+            act.and_then(|m| m.get("model")).is_some_and(|m| m.eq_ignore_ascii_case(&wanted))
+        }
+        "filter_player_held" => held == Some(activator),
+        "filter_multi" if depth < 8 => {
+            let any = fe.get_i32("filtertype") == Some(1);
+            let subs: Vec<String> = (1..=10)
+                .filter_map(|i| fe.get(&format!("filter{i:02}")).map(str::to_ascii_lowercase))
+                .filter(|s| !s.is_empty())
+                .collect();
+            let mut results = subs.iter().map(|s| filter_named(s, activator, is_player, registry, entities, held, depth + 1));
+            if any { results.any(|r| r) } else { results.all(|r| r) }
         }
         _ => true,
     };
     result != negate
 }
 
+/// spawnflags that admit physics objects.
+const SF_PHYSICS: u32 = 8;
+/// trigger_teleport: keep the toucher's view angles.
+const SF_PRESERVE_ANGLES: u32 = 32;
+
+/// The player (unless in noclip) and physics props touch triggers; props
+/// only those that admit physics objects. Filters see each toucher as the
+/// activator.
 #[allow(clippy::too_many_arguments)]
 fn touch_triggers(
-    time: Res<Time>,
+    clock: Res<GameClock>,
     physics: Physics,
     registry: Res<EntityRegistry>,
     entities: Query<&MapEntity>,
+    holding: Option<Res<crate::physics::carry::Holding>>,
+    props: Query<(Entity, &crate::collision::Collider, &GlobalTransform), With<crate::entities::props::PhysicsProp>>,
     mut players: Query<(Entity, &mut Player)>,
+    mut input: ResMut<crate::player::PlayerInput>,
     mut triggers: Query<(Entity, &mut Trigger)>,
     transforms: Query<&GlobalTransform>,
     mut out: MessageWriter<FireOutput>,
     mut hurt: MessageWriter<DamagePlayer>,
     mut fizzle: MessageWriter<crate::portals::FizzlePortals>,
 ) {
-    let now = time.elapsed_secs_f64();
+    let now = clock.curtime;
+    let held = holding.and_then(|h| h.entity);
     let Ok((pe, mut player)) = players.single_mut() else { return };
-    if player.noclip {
-        return;
-    }
     let (mins, maxs) = player.state.hull();
     let origin = player.state.origin;
-    let mut teleport: Option<(Vec3, Option<Vec3>)> = None;
+    let mut touchers = Vec::new();
+    if !player.noclip {
+        touchers.push(Toucher { entity: pe, is_player: true, center: origin + (mins + maxs) * 0.5, half: (maxs - mins) * 0.5 });
+    }
+    for (e, col, gt) in &props {
+        let t = gt.compute_transform();
+        let (lo, hi) = crate::physics::world_bounds(&col.shape, t.translation, t.rotation);
+        touchers.push(Toucher { entity: e, is_player: false, center: (lo + hi) * 0.5, half: (hi - lo) * 0.5 });
+    }
+    // Destination, view angles to snap to, whether velocity is kept.
+    let mut teleport: Option<(Vec3, Option<Vec3>, bool)> = None;
     for (te, mut t) in &mut triggers {
         if !t.enabled {
             continue;
         }
-        let inside = t.allow_players
-            && physics.touches(te, origin, mins, maxs)
-            && passes_filter(&t.filter, pe, &registry, &entities, true);
-        let was = t.touching.contains(&pe);
-        if inside && !was {
-            if t.touching.is_empty() {
-                out.write(FireOutput::new(te, "OnStartTouchAll").with_activator(Some(pe)));
-            }
-            t.touching.push(pe);
-            out.write(FireOutput::new(te, "OnStartTouch").with_activator(Some(pe)));
-            match &t.kind {
-                TriggerKind::Teleport { target, landmark } => {
-                    if let Some(&dest) = registry.by_name.get(target).and_then(|l| l.first())
-                        && let Ok(dt) = transforms.get(dest)
-                    {
-                        let offset = landmark
-                            .as_ref()
-                            .and_then(|l| registry.by_name.get(l).and_then(|v| v.first()))
-                            .and_then(|&l| transforms.get(l).ok())
-                            .map(|lt| origin - lt.translation());
-                        teleport = Some((dt.translation() + offset.unwrap_or(Vec3::ZERO), None));
+        let flags = entities.get(te).map(|m| m.spawnflags()).unwrap_or(0);
+        let allow_props = flags & (SF_PHYSICS | SF_EVERYTHING) != 0;
+        for toucher in &touchers {
+            let allowed = if toucher.is_player { t.allow_players } else { allow_props };
+            let inside = allowed
+                && physics.touches(te, toucher.center - toucher.half, Vec3::ZERO, toucher.half * 2.0)
+                && passes_filter(&t.filter, toucher.entity, toucher.is_player, &registry, &entities, held);
+            let who = toucher.entity;
+            let was = t.touching.contains(&who);
+            if inside && !was {
+                if t.touching.is_empty() {
+                    out.write(FireOutput::new(te, "OnStartTouchAll").with_activator(Some(who)));
+                }
+                t.touching.push(who);
+                out.write(FireOutput::new(te, "OnStartTouch").with_activator(Some(who)));
+                if toucher.is_player {
+                    match &t.kind {
+                        TriggerKind::Teleport { target, landmark } => {
+                            if let Some(&dest) = registry.by_name.get(target).and_then(|l| l.first())
+                                && let Ok(dt) = transforms.get(dest)
+                            {
+                                let offset = landmark
+                                    .as_ref()
+                                    .and_then(|l| registry.by_name.get(l).and_then(|v| v.first()))
+                                    .and_then(|&l| transforms.get(l).ok())
+                                    .map(|lt| origin - lt.translation());
+                                // Without a landmark the player faces the
+                                // destination's way and stops, unless the
+                                // trigger preserves angles; with one both
+                                // carry over.
+                                let reorient = offset.is_none() && flags & SF_PRESERVE_ANGLES == 0;
+                                let angles = reorient.then(|| crate::coords::quat_to_angles(dt.compute_transform().rotation));
+                                teleport = Some((dt.translation() + offset.unwrap_or(Vec3::ZERO), angles, !reorient));
+                            }
+                        }
+                        TriggerKind::Cleanser => {
+                            fizzle.write(crate::portals::FizzlePortals { slot: None });
+                            out.write(FireOutput::new(te, "OnFizzle").with_activator(Some(who)));
+                        }
+                        _ => {}
                     }
                 }
-                TriggerKind::Cleanser => {
-                    fizzle.write(crate::portals::FizzlePortals { slot: None });
-                    out.write(FireOutput::new(te, "OnFizzle").with_activator(Some(pe)));
+            } else if !inside && was {
+                t.touching.retain(|e| *e != who);
+                out.write(FireOutput::new(te, "OnEndTouch").with_activator(Some(who)));
+                if t.touching.is_empty() {
+                    out.write(FireOutput::new(te, "OnEndTouchAll").with_activator(Some(who)));
                 }
-                _ => {}
             }
-        } else if !inside && was {
-            t.touching.retain(|e| *e != pe);
-            out.write(FireOutput::new(te, "OnEndTouch").with_activator(Some(pe)));
-            if t.touching.is_empty() {
-                out.write(FireOutput::new(te, "OnEndTouchAll").with_activator(Some(pe)));
+            if !inside {
+                continue;
             }
-        }
-        if inside {
-            if let TriggerKind::Push { dir, speed } = t.kind {
-                player.state.velocity += dir * speed * time.delta_secs();
-            }
-            if let TriggerKind::Hurt { damage, next } = &mut t.kind
-                && *damage > 0.0
-                && now >= *next
-            {
-                *next = now + 0.5;
-                hurt.write(DamagePlayer { amount: *damage, push: Vec3::ZERO });
-                out.write(FireOutput::new(te, "OnHurtPlayer").with_activator(Some(pe)));
+            if toucher.is_player {
+                if let TriggerKind::Push { dir, speed } = t.kind {
+                    player.state.velocity += dir * speed * clock.frametime();
+                }
+                if let TriggerKind::Hurt { damage, next } = &mut t.kind
+                    && *damage > 0.0
+                    && now >= *next
+                {
+                    *next = now + 0.5;
+                    hurt.write(DamagePlayer { amount: *damage, push: Vec3::ZERO, source: Some(te) });
+                    out.write(FireOutput::new(te, "OnHurtPlayer").with_activator(Some(who)));
+                }
             }
             if now >= t.next_allowed && t.next_allowed >= 0.0 {
-                out.write(FireOutput::new(te, "OnTrigger").with_activator(Some(pe)));
+                out.write(FireOutput::new(te, "OnTrigger").with_activator(Some(who)));
                 if t.once {
                     t.enabled = false;
                     t.next_allowed = -1.0;
@@ -233,18 +310,26 @@ fn touch_triggers(
                 }
             }
         }
+        // Forget touchers that no longer exist.
+        t.touching.retain(|e| touchers.iter().any(|t| t.entity == *e));
     }
-    if let Some((pos, _)) = teleport {
+    if let Some((pos, angles, keep_velocity)) = teleport {
         player.state.origin = pos;
         player.previous_origin = pos;
-        player.state.velocity = Vec3::ZERO;
+        player.ground_ref = None;
+        if !keep_velocity {
+            player.state.velocity = Vec3::ZERO;
+        }
+        if let Some(a) = angles {
+            input.input.angles = a;
+        }
     }
 }
 
 /// Floor buttons press while the player or a suitable prop rests on them.
 #[allow(clippy::type_complexity)]
 fn press_floor_buttons(
-    time: Res<Time>,
+    clock: Res<GameClock>,
     players: Query<&Player>,
     mut buttons: Query<(Entity, &mut FloorButton, &GlobalTransform, Option<&mut StudioAnimator>, &MapEntity)>,
     props: Query<(&MapEntity, &crate::collision::Collider, &GlobalTransform), (With<crate::entities::props::PhysicsProp>, Without<FloorButton>)>,
@@ -252,7 +337,7 @@ fn press_floor_buttons(
 ) {
     let Ok(player) = players.single() else { return };
     let (pmins, pmaxs) = player.state.hull();
-    let now = time.elapsed_secs_f64();
+    let now = clock.curtime;
     for (e, mut b, gt, anim, me) in &mut buttons {
         // Cube buttons take cubes only, ball buttons spheres only; the player
         // presses the ordinary kinds.
@@ -322,19 +407,23 @@ pub struct PlayerDied;
 fn respawn_after_death(
     time: Res<Time>,
     mut deaths: MessageReader<PlayerDied>,
-    mut pending: Local<Option<f64>>,
+    mut pending: Local<Option<(f64, String)>>,
     map: Option<Res<CurrentMap>>,
     mut load: MessageWriter<LoadMap>,
 ) {
     let now = time.elapsed_secs_f64();
+    let Some(map) = map else { return };
     if deaths.read().last().is_some() && pending.is_none() {
         info!("player died");
-        *pending = Some(now + 1.5);
+        *pending = Some((now + 1.5, map.name.clone()));
     }
-    if let (Some(at), Some(map)) = (*pending, map)
+    // A level change in the meantime cancels the reload.
+    if let Some((at, died_on)) = pending.clone()
         && now >= at
     {
         *pending = None;
-        load.write(LoadMap(map.name.clone()));
+        if died_on == map.name {
+            load.write(LoadMap::new(map.name.clone(), crate::world::MapLoadType::LoadGame));
+        }
     }
 }

@@ -64,6 +64,31 @@ impl TextureCache {
         info
     }
 
+    /// One animation frame of a texture as its own image (texture toggles).
+    pub fn load_frame(&mut self, fs: &GameFs, images: &mut Assets<Image>, path: &str, srgb: bool, frame: u32) -> Option<Handle<Image>> {
+        if frame == 0 {
+            return self.load(fs, images, path, srgb).map(|t| t.handle);
+        }
+        let key = (format!("{path}#{frame}"), srgb);
+        if let Some(cached) = self.map.get(&key) {
+            return cached.as_ref().map(|t| t.handle.clone());
+        }
+        let vtf = fs.read(path).and_then(|bytes| Vtf::parse(&bytes).ok())?;
+        let image = vtf_to_image(&vtf, srgb, frame);
+        let info = TextureInfo {
+            handle: images.add(image),
+            width: vtf.width,
+            height: vtf.height,
+            flags: vtf.flags,
+            has_alpha: vtf.format.has_alpha(),
+            frames: vtf.frames,
+            reflectivity: Vec3::from(vtf.reflectivity),
+        };
+        let handle = info.handle.clone();
+        self.map.insert(key, Some(info));
+        Some(handle)
+    }
+
     /// Generic magenta/black checkerboard used for anything that fails to load.
     pub fn missing(&mut self, images: &mut Assets<Image>) -> Handle<Image> {
         self.missing.get_or_insert_with(|| images.add(checkerboard())).clone()

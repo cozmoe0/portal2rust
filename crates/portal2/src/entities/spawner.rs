@@ -120,7 +120,7 @@ pub fn clear_render_children(world: &mut World, e: Entity) {
 /// Cache of studio model collision shapes (model space).
 #[derive(Resource, Default)]
 pub struct ShapeCache {
-    map: std::collections::HashMap<String, Option<Arc<crate::collision::Shape>>>,
+    map: std::collections::HashMap<(String, i32), Option<Arc<crate::collision::Shape>>>,
 }
 
 /// Attaches collision to brush entities (solid or touch-only) and to solid
@@ -133,22 +133,26 @@ pub fn attach_collider(world: &mut World, e: Entity) {
         if shape.volumes.is_empty() {
             return;
         }
-        // func_brush "solidity": 1 = never solid.
-        let solid = brush_class_is_solid(&me.classname) && !(me.classname == "func_brush" && me.get_i32("solidity") == Some(1));
-        world.entity_mut(e).insert(Collider { shape, enabled: true, solid });
+        // func_brush "solidity": 0 = solid while enabled, 1 = never, 2 = always.
+        let solidity = (me.classname == "func_brush").then(|| me.get_i32("solidity").unwrap_or(0));
+        let solid = brush_class_is_solid(&me.classname) && solidity != Some(1);
+        let enabled = solidity == Some(2) || world.get::<super::movers::Toggleable>(e).is_none_or(|t| t.enabled);
+        world.entity_mut(e).insert(Collider { shape, enabled, solid });
         return;
     }
     if !(me.classname.starts_with("prop_") || me.classname.starts_with("npc_")) || me.get_i32("solid") == Some(0) {
         return;
     }
     let Some(path) = me.studio_model() else { return };
-    let key = source_formats::text::normalize_path(&path);
+    // Props default to physics collision.
+    let solid = me.get_i32("solid").unwrap_or(6);
+    let key = (source_formats::text::normalize_path(&path), solid);
     let cached = world.get_resource_or_init::<ShapeCache>().map.get(&key).cloned();
     let shape = match cached {
         Some(s) => s,
         None => {
             let fs = world.resource::<GameFs>().clone();
-            let s = crate::collision::build::studio_volumes(&fs, &key).map(|v| Arc::new(crate::collision::Shape::new(v)));
+            let s = crate::collision::build::studio_volumes(&fs, &key.0, solid).map(|v| Arc::new(crate::collision::Shape::new(v)));
             world.resource_mut::<ShapeCache>().map.insert(key, s.clone());
             s
         }

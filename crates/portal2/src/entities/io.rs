@@ -159,6 +159,8 @@ pub type InputHandler = fn(&mut World, &InputCall) -> bool;
 pub struct InputHandlers {
     by_class: HashMap<String, Vec<InputHandler>>,
     generic: Vec<InputHandler>,
+    /// Classes whose remaining inputs are accepted without effect.
+    quiet: std::collections::HashSet<String>,
 }
 
 impl InputHandlers {
@@ -168,6 +170,17 @@ impl InputHandlers {
 
     pub fn register_generic(&mut self, handler: InputHandler) {
         self.generic.push(handler);
+    }
+
+    /// Inputs of `classname` that neither its handlers nor the generic ones
+    /// take are accepted without effect (behaviour not simulated yet).
+    pub fn accept_rest(&mut self, classname: &str) {
+        self.quiet.insert(classname.to_ascii_lowercase());
+    }
+
+    pub fn handles(&self, classname: &str) -> bool {
+        let class = classname.to_ascii_lowercase();
+        self.by_class.contains_key(&class) || self.quiet.contains(&class)
     }
 }
 
@@ -262,7 +275,7 @@ pub fn resolve_targets(world: &World, name: &str, activator: Option<Entity>, cal
 /// Services every due event; handlers may queue more zero-delay events,
 /// which are serviced in the same pass (bounded to avoid infinite loops).
 pub fn service_events(world: &mut World) {
-    let now = world.resource::<Time>().elapsed_secs_f64();
+    let now = world.resource::<crate::clock::GameClock>().curtime;
     world.resource_mut::<EventQueue>().now = now;
 
     // Outputs requested by ordinary systems.
@@ -294,10 +307,29 @@ pub fn service_events(world: &mut World) {
 }
 
 pub fn dispatch_input(world: &mut World, call: &InputCall) {
-    let class = world.get::<MapEntity>(call.target).map(|m| m.classname.clone()).unwrap_or_default();
-    let (class_handlers, generic) = {
+    // Scripted entities see `activator` / `caller` and may veto the input
+    // with an `Input<Name>` function.
+    let scripted = world.get::<crate::script::ScriptScope>(call.target).is_some();
+    if scripted && !crate::script::begin_input(world, call) {
+        crate::script::end_input(world, call.target);
+        return;
+    }
+    dispatch_to_handlers(world, call);
+    if scripted {
+        crate::script::end_input(world, call.target);
+    }
+}
+
+fn dispatch_to_handlers(world: &mut World, call: &InputCall) {
+    // The player has no map entity; its inputs go to the "player" class.
+    let class = match world.get::<MapEntity>(call.target) {
+        Some(m) => m.classname.clone(),
+        None if world.resource::<EntityRegistry>().player == Some(call.target) => "player".to_owned(),
+        None => String::new(),
+    };
+    let (class_handlers, generic, quiet) = {
         let handlers = world.resource::<InputHandlers>();
-        (handlers.by_class.get(&class).cloned().unwrap_or_default(), handlers.generic.clone())
+        (handlers.by_class.get(&class).cloned().unwrap_or_default(), handlers.generic.clone(), handlers.quiet.contains(&class))
     };
     for h in class_handlers {
         if h(world, call) {
@@ -309,7 +341,19 @@ pub fn dispatch_input(world: &mut World, call: &InputCall) {
             return;
         }
     }
+    if quiet {
+        return;
+    }
     if world.get_resource::<IoDebug>().is_some_and(|d| d.0) {
         debug!("io: unhandled input {} on {class}", call.input);
     }
+    if let Some(mut stats) = world.get_resource_mut::<IoStats>() {
+        *stats.unhandled.entry((class, call.input.clone())).or_default() += 1;
+    }
+}
+
+/// Inputs no handler accepted, by (class, input), for diagnostics.
+#[derive(Resource, Default)]
+pub struct IoStats {
+    pub unhandled: HashMap<(String, String), u32>,
 }

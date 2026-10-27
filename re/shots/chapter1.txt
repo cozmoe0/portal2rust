@@ -1,0 +1,33 @@
+# Reference views for chapter 1: name map x y z pitch yaw roll (feet origin, as setpos).
+# Generated from player starts and nearby props; edit freely.
+sp_a1_intro2_start sp_a1_intro2 1296.0 512.0 56.0 0.0 270.0 0
+sp_a1_intro2_prop_weighted_cube_0 sp_a1_intro2 93.9 171.6 -8.0 16.7 -164.2 0
+sp_a1_intro2_prop_floor_button_1 sp_a1_intro2 -448.7 306.7 -58.0 16.7 -173.3 0
+sp_a1_intro2_prop_testchamber_door_2 sp_a1_intro2 -160.2 584.1 -64.0 16.7 177.2 0
+sp_a1_intro3_start sp_a1_intro3 -2800.0 1780.0 56.0 0.0 270.0 0
+sp_a1_intro3_prop_testchamber_door_0 sp_a1_intro3 -98.2 577.1 1104.0 16.7 -24.0 0
+sp_a1_intro3_prop_testchamber_door_1 sp_a1_intro3 -268.4 1233.7 1104.0 16.7 -12.2 0
+sp_a1_intro3_prop_testchamber_door_2 sp_a1_intro3 -296.0 228.3 1104.0 16.7 -31.8 0
+sp_a1_intro4_start sp_a1_intro4 -1840.0 -3052.0 56.0 0.0 270.0 0
+sp_a1_intro4_prop_floor_button_0 sp_a1_intro4 359.1 -520.8 8.0 16.7 49.0 0
+sp_a1_intro4_prop_floor_button_1 sp_a1_intro4 -511.1 45.0 0.0 16.7 66.8 0
+sp_a1_intro4_prop_floor_button_2 sp_a1_intro4 353.1 -771.3 8.0 16.7 46.1 0
+sp_a1_intro5_start sp_a1_intro5 -1840.0 -552.0 -968.0 0.0 270.0 0
+sp_a1_intro5_prop_testchamber_door_0 sp_a1_intro5 -158.7 -764.0 128.0 16.7 -7.2 0
+sp_a1_intro5_prop_testchamber_door_1 sp_a1_intro5 -196.3 566.0 256.0 16.7 34.2 0
+sp_a1_intro5_prop_floor_button_2 sp_a1_intro5 -347.0 -167.9 136.0 16.7 14.4 0
+sp_a1_intro6_start sp_a1_intro6 -3696.0 1684.0 56.0 0.0 270.0 0
+sp_a1_intro6_prop_weighted_cube_0 sp_a1_intro6 106.3 248.5 16.0 16.7 -20.7 0
+sp_a1_intro6_prop_testchamber_door_1 sp_a1_intro6 379.4 59.3 128.0 16.7 -21.7 0
+sp_a1_intro6_prop_testchamber_door_2 sp_a1_intro6 921.1 53.2 128.0 16.7 -19.5 0
+sp_a1_intro7_start sp_a1_intro7 -904.0 -1976.0 -128.0 0.0 270.0 0
+sp_a1_intro7_prop_testchamber_door_0 sp_a1_intro7 311.9 -133.5 1344.0 16.7 56.6 0
+sp_a1_wakeup_start sp_a1_wakeup 6976.0 496.6 384.0 0.0 89.0 0
+sp_a2_intro_start sp_a2_intro -2256.0 608.0 6649.0 0.0 0.0 0
+sp_a2_intro_prop_weighted_cube_0 sp_a2_intro -2224.0 681.9 -9510.1 16.7 -113.4 0
+sp_a2_intro_prop_weighted_cube_1 sp_a2_intro -2444.5 383.9 -10037.7 16.7 -130.1 0
+sp_a2_intro_prop_testchamber_door_2 sp_a2_intro -814.5 809.8 -10752.0 16.7 8.0 0
+sp_a2_laser_intro_start sp_a2_laser_intro 464.0 1108.0 56.0 0.0 270.0 0
+sp_a2_laser_intro_prop_laser_catcher_0 sp_a2_laser_intro 56.2 21.8 -128.0 16.7 -110.6 0
+sp_a2_laser_intro_env_portal_laser_1 sp_a2_laser_intro 80.6 450.2 538.0 16.7 -120.2 0
+sp_a2_laser_intro_prop_testchamber_door_2 sp_a2_laser_intro -542.3 112.5 -128.0 16.7 -135.3 0

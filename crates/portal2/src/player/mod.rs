@@ -11,21 +11,21 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use crate::args::Args;
 use crate::camera::{FlyCamera, MainCamera, ViewAngles};
 use crate::collision::Physics;
+use crate::console::Console;
+use crate::console::binds::Buttons;
 use crate::entities::EntityRegistry;
 use crate::world::PlayerStart;
 use movement::{MoveInput, MoveState, Mover};
-
-/// Source runs gameplay at a fixed tick; 60 Hz matches the single-player game.
-pub const TICK_RATE: f64 = 60.0;
 
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((autopilot::AutopilotPlugin, health::HealthPlugin))
-            .insert_resource(Time::<Fixed>::from_hz(TICK_RATE))
             .init_resource::<PlayerInput>()
-            .add_systems(Update, (spawn_or_reset_player, gather_input).chain())
+            // Placed during level load, before the new map's first tick.
+            .add_systems(PreUpdate, spawn_or_reset_player.in_set(PlayerSpawnSet).after(crate::entities::EntitySpawnSet))
+            .add_systems(Update, gather_input)
             .add_systems(FixedUpdate, player_tick.in_set(PlayerMoveSet))
             .add_systems(PostUpdate, place_camera.in_set(PlayerCameraSet).before(TransformSystems::Propagate));
     }
@@ -33,6 +33,10 @@ impl Plugin for PlayerPlugin {
 
 #[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PlayerMoveSet;
+
+/// Creating the player or putting them at the start of a new map.
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PlayerSpawnSet;
 
 /// Placement of the main camera at the player's eye.
 #[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
@@ -95,8 +99,12 @@ fn spawn_or_reset_player(
     registry.player = Some(e);
 }
 
+/// Movement and view input from the bound `+` buttons and the mouse, scaled
+/// by `sensitivity`, `m_yaw` and `m_pitch` and clamped by `cl_pitchup/down`.
 fn gather_input(
     keys: Res<ButtonInput<KeyCode>>,
+    buttons: Res<Buttons>,
+    console: Res<Console>,
     motion: Res<AccumulatedMouseMotion>,
     cursor: Query<&CursorOptions, With<PrimaryWindow>>,
     mut input: ResMut<PlayerInput>,
@@ -105,19 +113,19 @@ fn gather_input(
     let grabbed = cursor.single().is_ok_and(|c| c.grab_mode != CursorGrabMode::None);
     let i = &mut input.input;
     if grabbed {
-        // m_yaw / m_pitch of 0.022 degrees per count at sensitivity 3.
-        let sens = 0.022 * 3.0;
-        i.angles.y -= motion.delta.x * sens;
-        i.angles.x = (i.angles.x + motion.delta.y * sens).clamp(-89.0, 89.0);
+        let sens = console.f32("sensitivity");
+        i.angles.y -= motion.delta.x * sens * console.f32("m_yaw");
+        i.angles.x = (i.angles.x + motion.delta.y * sens * console.f32("m_pitch"))
+            .clamp(-console.f32("cl_pitchup"), console.f32("cl_pitchdown"));
         i.angles.y = i.angles.y.rem_euclid(360.0);
     }
-    let axis = |pos: KeyCode, neg: KeyCode| (keys.pressed(pos) as i32 - keys.pressed(neg) as i32) as f32;
-    i.forward = axis(KeyCode::KeyW, KeyCode::KeyS);
-    i.right = axis(KeyCode::KeyD, KeyCode::KeyA);
-    i.up = axis(KeyCode::Space, KeyCode::ControlLeft);
-    i.jump = keys.pressed(KeyCode::Space);
-    i.duck = keys.pressed(KeyCode::ControlLeft);
-    input.fast = keys.pressed(KeyCode::ShiftLeft);
+    let axis = |pos: &str, neg: &str| (buttons.held(pos) as i32 - buttons.held(neg) as i32) as f32;
+    i.forward = axis("forward", "back");
+    i.right = axis("moveright", "moveleft");
+    i.up = axis("jump", "duck");
+    i.jump = buttons.held("jump");
+    i.duck = buttons.held("duck");
+    input.fast = buttons.held("speed") || keys.pressed(KeyCode::ShiftLeft);
     if keys.just_pressed(KeyCode::KeyV) {
         for mut p in &mut players {
             p.noclip = !p.noclip;
@@ -135,8 +143,10 @@ fn player_tick(
     holding: Option<Res<crate::physics::carry::Holding>>,
     pull: Option<Res<crate::devices::funnel::PlayerPull>>,
     mut air: Option<ResMut<crate::devices::catapult::AirControl>>,
+    speed_mod: Option<Res<crate::entities::detectors::SpeedMod>>,
     mut players: Query<(Entity, &mut Player, &mut Transform)>,
 ) {
+    let speed_scale = speed_mod.map(|s| s.0).unwrap_or(1.0);
     let dt = time.delta_secs();
     let now = time.elapsed_secs_f64();
     let held = holding.and_then(|h| h.entity);
@@ -158,6 +168,9 @@ fn player_tick(
         let mover = Mover { physics: &physics, ignore: &ignore };
         let mut state = p.state;
         let mut move_input = input.input;
+        // player_speedmod slows walking.
+        move_input.forward *= speed_scale;
+        move_input.right *= speed_scale;
         // After a launch, steering stays off until the timer or landing.
         if let Some(air) = air.as_deref_mut() {
             if state.on_ground {

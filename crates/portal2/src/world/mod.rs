@@ -19,10 +19,21 @@ use crate::render::textures::TextureCache;
 use crate::vfs::GameFs;
 use bsp_mesh::{MeshBatch, build_world_geometry};
 
+/// How a map is being entered; `logic_auto` fires the matching output.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MapLoadType {
+    #[default]
+    NewGame,
+    LoadGame,
+    Transition,
+    Background,
+}
+
 /// The loaded map; shared with gameplay systems.
 #[derive(Resource, Clone)]
 pub struct CurrentMap {
     pub name: String,
+    pub load_type: MapLoadType,
     pub bsp: Arc<Bsp>,
     pub lightmap: Handle<Image>,
     /// Render meshes per brush model, in model order.
@@ -41,7 +52,16 @@ pub struct PlayerStart {
 }
 
 #[derive(Message, Clone, Debug)]
-pub struct LoadMap(pub String);
+pub struct LoadMap {
+    pub name: String,
+    pub kind: MapLoadType,
+}
+
+impl LoadMap {
+    pub fn new(name: impl Into<String>, kind: MapLoadType) -> Self {
+        Self { name: name.into(), kind }
+    }
+}
 
 /// Sent after a map's geometry has been built so other plugins can populate it.
 #[derive(Message, Clone, Debug)]
@@ -59,7 +79,7 @@ impl Plugin for WorldPlugin {
 }
 
 fn request_initial_map(args: Res<Args>, mut writer: MessageWriter<LoadMap>) {
-    writer.write(LoadMap(args.map.clone()));
+    writer.write(LoadMap::new(args.map.clone(), MapLoadType::NewGame));
 }
 
 /// Map loading; entity spawning runs after it.
@@ -103,10 +123,11 @@ fn load_map_system(
     mut world_materials: ResMut<Assets<WorldMaterial>>,
     old: Query<Entity, With<MapObject>>,
 ) {
-    let Some(LoadMap(name)) = requests.read().last().cloned() else { return };
+    let Some(LoadMap { name, kind }) = requests.read().last().cloned() else { return };
     let started = std::time::Instant::now();
+    // Children go with their parents; the ones already gone are skipped.
     for e in &old {
-        commands.entity(e).despawn();
+        commands.entity(e).try_despawn();
     }
     let Some(bytes) = fs.read(&format!("maps/{name}.bsp")) else {
         error!("map {name} not found");
@@ -152,6 +173,7 @@ fn load_map_system(
 
     let map = CurrentMap {
         name: name.clone(),
+        load_type: kind,
         bsp: bsp.clone(),
         lightmap: lightmap.clone(),
         model_meshes: Arc::new(model_meshes),

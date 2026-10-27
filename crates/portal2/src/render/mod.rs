@@ -1,3 +1,4 @@
+pub mod fog;
 pub mod materials;
 pub mod source_material;
 pub mod textures;
