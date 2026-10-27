@@ -43,19 +43,21 @@ impl Plugin for LaserPlugin {
     }
 }
 
-#[derive(Component, Default)]
+#[derive(Component, Default, serde::Serialize, serde::Deserialize)]
 pub struct LaserEmitter {
     pub on: bool,
     /// Muzzle in the emitter's local space and the local beam direction.
     pub muzzle: Vec3,
     pub muzzle_dir: Vec3,
     pub lethal: bool,
+    #[serde(skip)]
     pub segments: Vec<BeamSegment>,
+    #[serde(skip)]
     beams: Vec<Entity>,
 }
 
 /// Catchers, relays and invisible laser targets.
-#[derive(Component, Default)]
+#[derive(Component, Default, serde::Serialize, serde::Deserialize)]
 pub struct LaserReceiver {
     pub powered: bool,
     hit: bool,
@@ -273,3 +275,12 @@ fn draw_beams(
         }
     }
 }
+
+impl crate::save::Restore for LaserEmitter {
+    fn keep(&mut self, live: Self) {
+        self.segments = live.segments;
+        self.beams = live.beams;
+    }
+}
+
+impl crate::save::Restore for LaserReceiver {}

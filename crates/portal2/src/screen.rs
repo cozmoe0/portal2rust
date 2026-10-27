@@ -72,7 +72,7 @@ const SF_FADE_IN: u32 = 1;
 const SF_MODULATE: u32 = 2;
 const SF_STAY_OUT: u32 = 8;
 
-#[derive(Resource, Default, Clone, Copy)]
+#[derive(Resource, Default, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct ScreenFade {
     pub color: Vec4,
     pub start: f64,
@@ -317,3 +317,5 @@ fn draw_messages(
         }
     }
 }
+
+impl crate::save::Restore for ScreenFade {}

@@ -41,7 +41,7 @@ impl Plugin for TurretPlugin {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TurretState {
     Searching,
     WindingUp,
@@ -49,7 +49,7 @@ pub enum TurretState {
     Dead,
 }
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct Turret {
     pub enabled: bool,
     pub state: TurretState,
@@ -231,3 +231,5 @@ fn fade_tracers(time: Res<Time>, tracers: Query<(Entity, &Tracer)>, mut commands
         }
     }
 }
+
+impl crate::save::Restore for Turret {}

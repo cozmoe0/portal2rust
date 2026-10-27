@@ -44,11 +44,13 @@ pub struct BridgePiece {
     pub up: Vec3,
 }
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct LightBridge {
     pub enabled: bool,
     pub width: f32,
+    #[serde(skip)]
     pub pieces: Vec<BridgePiece>,
+    #[serde(skip)]
     entities: Vec<Entity>,
 }
 
@@ -186,5 +188,12 @@ fn update_bridges(
             bridge.entities.push(id);
         }
         bridge.pieces = pieces;
+    }
+}
+
+impl crate::save::Restore for LightBridge {
+    fn keep(&mut self, live: Self) {
+        self.pieces = live.pieces;
+        self.entities = live.entities;
     }
 }

@@ -13,7 +13,7 @@ use crate::entities::{EntityRegistry, MapEntity};
 
 /// Persistent GLaDOS dialogue flags (`AddGladosSpokenFlags`), kept across
 /// maps.
-#[derive(Resource, Default)]
+#[derive(Resource, Default, serde::Serialize, serde::Deserialize)]
 pub struct GladosSpokenFlags(pub [u32; 4]);
 
 /// The VM and the world a native runs with.
@@ -431,3 +431,4 @@ pub fn describe(world: &World, e: Entity) -> String {
     world.get::<MapEntity>(e).map(|m| format!("{} ({})", m.targetname.as_deref().unwrap_or(""), m.classname)).unwrap_or_default()
 }
 
+impl crate::save::Restore for GladosSpokenFlags {}

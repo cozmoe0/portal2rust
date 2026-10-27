@@ -41,7 +41,7 @@ mod train_flags {
     pub const FIXED_ORIENTATION: u32 = 16;
 }
 
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct PathTrack {
     pub next: Option<String>,
     pub alt: Option<String>,
@@ -79,11 +79,13 @@ fn path_input(world: &mut World, call: &InputCall) -> bool {
     true
 }
 
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Train {
     /// Node the train is heading for.
+    #[serde(with = "crate::save::ids::opt_entity")]
     pub toward: Option<Entity>,
     /// Node it last passed or started at.
+    #[serde(with = "crate::save::ids::opt_entity")]
     pub last: Option<Entity>,
     pub speed: f32,
     pub max_speed: f32,
@@ -91,6 +93,7 @@ pub struct Train {
     pub forward: bool,
     pub height: f32,
     /// Stop when this node is reached (`MoveToPathNode`).
+    #[serde(with = "crate::save::ids::opt_entity")]
     pub destination: Option<Entity>,
     pub fixed_orientation: bool,
     pub no_pitch: bool,
@@ -354,3 +357,7 @@ fn train_input(world: &mut World, call: &InputCall) -> bool {
     }
     true
 }
+
+impl crate::save::Restore for Train {}
+
+impl crate::save::Restore for PathTrack {}

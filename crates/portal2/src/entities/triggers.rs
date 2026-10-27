@@ -12,7 +12,7 @@ use crate::collision::Physics;
 use crate::models::StudioAnimator;
 use crate::player::health::DamagePlayer;
 use crate::player::{Player, PlayerMoveSet};
-use crate::world::{CurrentMap, LoadMap};
+use crate::world::CurrentMap;
 
 pub fn register(app: &mut App) {
     app.add_message::<PlayerDied>()
@@ -31,7 +31,8 @@ pub fn register(app: &mut App) {
     }
 }
 
-const TRIGGER_CLASSES: [&str; 7] = [
+const TRIGGER_CLASSES: [&str; 8] = [
+    "trigger_autosave",
     "trigger_once",
     "trigger_multiple",
     "trigger_hurt",
@@ -41,7 +42,7 @@ const TRIGGER_CLASSES: [&str; 7] = [
     "trigger_portal_cleanser",
 ];
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TriggerKind {
     Plain,
     /// Deals `damage` every half second while touched.
@@ -50,15 +51,19 @@ pub enum TriggerKind {
     Push { dir: Vec3, speed: f32 },
     /// Emancipation field: removes the player's portals when crossed.
     Cleanser,
+    /// Autosaves when the player enters, then goes away; a dangerous
+    /// timer makes it a dangerous autosave.
+    Autosave { dangerous: f32, min_health: f32 },
 }
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct Trigger {
     pub enabled: bool,
     pub once: bool,
     /// Seconds before OnTrigger may fire again (-1 = never again).
     pub wait: f32,
     pub next_allowed: f64,
+    #[serde(with = "crate::save::ids::entities")]
     pub touching: Vec<Entity>,
     pub allow_players: bool,
     pub filter: Option<String>,
@@ -78,6 +83,10 @@ fn spawn_trigger(world: &mut World, e: Entity) {
             landmark: me.get("landmark").filter(|s| !s.is_empty()).map(|s| s.to_ascii_lowercase()),
         },
         "trigger_portal_cleanser" => TriggerKind::Cleanser,
+        "trigger_autosave" => TriggerKind::Autosave {
+            dangerous: me.get_f32("dangeroustimer").unwrap_or(0.0),
+            min_health: me.get_f32("minimumhitpoints").unwrap_or(0.0),
+        },
         "trigger_push" => TriggerKind::Push {
             dir: crate::coords::angles_forward(me.get_vec3("pushdir").unwrap_or(Vec3::ZERO)),
             speed: me.get_f32("speed").unwrap_or(40.0),
@@ -91,7 +100,7 @@ fn spawn_trigger(world: &mut World, e: Entity) {
         wait: me.get_f32("wait").unwrap_or(if me.classname == "trigger_multiple" { 1.0 } else { -1.0 }),
         next_allowed: 0.0,
         touching: Vec::new(),
-        allow_players: flags & (SF_CLIENTS | SF_EVERYTHING) != 0 || me.classname == "trigger_portal_cleanser",
+        allow_players: flags & (SF_CLIENTS | SF_EVERYTHING) != 0 || matches!(me.classname.as_str(), "trigger_portal_cleanser" | "trigger_autosave"),
         filter: me.get("filtername").filter(|s| !s.is_empty()).map(|s| s.to_ascii_lowercase()),
         kind,
     };
@@ -212,6 +221,7 @@ fn touch_triggers(
     mut out: MessageWriter<FireOutput>,
     mut hurt: MessageWriter<DamagePlayer>,
     mut fizzle: MessageWriter<crate::portals::FizzlePortals>,
+    mut autosave: MessageWriter<crate::save::AutosaveRequest>,
 ) {
     let now = clock.curtime;
     let held = holding.and_then(|h| h.entity);
@@ -267,6 +277,14 @@ fn touch_triggers(
                                 let angles = reorient.then(|| crate::coords::quat_to_angles(dt.compute_transform().rotation));
                                 teleport = Some((dt.translation() + offset.unwrap_or(Vec3::ZERO), angles, !reorient));
                             }
+                        }
+                        TriggerKind::Autosave { dangerous, min_health } => {
+                            autosave.write(crate::save::AutosaveRequest {
+                                dangerous: *dangerous,
+                                min_health: *min_health,
+                                commit_health: 0.0,
+                                remove: Some(te),
+                            });
                         }
                         TriggerKind::Cleanser => {
                             fizzle.write(crate::portals::FizzlePortals { slot: None });
@@ -403,19 +421,20 @@ fn press_floor_buttons(
 #[derive(Message, Clone, Copy, Debug)]
 pub struct PlayerDied;
 
-/// Reloads the current map shortly after death.
+/// After death the most recent save is reloaded (`reload`) once
+/// `sk_auto_reload_time` seconds have passed.
 fn respawn_after_death(
     time: Res<Time>,
     mut deaths: MessageReader<PlayerDied>,
     mut pending: Local<Option<(f64, String)>>,
     map: Option<Res<CurrentMap>>,
-    mut load: MessageWriter<LoadMap>,
+    mut console: ResMut<crate::console::Console>,
 ) {
     let now = time.elapsed_secs_f64();
     let Some(map) = map else { return };
     if deaths.read().last().is_some() && pending.is_none() {
         info!("player died");
-        *pending = Some((now + 1.5, map.name.clone()));
+        *pending = Some((now + console.f32("sk_auto_reload_time") as f64, map.name.clone()));
     }
     // A level change in the meantime cancels the reload.
     if let Some((at, died_on)) = pending.clone()
@@ -423,7 +442,9 @@ fn respawn_after_death(
     {
         *pending = None;
         if died_on == map.name {
-            load.write(LoadMap::new(map.name.clone(), crate::world::MapLoadType::LoadGame));
+            console.add_text("reload\n");
         }
     }
 }
+
+impl crate::save::Restore for Trigger {}

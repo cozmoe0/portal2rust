@@ -341,7 +341,7 @@ fn fizzle_portals(
 }
 
 /// Portal entities are map objects and vanish with the map; forget them.
-fn clear_on_map_load(mut loaded: MessageReader<MapLoaded>, mut portals: ResMut<Portals>, mut commands: Commands, query: Query<&Portal>) {
+pub(crate) fn clear_on_map_load(mut loaded: MessageReader<MapLoaded>, mut portals: ResMut<Portals>, mut commands: Commands, query: Query<&Portal>) {
     if loaded.read().last().is_none() {
         return;
     }

@@ -9,6 +9,7 @@
 
 pub mod api;
 pub mod entity;
+pub mod save;
 pub mod vector;
 
 use std::any::Any;
@@ -43,7 +44,7 @@ pub struct ScriptVm {
 }
 
 /// Script classes, for creating handles and vectors from natives.
-#[derive(Resource, Clone, Copy)]
+#[derive(Resource, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct ScriptClasses {
     pub vector: ObjRef,
     pub entity: ObjRef,
@@ -149,6 +150,16 @@ pub fn run_source(world: &mut World, src: &[u8], name: &str, scope: &Value) -> b
 
 /// Starts a fresh VM for the map: natives, helpers, then `mapspawn.nut`.
 pub fn init_for_map(world: &mut World) {
+    init_vm(world);
+    let root = with_vm(world, |_, vm| vm.root_value()).expect("vm");
+    if load_script(world, "mapspawn").is_some() {
+        run_file(world, "mapspawn", &root);
+    }
+}
+
+/// A fresh VM with the game's API and no scripts run (a restored game puts
+/// its saved VM into it).
+pub fn init_vm(world: &mut World) {
     world.remove_resource::<ScriptVm>();
     world.resource_mut::<ScriptHandles>().by_entity.clear();
     let mut vm = Vm::new();
@@ -156,10 +167,6 @@ pub fn init_for_map(world: &mut World) {
     let classes = api::register(&mut vm);
     world.insert_resource(classes);
     world.insert_resource(ScriptVm { vm });
-    let root = with_vm(world, |_, vm| vm.root_value()).expect("vm");
-    if load_script(world, "mapspawn").is_some() {
-        run_file(world, "mapspawn", &root);
-    }
 }
 
 /// The handle (script instance) of an entity.

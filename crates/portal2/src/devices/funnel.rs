@@ -35,13 +35,15 @@ impl Plugin for FunnelPlugin {
     }
 }
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct Funnel {
     pub enabled: bool,
     /// Signed speed along the beam (negative pulls toward the projector).
     pub force: f32,
     pub radius: f32,
+    #[serde(skip)]
     pub segments: Vec<BeamSegment>,
+    #[serde(skip)]
     tubes: Vec<Entity>,
 }
 
@@ -222,5 +224,12 @@ fn draw_funnels(
                 m.0 = material.clone();
             }
         }
+    }
+}
+
+impl crate::save::Restore for Funnel {
+    fn keep(&mut self, live: Self) {
+        self.segments = live.segments;
+        self.tubes = live.tubes;
     }
 }

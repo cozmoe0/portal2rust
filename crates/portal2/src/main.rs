@@ -20,6 +20,7 @@ mod player;
 mod portals;
 mod probe;
 mod render;
+mod save;
 mod script;
 mod screen;
 mod screenshot;
@@ -61,6 +62,7 @@ fn main() {
             (entities::EntitiesPlugin, script::ScriptPlugin, player::PlayerPlugin, physics::GamePhysicsPlugin),
             (portals::PortalsPlugin, devices::DevicesPlugin, screen::ScreenPlugin, render::fog::FogPlugin, audio::AudioPlugin, captions::CaptionsPlugin),
             (camera::CameraPlugin, screenshot::ScreenshotPlugin, shots::ShotsPlugin, smoke::SmokePlugin, chain::ChainPlugin, probe::ProbePlugin),
+            save::SavePlugin,
         ))
         .run();
 }

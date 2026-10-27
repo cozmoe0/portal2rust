@@ -22,7 +22,7 @@ impl Plugin for HealthPlugin {
     }
 }
 
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Health {
     pub current: f32,
     pub last_damage: f64,
@@ -93,3 +93,5 @@ fn apply_damage(
         h.current = (h.current + REGEN_RATE * clock.frametime()).min(MAX_HEALTH);
     }
 }
+
+impl crate::save::Restore for Health {}

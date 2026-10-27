@@ -34,7 +34,7 @@ pub fn register(app: &mut App) {
     h.register("func_rot_button", button_input);
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum Phase {
     Out,
     GoingIn,
@@ -42,7 +42,7 @@ enum Phase {
     GoingOut,
 }
 
-#[derive(Component, Clone)]
+#[derive(Component, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BrushButton {
     phase: Phase,
     locked: bool,
@@ -52,12 +52,15 @@ pub struct BrushButton {
     /// Seconds in before returning (-1 = stays in).
     wait: f32,
     return_at: Option<f64>,
+    #[serde(skip)]
     out_pose: Transform,
+    #[serde(skip)]
     in_pose: Transform,
     /// Distance (units or degrees) of a full move; 0 moves at once.
     travel: f32,
     speed: f32,
     progress: f32,
+    #[serde(with = "crate::save::ids::opt_entity")]
     activator: Option<Entity>,
 }
 
@@ -234,4 +237,15 @@ fn move_buttons(
             out.write(FireOutput::new(e, "OnOut").with_activator(activator));
         }
     }
+}
+
+impl crate::save::Restore for BrushButton {
+    fn keep(&mut self, live: Self) {
+        self.out_pose = live.out_pose;
+        self.in_pose = live.in_pose;
+    }
+}
+
+pub fn register_save(r: &mut crate::save::SaveRegistry) {
+    r.component::<BrushButton>("brush_button");
 }

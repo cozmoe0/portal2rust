@@ -29,7 +29,7 @@ pub fn register(app: &mut App) {
 
 // ------------------------------------------------------ func_portal_detector
 
-#[derive(Component, Default)]
+#[derive(Component, Default, serde::Serialize, serde::Deserialize)]
 pub struct PortalDetector {
     pub enabled: bool,
     /// Portal slot inside the volume, and whether it was linked then.
@@ -154,7 +154,7 @@ fn proxy_input(_world: &mut World, call: &InputCall) -> bool {
 // ---------------------------------------------------------- player_speedmod
 
 /// Movement speed scale set by `player_speedmod` (1 = normal).
-#[derive(Resource, Clone, Copy)]
+#[derive(Resource, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct SpeedMod(pub f32);
 
 impl Default for SpeedMod {
@@ -175,7 +175,7 @@ fn speedmod_input(world: &mut World, call: &InputCall) -> bool {
 // ------------------------------------------------------------- player inputs
 
 /// The fog controller the player's view uses (`SetFogController`), by name.
-#[derive(Resource, Default, Clone, Debug)]
+#[derive(Resource, Default, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct PlayerFog {
     pub controller: Option<String>,
 }
@@ -190,3 +190,9 @@ fn player_input(world: &mut World, call: &InputCall) -> bool {
         _ => false,
     }
 }
+
+impl crate::save::Restore for PortalDetector {}
+
+impl crate::save::Restore for SpeedMod {}
+
+impl crate::save::Restore for PlayerFog {}

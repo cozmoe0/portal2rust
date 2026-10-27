@@ -12,6 +12,7 @@ use crate::error::{Error, Result};
 use crate::value::{SqStr, Value};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Op {
     Null,
     True,
@@ -95,6 +96,7 @@ pub enum Op {
 
 /// Where a closure's captured value comes from when it is created.
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum OuterSource {
     Local(u16),
     Outer(u16),

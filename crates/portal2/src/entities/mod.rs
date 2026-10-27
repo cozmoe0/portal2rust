@@ -261,6 +261,13 @@ fn spawn_on_map_load(world: &mut World) {
     world.resource_mut::<EventQueue>().clear();
     world.resource_mut::<crate::clock::GameClock>().reset();
     world.resource_mut::<EventQueue>().now = 0.0;
+    // A saved game brings its own entities and script VM.
+    if crate::save::restore_map_entities(world) {
+        props::spawn_static_props(world);
+        transition::ensure_stats_controller(world);
+        info!("restored saved entities");
+        return;
+    }
     // A fresh script VM per map; mapspawn.nut runs before any entity.
     crate::script::init_for_map(world);
 
@@ -337,20 +344,45 @@ fn create_entity(world: &mut World, index: usize, pairs: &[(String, String)]) ->
         .find(|(k, _)| k.eq_ignore_ascii_case("targetname"))
         .map(|(_, v)| v.to_ascii_lowercase())
         .filter(|s| !s.is_empty());
-    let me = MapEntity { index, classname: classname.clone(), targetname: targetname.clone(), keyvalues, defaults };
+    let id = crate::save::ids::assign(world, index);
+    let e = insert_entity(world, index, id, &classname, targetname, keyvalues, outputs, defaults);
+    Some((e, classname))
+}
+
+/// Spawns a map entity's components (keyvalues already split from outputs)
+/// and registers its names.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn insert_entity(
+    world: &mut World,
+    index: usize,
+    id: crate::save::ids::SaveId,
+    classname: &str,
+    targetname: Option<String>,
+    keyvalues: Vec<(String, String)>,
+    outputs: Outputs,
+    defaults: Option<Arc<FgdClass>>,
+) -> Entity {
+    let me = MapEntity { index, classname: classname.to_owned(), targetname: targetname.clone(), keyvalues, defaults };
     let transform = Transform::from_translation(me.origin()).with_rotation(angles_to_quat(me.angles()));
     let name = format!("{classname} {}", targetname.as_deref().unwrap_or(""));
-    let e = world.spawn((Name::new(name), me, outputs, transform, Visibility::Visible, MapObject)).id();
-    world.resource_mut::<EntityRegistry>().insert(e, &classname, targetname.as_deref());
-    Some((e, classname))
+    let e = world.spawn((Name::new(name), me, outputs, transform, Visibility::Visible, MapObject, id)).id();
+    world.resource_mut::<EntityRegistry>().insert(e, classname, targetname.as_deref());
+    e
 }
 
 /// Class setup in order: an entity's scripts run before its own spawn code
 /// and its post-spawn hook is queued after it; then parenting (keeping world
 /// placements) and movers' starting positions.
 fn setup_entities(world: &mut World, spawned: &[(Entity, String)]) {
+    setup_entities_with(world, spawned, false);
+}
+
+/// Class setup; when `restoring` a saved game the entities' scripts are not
+/// run (the saved VM has their scopes) and placement and parents come from
+/// the save rather than the keyvalues.
+pub(crate) fn setup_entities_with(world: &mut World, spawned: &[(Entity, String)], restoring: bool) {
     for (e, class) in spawned {
-        let scripted = crate::script::run_entity_scripts(world, *e);
+        let scripted = !restoring && crate::script::run_entity_scripts(world, *e);
         let handler = world.resource::<SpawnHandlers>().by_class.get(class).copied();
         spawner::attach_brush_model(world, *e);
         if let Some(h) = handler {
@@ -362,6 +394,9 @@ fn setup_entities(world: &mut World, spawned: &[(Entity, String)]) {
         if scripted {
             crate::script::queue_post_spawn(world, *e);
         }
+    }
+    if restoring {
+        return;
     }
     for (e, _) in spawned {
         let Some(parent_name) = world.get::<MapEntity>(*e).and_then(|m| m.get("parentname").map(str::to_owned)) else {

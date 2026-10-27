@@ -50,7 +50,7 @@ impl Plugin for SecurityCameraPlugin {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum Mode {
     /// Holding still until enabled.
     Idle,
@@ -61,7 +61,7 @@ enum Mode {
     Folding,
 }
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct SecurityCamera {
     mode: Mode,
     next_think: f64,
@@ -283,4 +283,10 @@ mod tests {
         assert_eq!(c.aim, Vec2::new(20.0, -3.0));
         assert!(!step_aim(&mut c));
     }
+}
+
+impl crate::save::Restore for SecurityCamera {}
+
+pub fn register_save(r: &mut crate::save::SaveRegistry) {
+    r.component::<SecurityCamera>("security_camera");
 }

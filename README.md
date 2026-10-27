@@ -94,6 +94,15 @@ flex or lip-sync data, so nothing of that kind is played.
 The volume comes from your `config.cfg` (`volume`). Portal openings are drawn
 with a simple coloured ring around the linked view.
 
+Games save and load like the original: `save <name>` / `load <name>`, the
+quick save and load keys from your binds, autosaves from the maps' autosave
+entities and on level transitions, and a reload of the latest save a few
+seconds after dying. Saves go to `%LOCALAPPDATA%\portal2rust\save` (set
+`P2R_SAVE_DIR` to change it), never to the game's own save folder; a save
+holds the map's entities, the script state and the player, and loading
+carries on from there. `--save-test <maps>` checks that loading a save and
+saving again gives the same save.
+
 ## Layout
 
 - `crates/source_formats` – engine-agnostic readers: KeyValues, VPK, VTF, VMT,

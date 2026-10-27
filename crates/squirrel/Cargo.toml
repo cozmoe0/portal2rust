@@ -5,4 +5,12 @@ edition.workspace = true
 license.workspace = true
 description = "An interpreter for the Squirrel 2.2 scripting language, written from the language reference"
 
+[features]
+# Saved-game snapshots of a VM (`snapshot` module).
+serde = ["dep:serde"]
+
 [dependencies]
+serde = { version = "1", features = ["derive"], optional = true }
+
+[dev-dependencies]
+ciborium = "0.2"

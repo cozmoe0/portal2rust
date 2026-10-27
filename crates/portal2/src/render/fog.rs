@@ -30,7 +30,7 @@ impl Plugin for FogPlugin {
 }
 
 /// One fog setting, with colours as 0-255 gamma values like the keyvalues.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 struct FogValues {
     color: Vec3,
     color2: Vec3,
@@ -49,7 +49,7 @@ impl FogValues {
     }
 }
 
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct FogController {
     enabled: bool,
     /// Blend toward the secondary colour by view direction (`fogblend`).
@@ -207,4 +207,10 @@ fn apply_fog(world: &mut World) {
         };
         world.entity_mut(e).insert(distance_fog);
     }
+}
+
+impl crate::save::Restore for FogController {}
+
+pub fn register_save(r: &mut crate::save::SaveRegistry) {
+    r.component::<FogController>("fog_controller");
 }

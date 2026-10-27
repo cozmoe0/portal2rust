@@ -31,8 +31,9 @@ impl Plugin for CarryPlugin {
     }
 }
 
-#[derive(Resource, Default)]
+#[derive(Resource, Default, serde::Serialize, serde::Deserialize)]
 pub struct Holding {
+    #[serde(with = "crate::save::ids::opt_entity")]
     pub entity: Option<Entity>,
     /// Prop yaw relative to the player's view when picked up (degrees).
     pub yaw_offset: f32,
@@ -92,6 +93,17 @@ fn use_or_grab(
             out.write(FireOutput::new(target, "OnPhysGunPickup").with_activator(Some(pe)));
         }
         _ => queue.push(0.0, EventTarget::Entity(target), "use", "", Some(pe), Some(pe)),
+    }
+}
+
+/// Puts a prop back in the player's hands (a restored saved game): no
+/// gravity, held collision and the hold sound.
+pub fn resume_hold(world: &mut World, prop: Entity) {
+    if let Ok(mut e) = world.get_entity_mut(prop) {
+        e.insert((GravityScale(0.0), layers_for(layers::HELD, layers::WORLD | layers::PROP | layers::MOVER)));
+    }
+    if let Some(p) = world.resource::<crate::entities::EntityRegistry>().player {
+        world.write_message(crate::audio::SoundRequest::on("Weapon_Portalgun.HoldSound", p));
     }
 }
 
@@ -172,3 +184,5 @@ fn push_props(
         }
     }
 }
+
+impl crate::save::Restore for Holding {}

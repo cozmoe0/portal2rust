@@ -123,6 +123,10 @@ impl StudioAnimator {
         }
     }
 
+    pub fn layers(&self) -> &[Layer] {
+        &self.layers
+    }
+
     pub fn set_layers(&mut self, layers: Vec<Layer>) {
         if self.layers != layers {
             self.layers = layers;

@@ -245,7 +245,7 @@ fn animation_done_outputs(mut finished: MessageReader<AnimationFinished>, mut ou
 
 // --------------------------------------------------------- prop_testchamber_door
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct ChamberDoor {
     pub open: bool,
     pub locked: bool,
@@ -296,14 +296,14 @@ fn set_door(world: &mut World, e: Entity, open: bool) {
 }
 
 /// Door waiting for its open/close animation to finish.
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 struct PendingDoorReport {
     open: bool,
 }
 
 // ------------------------------------------------------------ pedestal buttons
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct PedestalButton {
     pub pressed_until: Option<f64>,
     pub delay: f32,
@@ -382,7 +382,7 @@ fn button_timers(
 
 // --------------------------------------------------------------- floor buttons
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct FloorButton {
     pub pressed: bool,
     /// Last time something rested on the button (seconds).
@@ -495,4 +495,19 @@ pub fn spawn_static_props(world: &mut World) {
     }
     info!("static props: {} ({} without baked lighting)", props.props.len(), missing_lighting);
     state.apply(world);
+}
+
+impl crate::save::Restore for ChamberDoor {}
+
+impl crate::save::Restore for FloorButton {}
+
+impl crate::save::Restore for PedestalButton {}
+
+impl crate::save::Restore for PendingDoorReport {}
+
+pub fn register_save(r: &mut crate::save::SaveRegistry) {
+    r.component::<ChamberDoor>("chamber_door");
+    r.component::<FloorButton>("floor_button");
+    r.component::<PedestalButton>("pedestal_button");
+    r.component::<PendingDoorReport>("pending_door_report");
 }

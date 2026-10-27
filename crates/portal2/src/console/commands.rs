@@ -34,6 +34,8 @@ pub fn register(c: &mut Console) {
     c.register_command("playvol", play);
     c.register_command("noclip", noclip);
     c.register_command("god", god);
+    c.register_command("kill", kill);
+    c.register_command("explode", kill);
     c.register_command("ent_fire", ent_fire);
     c.register_command("give_portalgun", give_portalgun);
     c.register_command("upgrade_portalgun", upgrade_portalgun);
@@ -57,6 +59,11 @@ pub fn register(c: &mut Console) {
 }
 
 fn ignore(_world: &mut World, _args: &CommandArgs) {}
+
+/// `kill` / `explode`: the player dies.
+fn kill(world: &mut World, _args: &CommandArgs) {
+    world.write_message(crate::player::health::DamagePlayer { amount: 1.0e6, push: Vec3::ZERO, source: None });
+}
 
 fn print(world: &mut World, line: impl Into<String>) {
     world.resource_mut::<Console>().print(line);

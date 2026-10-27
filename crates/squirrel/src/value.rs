@@ -86,6 +86,7 @@ pub fn hash_str(s: &[u8]) -> u32 {
 
 /// Reference to an object on the heap.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ObjRef {
     pub index: u32,
     pub generation: u32,
@@ -224,6 +225,7 @@ pub struct Closure {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MemberKind {
     /// Per-instance slot with a default value.
     Field,
@@ -274,6 +276,7 @@ pub struct Instance {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GenState {
     Suspended,
     Running,
@@ -308,17 +311,17 @@ pub enum Object {
     WeakRef(Value),
 }
 
-struct Slot {
-    generation: u32,
-    marked: bool,
-    obj: Option<Object>,
+pub(crate) struct Slot {
+    pub(crate) generation: u32,
+    pub(crate) marked: bool,
+    pub(crate) obj: Option<Object>,
 }
 
 /// Arena of objects with mark-and-sweep collection.
 #[derive(Default)]
 pub struct Heap {
-    slots: Vec<Slot>,
-    free: Vec<u32>,
+    pub(crate) slots: Vec<Slot>,
+    pub(crate) free: Vec<u32>,
     pub allocated_since_collect: usize,
 }
 

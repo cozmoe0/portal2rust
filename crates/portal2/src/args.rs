@@ -56,6 +56,10 @@ pub struct Args {
     pub shot_settle: u32,
     /// `--smoke <maps>`: run each map briefly and report problems.
     pub smoke: Option<String>,
+    /// `--save-test <maps>`: save/load round trip of each map (see `save::roundtrip`).
+    pub save_test: Option<String>,
+    /// `--save-info <name>`: print a summary of a saved game and quit.
+    pub save_info: Option<String>,
     pub smoke_frames: u32,
     /// `--chain <map>`: take each level's exit from `map` on through the
     /// campaign (`chain_count` maps, `chain_speed` times real time).
@@ -95,6 +99,8 @@ impl Default for Args {
             shots_out: "re/out/ours".to_owned(),
             shot_settle: 120,
             smoke: None,
+            save_test: None,
+            save_info: None,
             smoke_frames: 300,
             chain: None,
             chain_count: 100,
@@ -144,6 +150,8 @@ impl Args {
                 "--no-portals" => args.no_portals = true,
                 "--shots" => args.shots = it.next(),
                 "--smoke" => args.smoke = it.next(),
+                "--save-test" => args.save_test = it.next(),
+                "--save-info" => args.save_info = it.next(),
                 "--smoke-frames" => args.smoke_frames = it.next().and_then(|s| s.parse().ok()).unwrap_or(args.smoke_frames),
                 "--chain" => args.chain = it.next(),
                 "--chain-count" => args.chain_count = it.next().and_then(|s| s.parse().ok()).unwrap_or(args.chain_count),

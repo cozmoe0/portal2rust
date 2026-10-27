@@ -72,7 +72,6 @@ pub fn register(app: &mut App) {
     for class in [
         "env_shake",
         "logic_achievement",
-        "logic_autosave",
         "env_tonemap_controller",
         "light",
         "light_spot",
@@ -150,7 +149,7 @@ fn command_input(world: &mut World, call: &InputCall) -> bool {
 
 // ------------------------------------------------------------------ env_global
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum GlobalState {
     Off,
     On,
@@ -158,7 +157,7 @@ pub enum GlobalState {
 }
 
 /// Named global states; they outlive map changes.
-#[derive(Resource, Default)]
+#[derive(Resource, Default, serde::Serialize, serde::Deserialize)]
 pub struct GlobalStates {
     states: HashMap<String, (GlobalState, i32)>,
 }
@@ -235,7 +234,7 @@ fn global_input(world: &mut World, call: &InputCall) -> bool {
 
 // ----------------------------------------------------------------- logic_relay
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct LogicRelay {
     pub enabled: bool,
 }
@@ -274,7 +273,7 @@ fn relay_input(world: &mut World, call: &InputCall) -> bool {
 
 // -------------------------------------------------------- logic_random_outputs
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 struct RandomOutputs {
     enabled: bool,
 }
@@ -322,9 +321,10 @@ fn random_outputs_input(world: &mut World, call: &InputCall) -> bool {
 // ---------------------------------------------------- logic_register_activator
 
 /// Keeps an entity to send later messages with it as the activator.
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 struct RegisterActivator {
     enabled: bool,
+    #[serde(with = "crate::save::ids::opt_entity")]
     registered: Option<Entity>,
 }
 
@@ -369,7 +369,7 @@ fn register_activator_input(world: &mut World, call: &InputCall) -> bool {
 
 // ----------------------------------------------------------------- logic_timer
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct LogicTimer {
     pub enabled: bool,
     pub refire: f32,
@@ -474,7 +474,7 @@ fn timer_input(world: &mut World, call: &InputCall) -> bool {
 
 // ---------------------------------------------------------------- logic_branch
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct LogicBranch {
     pub value: bool,
 }
@@ -507,7 +507,7 @@ fn branch_input(world: &mut World, call: &InputCall) -> bool {
     true
 }
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct BranchListener {
     pub branches: Vec<String>,
     pub last: Option<u8>,
@@ -592,7 +592,7 @@ fn branch_listener_input(world: &mut World, call: &InputCall) -> bool {
 
 // --------------------------------------------------------------- logic_compare
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct LogicCompare {
     pub value: f32,
     pub compare: f32,
@@ -646,7 +646,7 @@ fn compare_input(world: &mut World, call: &InputCall) -> bool {
 
 // ---------------------------------------------------------------- math_counter
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct MathCounter {
     pub value: f32,
     pub min: f32,
@@ -785,7 +785,7 @@ fn proxy_input(world: &mut World, call: &InputCall) -> bool {
 
 /// Where a point_teleport sends its target: its own placement when the map
 /// started, or with spawnflag 1 the target's starting placement.
-#[derive(Component, Clone, Copy)]
+#[derive(Component, Clone, Copy, serde::Serialize, serde::Deserialize)]
 struct TeleportHome {
     origin: Vec3,
     angles: Vec3,
@@ -832,4 +832,30 @@ fn teleport_input(world: &mut World, call: &InputCall) -> bool {
     };
     super::teleport_entity(world, t, origin, Some(angles), None);
     true
+}
+
+impl crate::save::Restore for LogicRelay {}
+
+impl crate::save::Restore for LogicTimer {}
+
+impl crate::save::Restore for MathCounter {}
+
+impl crate::save::Restore for LogicBranch {}
+
+impl crate::save::Restore for LogicCompare {}
+
+impl crate::save::Restore for BranchListener {}
+
+impl crate::save::Restore for RandomOutputs {}
+
+impl crate::save::Restore for RegisterActivator {}
+
+impl crate::save::Restore for TeleportHome {}
+
+impl crate::save::Restore for GlobalStates {}
+
+pub fn register_save(r: &mut crate::save::SaveRegistry) {
+    r.component::<RandomOutputs>("logic_random_outputs");
+    r.component::<RegisterActivator>("logic_register_activator");
+    r.component::<TeleportHome>("teleport_home");
 }

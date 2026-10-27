@@ -30,7 +30,7 @@ pub struct AirControl {
     pub suppressed_until: f64,
 }
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct Catapult {
     pub enabled: bool,
     pub player_speed: f32,
@@ -43,6 +43,7 @@ pub struct Catapult {
     pub air_suppress: f32,
     pub launch_players: bool,
     pub launch_props: bool,
+    #[serde(skip)]
     touching: Vec<Entity>,
 }
 
@@ -223,3 +224,5 @@ mod tests {
         assert!((z - 64.0).abs() < 0.5, "{z}");
     }
 }
+
+impl crate::save::Restore for Catapult {}

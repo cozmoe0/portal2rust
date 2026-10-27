@@ -54,12 +54,14 @@ impl Plugin for GunPlugin {
     }
 }
 
-#[derive(Resource, Default)]
+#[derive(Resource, Default, serde::Serialize, serde::Deserialize)]
 pub struct PortalGun {
     pub can_fire: [bool; 2],
     pub next_fire: f64,
+    #[serde(skip)]
     pub viewmodel: Option<Entity>,
     /// Map entity to walk into to receive the gun.
+    #[serde(with = "crate::save::ids::opt_entity")]
     pub pickup: Option<Entity>,
 }
 
@@ -450,4 +452,10 @@ fn spawn_map_portal_now(world: &mut World, me: &MapEntity, slot: usize, at: Opti
     let q = angles_to_quat(angles);
     let frame = PortalFrame { center: origin, forward: q * Vec3::X, up: q * Vec3::Z };
     world.resource_mut::<Messages<PlacePortal>>().write(PlacePortal { slot, frame });
+}
+
+impl crate::save::Restore for PortalGun {
+    fn keep(&mut self, live: Self) {
+        self.viewmodel = live.viewmodel;
+    }
 }

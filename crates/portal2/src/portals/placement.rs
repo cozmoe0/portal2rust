@@ -17,7 +17,7 @@ pub const MAX_SHOT_DISTANCE: f32 = 32768.0;
 pub const SHOT_MASK: u32 = contents::SOLID | contents::MOVEABLE | contents::WINDOW | contents::MONSTER;
 
 /// A portal's placement: centre on the surface, outward normal and up axis.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PortalFrame {
     pub center: Vec3,
     pub forward: Vec3,

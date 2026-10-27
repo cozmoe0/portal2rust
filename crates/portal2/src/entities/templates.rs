@@ -30,14 +30,14 @@ const SF_DONT_REMOVE: u32 = 1;
 const SF_PRESERVE_NAMES: u32 = 2;
 
 /// The entities a point_template creates, as map keyvalue pairs.
-#[derive(Component, Clone, Default)]
+#[derive(Component, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Template {
     pub entries: Vec<Vec<(String, String)>>,
     pub origin: Vec3,
     pub preserve_names: bool,
 }
 
-#[derive(Resource, Default)]
+#[derive(Resource, Default, serde::Serialize, serde::Deserialize)]
 struct TemplateCounter(u32);
 
 fn template_names(me: &MapEntity) -> Vec<String> {
@@ -182,4 +182,12 @@ fn maker_input(world: &mut World, call: &InputCall) -> bool {
     let output = if spawned.is_empty() { "OnEntityFailedSpawn" } else { "OnEntitySpawned" };
     fire_output(world, call.target, output, spawned.first().copied().or(call.activator), None);
     true
+}
+
+impl crate::save::Restore for Template {}
+
+impl crate::save::Restore for TemplateCounter {}
+
+pub fn register_save_resources(r: &mut crate::save::SaveRegistry) {
+    r.resource::<TemplateCounter>("template_counter");
 }

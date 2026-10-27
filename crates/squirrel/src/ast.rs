@@ -5,6 +5,7 @@ use std::rc::Rc;
 pub type Name = Vec<u8>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BinOp {
     Add,
     Sub,
@@ -28,6 +29,7 @@ pub enum BinOp {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum UnOp {
     Neg,
     Not,

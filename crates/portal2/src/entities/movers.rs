@@ -42,7 +42,7 @@ fn clip_input(world: &mut World, call: &InputCall) -> bool {
     true
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum MoverState {
     Closed,
     Opening,
@@ -51,9 +51,11 @@ pub enum MoverState {
 }
 
 /// Movement between a closed and an open placement. `progress` runs 0..1.
-#[derive(Component, Clone)]
+#[derive(Component, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Mover {
+    #[serde(skip)]
     pub closed: Transform,
+    #[serde(skip)]
     pub open: Transform,
     /// Distance (units or degrees) covered by a full move.
     pub travel: f32,
@@ -275,7 +277,7 @@ fn move_doors(
 
 // ------------------------------------------------------------------ func_brush
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct Toggleable {
     pub enabled: bool,
 }
@@ -313,7 +315,7 @@ fn brush_input(world: &mut World, call: &InputCall) -> bool {
 
 // --------------------------------------------------------------- func_rotating
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct Rotating {
     pub axis: Vec3,
     pub max_speed: f32,
@@ -376,3 +378,14 @@ fn rotate_brushes(clock: Res<GameClock>, mut q: Query<(&mut Rotating, &mut Trans
         }
     }
 }
+
+impl crate::save::Restore for Mover {
+    fn keep(&mut self, live: Self) {
+        self.closed = live.closed;
+        self.open = live.open;
+    }
+}
+
+impl crate::save::Restore for Rotating {}
+
+impl crate::save::Restore for Toggleable {}

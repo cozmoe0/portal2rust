@@ -37,7 +37,7 @@ pub fn register(app: &mut App) {
     }
 }
 
-#[derive(Component, Clone)]
+#[derive(Component, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SoundscapeEnt {
     name: String,
     radius: f32,
@@ -362,3 +362,5 @@ fn choose(world: &mut World, state: &mut SoundscapeState, now: f64) {
     }
     state.randoms = randoms;
 }
+
+impl crate::save::Restore for SoundscapeEnt {}

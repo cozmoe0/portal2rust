@@ -23,7 +23,7 @@ pub fn register(app: &mut App) {
     world.resource_mut::<InputHandlers>().register("ambient_generic", input);
 }
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct Ambient {
     sound: String,
     volume: f32,
@@ -33,9 +33,13 @@ pub struct Ambient {
     source: Option<String>,
     origin: Vec3,
     active: bool,
+    #[serde(skip)]
     channel: Option<u64>,
     /// Waiting for the map's sound reset before starting.
     pending: bool,
+    /// Playing in a restored saved game; its sound starts again.
+    #[serde(skip)]
+    resume: bool,
     /// Volume factor and its ramp (per second, negative fades out).
     fade: f32,
     fade_rate: f32,
@@ -61,6 +65,7 @@ fn spawn(world: &mut World, e: Entity) {
         active: false,
         channel: None,
         pending: looping && !me.has_flag(SF_START_SILENT),
+        resume: false,
         fade: 1.0,
         fade_rate: 0.0,
     });
@@ -69,6 +74,14 @@ fn spawn(world: &mut World, e: Entity) {
 /// Starts ambients that play from the start, once the map's sounds have
 /// been reset.
 pub fn start_pending(world: &mut World) {
+    let resumed: Vec<Entity> = world.query::<(Entity, &Ambient)>().iter(world).filter(|(_, a)| a.resume).map(|(e, _)| e).collect();
+    for e in resumed {
+        let id = play(world, e);
+        if let Some(mut a) = world.get_mut::<Ambient>(e) {
+            a.resume = false;
+            a.channel = id;
+        }
+    }
     let pending: Vec<Entity> = world.query::<(Entity, &Ambient)>().iter(world).filter(|(_, a)| a.pending).map(|(e, _)| e).collect();
     for e in pending {
         if let Some(mut a) = world.get_mut::<Ambient>(e) {
@@ -203,4 +216,16 @@ fn fade_ambients(world: &mut World) {
             }
         }
     }
+}
+
+impl crate::save::Restore for Ambient {
+    fn keep(&mut self, live: Self) {
+        self.channel = live.channel;
+        // A looping sound that was playing starts again.
+        self.resume = self.active && self.channel.is_none();
+    }
+}
+
+pub fn register_save(r: &mut crate::save::SaveRegistry) {
+    r.component::<Ambient>("ambient");
 }

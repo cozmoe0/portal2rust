@@ -99,6 +99,29 @@ fn spawn_or_reset_player(
     registry.player = Some(e);
 }
 
+/// The player entity, made now if it does not exist yet (a saved game
+/// restored at startup refers to it before the level load places it).
+pub fn ensure_player(world: &mut World) -> Entity {
+    if let Some(e) = world.resource::<EntityRegistry>().player.filter(|e| world.get_entity(*e).is_ok()) {
+        return e;
+    }
+    if let Some(e) = world.query_filtered::<Entity, With<Player>>().iter(world).next() {
+        world.resource_mut::<EntityRegistry>().player = Some(e);
+        return e;
+    }
+    let state = MoveState::default();
+    let e = world
+        .spawn((
+            Name::new("player"),
+            Player { state, previous_origin: Vec3::ZERO, noclip: false, ground_ref: None },
+            Transform::IDENTITY,
+            Visibility::Hidden,
+        ))
+        .id();
+    world.resource_mut::<EntityRegistry>().player = Some(e);
+    e
+}
+
 /// Movement and view input from the bound `+` buttons and the mouse, scaled
 /// by `sensitivity`, `m_yaw` and `m_pitch` and clamped by `cl_pitchup/down`.
 fn gather_input(

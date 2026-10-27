@@ -77,20 +77,24 @@ impl SceneLibrary {
     }
 }
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct ChoreoScene {
     file: String,
     targets: [Option<String>; 8],
+    #[serde(skip)]
     loaded: Option<Arc<LoadedScene>>,
     pub playing: bool,
     pub paused: bool,
     time: f32,
     pitch: f32,
     next: usize,
+    #[serde(with = "crate::save::ids::opt_entity")]
     activator: Option<Entity>,
     /// Sound channels started by this scene's speak events.
+    #[serde(skip)]
     speech: Vec<u64>,
     /// Actors this scene layers gestures on.
+    #[serde(with = "crate::save::ids::entities")]
     layered: Vec<Entity>,
 }
 
@@ -234,8 +238,56 @@ fn actor(world: &World, e: Entity, name: &str) -> Option<Entity> {
     }
 }
 
+/// Plays a speak event's line on `who`, `offset` seconds in, with its
+/// caption for the rest of the line.
+fn speak(world: &mut World, e: Entity, who: Entity, ev: &source_formats::vcd::Event, pitch: f32, offset: f32) {
+    let level = ev.param2.trim().trim_end_matches(|c: char| c.is_ascii_alphabetic()).parse::<f32>().ok();
+    let params = crate::audio::Emit {
+        entity: Some(who),
+        pitch: Some(pitch * 100.0),
+        soundlevel: level,
+        no_caption: true,
+        // A negative delay starts part-way into the sound.
+        delay: -offset,
+        ..default()
+    };
+    if let Some(id) = crate::audio::emit(world, &ev.param, params)
+        && let Some(mut s) = world.get_mut::<ChoreoScene>(e)
+    {
+        s.speech.push(id);
+    }
+    // The scene captions its own lines (a token may replace the sound's).
+    if ev.cc.kind == source_formats::vcd::CcType::Master {
+        let token = if ev.cc.token.is_empty() { ev.param.as_str() } else { ev.cc.token.as_str() };
+        crate::captions::emit(world, token, (ev.duration() - offset).max(0.0) / pitch.max(0.01), false);
+    }
+}
+
+/// After a saved game is restored: lines that were being spoken carry on
+/// from where they were.
+pub fn resume_speech(world: &mut World) {
+    let playing: Vec<Entity> =
+        world.query::<(Entity, &ChoreoScene)>().iter(world).filter(|(_, s)| s.playing).map(|(e, _)| e).collect();
+    for e in playing {
+        let Some(scene) = loaded(world, e) else { continue };
+        let Some((time, pitch)) = world.get::<ChoreoScene>(e).map(|s| (s.time, s.pitch)) else { continue };
+        for (actor_name, ev) in &scene.events {
+            if ev.kind != EventKind::Speak || ev.start > time || time >= ev.end {
+                continue;
+            }
+            if let Some(who) = actor_name.as_deref().and_then(|n| actor(world, e, n)) {
+                speak(world, e, who, ev, pitch, time - ev.start);
+            }
+        }
+    }
+}
+
 /// Fires every event whose start the scene time has passed.
 fn advance(world: &mut World, e: Entity, dt: f32) {
+    // Loaded on first use, and again after a saved game is restored.
+    if loaded(world, e).is_none() {
+        return;
+    }
     let Some(s) = world.get_mut::<ChoreoScene>(e) else { return };
     let Some(scene) = s.loaded.clone() else { return };
     let mut s = s;
@@ -253,19 +305,7 @@ fn advance(world: &mut World, e: Entity, dt: f32) {
                     debug!("scene actor {actor_name:?} not found for {}", ev.param);
                     continue;
                 };
-                let level = ev.param2.trim().trim_end_matches(|c: char| c.is_ascii_alphabetic()).parse::<f32>().ok();
-                let params =
-                    crate::audio::Emit { entity: Some(who), pitch: Some(pitch * 100.0), soundlevel: level, no_caption: true, ..default() };
-                if let Some(id) = crate::audio::emit(world, &ev.param, params)
-                    && let Some(mut s) = world.get_mut::<ChoreoScene>(e)
-                {
-                    s.speech.push(id);
-                }
-                // The scene captions its own lines (a token may replace the sound's).
-                if ev.cc.kind == source_formats::vcd::CcType::Master {
-                    let token = if ev.cc.token.is_empty() { ev.param.as_str() } else { ev.cc.token.as_str() };
-                    crate::captions::emit(world, token, ev.duration() / pitch.max(0.01), false);
-                }
+                speak(world, e, who, ev, pitch, 0.0);
             }
             EventKind::Sequence => {
                 // The actor plays the named sequence (blending, gestures and
@@ -425,4 +465,19 @@ mod census {
             println!("{n:>6} {kind:<10} {actor}");
         }
     }
+}
+
+impl crate::save::Restore for ChoreoScene {
+    fn keep(&mut self, live: Self) {
+        self.loaded = live.loaded;
+    }
+}
+
+pub fn register_save(r: &mut crate::save::SaveRegistry) {
+    r.component::<ChoreoScene>("choreo_scene");
+}
+
+/// Scene file, whether it plays and its time (for `--save-info`).
+pub fn describe(s: &ChoreoScene) -> (String, bool, f32) {
+    (s.file.clone(), s.playing, s.time)
 }

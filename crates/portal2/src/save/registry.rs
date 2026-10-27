@@ -1,0 +1,270 @@
+//! What a save holds besides entity keyvalues and placement: the state of
+//! components and resources, by name. Most types are saved with serde as
+//! they are; fields only the running game needs (render entities, loaded
+//! scene data, sound channels) are skipped and kept from what the spawn code
+//! built (see [`Restore`]).
+
+use bevy::ecs::component::Mutable;
+use bevy::prelude::*;
+use serde::{Serialize, de::DeserializeOwned};
+
+use super::{decode, encode};
+use crate::entities::io::{EventQueue, EventTarget};
+use crate::entities::{MapEntity, logic};
+use crate::models::StudioAnimator;
+use crate::models::animation::Layer;
+
+pub type ComponentSave = fn(&World, Entity) -> Option<Result<Vec<u8>, String>>;
+pub type ComponentLoad = fn(&mut World, Entity, &[u8]) -> Result<(), String>;
+pub type ResourceSave = fn(&World) -> Option<Result<Vec<u8>, String>>;
+pub type ResourceLoad = fn(&mut World, &[u8]) -> Result<(), String>;
+
+#[derive(Resource, Default)]
+pub struct SaveRegistry {
+    pub(super) components: Vec<(&'static str, ComponentSave, ComponentLoad)>,
+    pub(super) resources: Vec<(&'static str, ResourceSave, ResourceLoad)>,
+}
+
+/// Saved state replacing live state on load.
+pub trait Restore: Sized {
+    /// Called on the saved value with the live one (as the spawn code built
+    /// it) just before the saved value replaces it: copy across the fields
+    /// the save skips.
+    fn keep(&mut self, _live: Self) {}
+}
+
+impl SaveRegistry {
+    pub fn component<T>(&mut self, name: &'static str)
+    where
+        T: Component<Mutability = Mutable> + Serialize + DeserializeOwned + Restore,
+    {
+        self.components.push((name, save_component::<T>, load_component::<T>));
+    }
+
+    pub fn custom(&mut self, name: &'static str, save: ComponentSave, load: ComponentLoad) {
+        self.components.push((name, save, load));
+    }
+
+    pub fn custom_resource(&mut self, name: &'static str, save: ResourceSave, load: ResourceLoad) {
+        self.resources.push((name, save, load));
+    }
+
+    pub fn resource<T: Resource + Serialize + DeserializeOwned + Restore>(&mut self, name: &'static str) {
+        self.resources.push((name, save_resource::<T>, load_resource::<T>));
+    }
+}
+
+fn save_component<T: Component + Serialize>(world: &World, e: Entity) -> Option<Result<Vec<u8>, String>> {
+    world.get::<T>(e).map(encode)
+}
+
+fn load_component<T>(world: &mut World, e: Entity, bytes: &[u8]) -> Result<(), String>
+where
+    T: Component<Mutability = Mutable> + DeserializeOwned + Restore,
+{
+    let mut saved: T = decode(bytes)?;
+    let mut em = world.entity_mut(e);
+    if let Some(live) = em.take::<T>() {
+        saved.keep(live);
+    }
+    em.insert(saved);
+    Ok(())
+}
+
+fn save_resource<T: Resource + Serialize>(world: &World) -> Option<Result<Vec<u8>, String>> {
+    world.get_resource::<T>().map(encode)
+}
+
+fn load_resource<T: Resource + DeserializeOwned + Restore>(world: &mut World, bytes: &[u8]) -> Result<(), String> {
+    let mut saved: T = decode(bytes)?;
+    if let Some(live) = world.remove_resource::<T>() {
+        saved.keep(live);
+    }
+    world.insert_resource(saved);
+    Ok(())
+}
+
+pub fn register_all(r: &mut SaveRegistry) {
+    use crate::audio::{ambient, soundscape};
+    use crate::devices::{bridge, catapult, funnel, laser, security_camera, turret};
+    use crate::entities::{buttons, detectors, movers, props, scenes, templates, trains, transition, triggers};
+
+    r.component::<logic::LogicRelay>("logic_relay");
+    r.component::<logic::LogicTimer>("logic_timer");
+    r.component::<logic::MathCounter>("math_counter");
+    r.component::<logic::LogicBranch>("logic_branch");
+    r.component::<logic::LogicCompare>("logic_compare");
+    r.component::<logic::BranchListener>("branch_listener");
+    logic::register_save(r);
+    r.component::<movers::Mover>("mover");
+    r.component::<movers::Rotating>("rotating");
+    r.component::<movers::Toggleable>("toggleable");
+    props::register_save(r);
+    buttons::register_save(r);
+    r.component::<detectors::PortalDetector>("portal_detector");
+    r.component::<triggers::Trigger>("trigger");
+    r.component::<trains::Train>("train");
+    r.component::<trains::PathTrack>("path_track");
+    r.component::<templates::Template>("template");
+    transition::register_save(r);
+    scenes::register_save(r);
+    r.component::<laser::LaserEmitter>("laser_emitter");
+    r.component::<laser::LaserReceiver>("laser_receiver");
+    r.component::<bridge::LightBridge>("light_bridge");
+    r.component::<funnel::Funnel>("funnel");
+    r.component::<catapult::Catapult>("catapult");
+    r.component::<turret::Turret>("turret");
+    security_camera::register_save(r);
+    ambient::register_save(r);
+    r.component::<soundscape::SoundscapeEnt>("soundscape");
+    crate::render::fog::register_save(r);
+    r.custom("animator", save_animator, load_animator);
+    r.custom("physics", save_physics, load_physics);
+    r.custom("script_scope", crate::script::save::save_scope, crate::script::save::load_scope);
+
+    r.resource::<EventQueue>("event_queue");
+    r.resource::<logic::GlobalStates>("global_states");
+    r.resource::<detectors::SpeedMod>("speed_mod");
+    r.resource::<detectors::PlayerFog>("player_fog");
+    templates::register_save_resources(r);
+    r.resource::<crate::portals::gun::PortalGun>("portal_gun");
+    r.resource::<crate::screen::ScreenFade>("screen_fade");
+    r.resource::<crate::script::api::GladosSpokenFlags>("glados_spoken_flags");
+    r.custom_resource("portals", save_portals, load_portals);
+    r.resource::<crate::physics::carry::Holding>("holding");
+}
+
+/// The player's portal pair (placed again a frame after the load, once the
+/// map change has cleared the old ones).
+#[derive(Resource, serde::Serialize, serde::Deserialize)]
+pub struct PendingPortals(pub [Option<crate::portals::placement::PortalFrame>; 2]);
+
+fn save_portals(world: &World) -> Option<Result<Vec<u8>, String>> {
+    // Saved again before the restored portals were placed: keep them.
+    if let Some(pending) = world.get_resource::<PendingPortals>() {
+        return Some(encode(pending));
+    }
+    let portals = world.get_resource::<crate::portals::Portals>()?;
+    let frames = portals.entities.map(|e| e.and_then(|e| world.get::<crate::portals::Portal>(e)).map(|p| p.frame));
+    Some(encode(&PendingPortals(frames)))
+}
+
+fn load_portals(world: &mut World, bytes: &[u8]) -> Result<(), String> {
+    let saved: PendingPortals = decode(bytes)?;
+    world.insert_resource(saved);
+    Ok(())
+}
+
+pub fn place_saved_portals(world: &mut World) {
+    let Some(PendingPortals(frames)) = world.remove_resource::<PendingPortals>() else { return };
+    for (slot, frame) in frames.into_iter().enumerate() {
+        if let Some(frame) = frame {
+            world.write_message(crate::portals::PlacePortal { slot, frame });
+        }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct AnimatorSave {
+    sequence: String,
+    cycle: f32,
+    rate: f32,
+    looping: bool,
+    finished: bool,
+    default_sequence: Option<String>,
+    layers: Vec<(String, f32, f32)>,
+    pose: Vec<(String, f32)>,
+}
+
+fn sequence_name(anim: &StudioAnimator, index: usize) -> String {
+    anim.model.studio.sequence(index).map(|(m, l)| m.mdl.sequences[l].label.clone()).unwrap_or_default()
+}
+
+fn save_animator(world: &World, e: Entity) -> Option<Result<Vec<u8>, String>> {
+    let a = world.get::<StudioAnimator>(e)?;
+    let studio = &a.model.studio;
+    let save = AnimatorSave {
+        sequence: sequence_name(a, a.sequence),
+        cycle: a.cycle,
+        rate: a.rate,
+        looping: a.looping,
+        finished: a.finished,
+        default_sequence: a.default_sequence.map(|i| sequence_name(a, i)),
+        layers: a.layers().iter().map(|l| (sequence_name(a, l.sequence), l.cycle, l.weight)).collect(),
+        pose: studio
+            .pose_parameters
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (p.name.clone(), a.pose_parameter(&p.name).unwrap_or_else(|| studio.pose_value(i, 0.5))))
+            .collect(),
+    };
+    Some(encode(&save))
+}
+
+fn load_animator(world: &mut World, e: Entity, bytes: &[u8]) -> Result<(), String> {
+    let s: AnimatorSave = decode(bytes)?;
+    let Some(mut a) = world.get_mut::<StudioAnimator>(e) else { return Ok(()) };
+    let find = |a: &StudioAnimator, name: &str| a.model.studio.find_sequence(name);
+    if let Some(i) = find(&a, &s.sequence) {
+        a.set_sequence_index(i);
+    }
+    a.cycle = s.cycle;
+    a.rate = s.rate;
+    a.looping = s.looping;
+    a.finished = s.finished;
+    a.default_sequence = s.default_sequence.as_deref().and_then(|n| find(&a, n));
+    let layers = s
+        .layers
+        .iter()
+        .filter_map(|(n, cycle, weight)| Some(Layer { sequence: find(&a, n)?, cycle: *cycle, weight: *weight }))
+        .collect();
+    a.set_layers(layers);
+    for (name, value) in &s.pose {
+        a.set_pose_parameter(name, *value);
+    }
+    Ok(())
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PhysicsSave {
+    linear: Vec3,
+    angular: Vec3,
+}
+
+fn save_physics(world: &World, e: Entity) -> Option<Result<Vec<u8>, String>> {
+    use avian3d::prelude::{AngularVelocity, LinearVelocity};
+    world.get::<crate::entities::props::PhysicsProp>(e)?;
+    let linear = world.get::<LinearVelocity>(e).map_or(Vec3::ZERO, |v| v.0);
+    let angular = world.get::<AngularVelocity>(e).map_or(Vec3::ZERO, |v| v.0);
+    Some(encode(&PhysicsSave { linear, angular }))
+}
+
+fn load_physics(world: &mut World, e: Entity, bytes: &[u8]) -> Result<(), String> {
+    use avian3d::prelude::{AngularVelocity, LinearVelocity, Position, Rotation};
+    let s: PhysicsSave = decode(bytes)?;
+    // Bodies are not parented, so their transform is their world placement.
+    let t = world.get::<Transform>(e).copied().unwrap_or_default();
+    let mut em = world.entity_mut(e);
+    em.insert((LinearVelocity(s.linear), AngularVelocity(s.angular), Position(t.translation), Rotation(t.rotation)));
+    Ok(())
+}
+
+/// Work entities do again when a game is restored: `logic_auto` fires on
+/// every load (its spawn scheduled that, but the saved event queue replaced
+/// the spawn-time one).
+pub fn after_restore(world: &mut World) {
+    crate::entities::scenes::resume_speech(world);
+    if let Some(held) = world.get_resource::<crate::physics::carry::Holding>().and_then(|h| h.entity) {
+        crate::physics::carry::resume_hold(world, held);
+    }
+    let autos: Vec<Entity> = {
+        let mut q = world.query::<(Entity, &MapEntity)>();
+        q.iter(world).filter(|(_, m)| m.classname == "logic_auto").map(|(e, _)| e).collect()
+    };
+    for e in autos {
+        let pending = world.resource::<EventQueue>().has_input_for(e, "__autothink");
+        if !pending {
+            world.resource_mut::<EventQueue>().push(0.2, EventTarget::Entity(e), "__autothink", "", None, None);
+        }
+    }
+}

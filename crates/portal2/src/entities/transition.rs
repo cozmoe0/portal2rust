@@ -114,6 +114,10 @@ fn apply_transition(world: &mut World) {
     }
     world.resource_mut::<PlayerInput>().input.angles = pending.angles;
     world.remove_resource::<PendingTransition>();
+    // `sv_autosave`: entering a level by transition autosaves.
+    if world.resource::<crate::console::Console>().bool("sv_autosave") {
+        crate::console::queue(world, "autosave");
+    }
 }
 
 // --------------------------------------------------- portal_stats_controller
@@ -124,7 +128,7 @@ fn apply_transition(world: &mut World) {
 /// `RealTransitionFromMap()` in the transition script's scope and removes
 /// the controller. Challenge-mode parts (leaderboards, cheat reports, the
 /// timed `OnLevelEnd` delay) do not apply to the campaign and are left out.
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct StatsController {
     /// When the level ended, once `OnLevelEnd` arrived.
     end_time: Option<f64>,
@@ -194,4 +198,10 @@ fn stats_think(world: &mut World) {
             c.next_think = clock.curtime + 0.1;
         }
     }
+}
+
+impl crate::save::Restore for StatsController {}
+
+pub fn register_save(r: &mut crate::save::SaveRegistry) {
+    r.component::<StatsController>("stats_controller");
 }

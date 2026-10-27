@@ -34,7 +34,7 @@ impl Ctx<'_> {
     }
 }
 
-struct Frame {
+pub(crate) struct Frame {
     closure: ObjRef,
     proto: Arc<Proto>,
     /// Stack index of slot 0 (`this`).
@@ -84,8 +84,11 @@ pub struct Vm {
     pub print: PrintFn,
     pub error_handler: Value,
     pub rand_state: u32,
-    stack: Vec<Value>,
-    frames: Vec<Frame>,
+    /// Every native function made by [`Vm::new_native`], in first-use order;
+    /// snapshots name natives by their place among same-named entries here.
+    pub(crate) native_fns: Vec<(SqStr, NativeFn)>,
+    pub(crate) stack: Vec<Value>,
+    pub(crate) frames: Vec<Frame>,
     traps: Vec<Trap>,
     /// Depth of nested native/host calls, to bound recursion.
     depth: usize,
@@ -137,6 +140,7 @@ impl Vm {
             print: default_print,
             error_handler: Value::Null,
             rand_state: 1,
+            native_fns: Vec::new(),
             stack: Vec::new(),
             frames: Vec::new(),
             traps: Vec::new(),
@@ -161,7 +165,11 @@ impl Vm {
     }
 
     pub fn new_native(&mut self, name: &str, func: NativeFn, nparams: i32, data: Value) -> Value {
-        Value::Native(self.heap.alloc(Object::Native(NativeClosure { name: SqStr::from(name), func, nparams, data, env: None })))
+        let name = SqStr::from(name);
+        if !self.native_fns.iter().any(|(n, f)| std::ptr::fn_addr_eq(*f, func) && n.bytes() == name.bytes()) {
+            self.native_fns.push((name.clone(), func));
+        }
+        Value::Native(self.heap.alloc(Object::Native(NativeClosure { name, func, nparams, data, env: None })))
     }
 
     pub fn new_class(&mut self, base: Option<ObjRef>, type_tag: u32) -> Value {

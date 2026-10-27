@@ -14,7 +14,7 @@ use super::{EntityRegistry, MapEntity};
 
 /// One output connection: when `output` fires, send `input(param)` to
 /// `target` after `delay` seconds, at most `times` times (-1 = unlimited).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Connection {
     pub output: String,
     pub target: String,
@@ -66,24 +66,26 @@ pub struct Outputs {
 }
 
 /// What an event is aimed at.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum EventTarget {
     Name(String),
-    Entity(Entity),
+    Entity(#[serde(with = "crate::save::ids::entity")] Entity),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct QueuedEvent {
     pub time: f64,
     serial: u64,
     pub target: EventTarget,
     pub input: String,
     pub param: String,
+    #[serde(with = "crate::save::ids::opt_entity")]
     pub activator: Option<Entity>,
+    #[serde(with = "crate::save::ids::opt_entity")]
     pub caller: Option<Entity>,
 }
 
-#[derive(Resource, Default)]
+#[derive(Resource, Default, serde::Serialize, serde::Deserialize)]
 pub struct EventQueue {
     events: Vec<QueuedEvent>,
     serial: u64,
@@ -92,6 +94,11 @@ pub struct EventQueue {
 }
 
 impl EventQueue {
+    /// Whether an event for `input` on `e` is waiting.
+    pub fn has_input_for(&self, e: Entity, input: &str) -> bool {
+        self.events.iter().any(|ev| matches!(ev.target, EventTarget::Entity(t) if t == e) && ev.input == input)
+    }
+
     pub fn push(
         &mut self,
         delay: f32,
@@ -357,3 +364,5 @@ fn dispatch_to_handlers(world: &mut World, call: &InputCall) {
 pub struct IoStats {
     pub unhandled: HashMap<(String, String), u32>,
 }
+
+impl crate::save::Restore for EventQueue {}

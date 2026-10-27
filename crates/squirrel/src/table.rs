@@ -8,17 +8,17 @@ use crate::value::Value;
 const MIN_POWER2: usize = 4;
 
 #[derive(Clone, Default)]
-struct Node {
-    key: Value,
-    val: Value,
-    next: Option<usize>,
+pub(crate) struct Node {
+    pub(crate) key: Value,
+    pub(crate) val: Value,
+    pub(crate) next: Option<usize>,
 }
 
 #[derive(Clone)]
 pub struct SqTable {
-    nodes: Vec<Node>,
-    first_free: usize,
-    used: usize,
+    pub(crate) nodes: Vec<Node>,
+    pub(crate) first_free: usize,
+    pub(crate) used: usize,
 }
 
 impl Default for SqTable {

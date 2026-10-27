@@ -6,9 +6,15 @@ license.workspace = true
 description = "A Portal 2 engine reimplementation written in Rust on top of Bevy"
 
 [dependencies]
-bevy.workspace = true
+bevy = { workspace = true, features = ["serialize"] }
 source_formats = { path = "../source_formats" }
-squirrel = { path = "../squirrel" }
+squirrel = { path = "../squirrel", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+# Saved games restore components in place, leaving skipped (runtime-only)
+# fields as the spawn code built them.
+serde_derive = { version = "1", features = ["deserialize_in_place"] }
+ciborium = "0.2"
+flate2 = "1"
 log.workspace = true
 bytemuck.workspace = true
 avian3d = "0.8"

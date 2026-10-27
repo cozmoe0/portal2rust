@@ -48,11 +48,12 @@ pub struct MoveInput {
     pub angles: Vec3,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct MoveState {
     pub origin: Vec3,
     pub velocity: Vec3,
     pub on_ground: bool,
+    #[serde(with = "crate::save::ids::opt_entity")]
     pub ground_entity: Option<Entity>,
     pub ground_normal: Vec3,
     pub ducked: bool,
