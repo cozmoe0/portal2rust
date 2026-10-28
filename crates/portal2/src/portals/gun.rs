@@ -162,6 +162,9 @@ fn pick_up_gun(
 
 /// Whether portals may be placed on a surface (texinfo index from a trace):
 /// not tool or sky faces, not flagged no-portal, and not a `%noportal` material.
+/// Portal gel is looked for this close around each placement sample.
+const PORTAL_PAINT_RADIUS: f32 = 2.0;
+
 fn surface_portalable(map: &CurrentMap, fs: &GameFs, surface: i32) -> bool {
     if surface < 0 {
         return false;
@@ -197,6 +200,7 @@ fn fire_gun(
     ),
     mut animators: Query<&mut StudioAnimator>,
     mut auto: ResMut<crate::player::autopilot::AutoFire>,
+    (paint, console): (Option<Res<crate::paint::PaintMap>>, Res<crate::console::Console>),
 ) {
     let slot = if let Some(slot) = auto.0.take() {
         slot
@@ -243,7 +247,16 @@ fn fire_gun(
         cache.by_surface.clear();
     }
     let known = std::cell::RefCell::new(std::mem::take(&mut cache.by_surface));
-    let portalable = |surface: i32| -> bool {
+    let on_paint = console.bool("sv_portal_placement_on_paint");
+    let min_paint = console.f32("paint_min_valid_alpha_value");
+    let portalable = |surface: i32, point: Vec3, normal: Vec3| -> bool {
+        // Portal gel takes portals whatever the surface.
+        if on_paint
+            && let Some(paint) = paint.as_deref()
+            && paint.dominant(0, point + normal * 0.1, PORTAL_PAINT_RADIUS, min_paint) == Some(crate::paint::PaintType::Portal)
+        {
+            return true;
+        }
         if let Some(&v) = known.borrow().get(&surface) {
             return v;
         }

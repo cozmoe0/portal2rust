@@ -69,6 +69,18 @@ pub struct MaterialCache {
     pub lightmap: Option<Handle<Image>>,
     /// Fallback cube map for `env_cubemap` (nearest probe is chosen per model later).
     pub default_cubemap: Option<Handle<Image>>,
+    /// The paint map and paint textures, on maps with paint.
+    pub paint: Option<PaintTextures>,
+}
+
+/// What paintable world materials bind to draw paint (see docs/re/paint.md).
+#[derive(Clone, Debug)]
+pub struct PaintTextures {
+    pub map: Handle<Image>,
+    pub splat: Option<Handle<Image>>,
+    pub bubble_layout: Option<Handle<Image>>,
+    pub bubble: Option<Handle<Image>>,
+    pub envmap: Option<Handle<Image>>,
 }
 
 pub struct MaterialContext<'a> {
@@ -256,6 +268,7 @@ impl MaterialCache {
         self.refract_cubemaps.clear();
         self.lightmap = None;
         self.default_cubemap = None;
+        self.paint = None;
     }
 
     pub fn world(
@@ -368,6 +381,20 @@ impl MaterialCache {
                 }
                 if vmt.get_bool("$decal") {
                     m.depth_bias = DECAL_DEPTH_BIAS;
+                }
+                // Translucent surfaces never take paint, nor do decals,
+                // water or energy fields.
+                let unpaintable = world_flags::TRANSLUCENT | world_flags::WATER | world_flags::SOLID_ENERGY | world_flags::UNLIT;
+                if let Some(paint) = &self.paint
+                    && m.params.flags & unpaintable == 0
+                    && m.depth_bias == 0
+                {
+                    m.params.flags |= world_flags::PAINT;
+                    m.paint = Some(paint.map.clone());
+                    m.paint_splat = paint.splat.clone();
+                    m.paint_bubble_layout = paint.bubble_layout.clone();
+                    m.paint_bubble = paint.bubble.clone();
+                    m.paint_envmap = paint.envmap.clone();
                 }
             }
         }

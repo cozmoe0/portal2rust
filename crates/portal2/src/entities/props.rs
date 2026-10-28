@@ -434,7 +434,7 @@ pub fn set_floor_button(world: &mut World, e: Entity, pressed: bool, activator: 
 #[derive(Component)]
 pub struct PhysicsProp;
 
-fn spawn_physics_prop(world: &mut World, e: Entity) {
+pub(crate) fn spawn_physics_prop(world: &mut World, e: Entity) {
     attach_entity_model(world, e, false);
     world.entity_mut(e).insert(PhysicsProp);
 }

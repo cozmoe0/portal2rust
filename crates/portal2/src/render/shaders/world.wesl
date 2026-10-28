@@ -44,6 +44,7 @@ const FLAG_ADDITIVE: u32 = 65536u;
 const FLAG_WATER: u32 = 131072u;
 const FLAG_WATER_BASE: u32 = 262144u;
 const FLAG_SOLID_ENERGY: u32 = 524288u;
+const FLAG_PAINT: u32 = 1048576u;
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> material: WorldParams;
 @group(constants::MATERIAL_BIND_GROUP) @binding(1) var base_tex: texture_2d<f32>;
@@ -64,6 +65,16 @@ const FLAG_SOLID_ENERGY: u32 = 524288u;
 @group(constants::MATERIAL_BIND_GROUP) @binding(16) var bump2_samp: sampler;
 @group(constants::MATERIAL_BIND_GROUP) @binding(17) var modulate_tex: texture_2d<f32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(18) var modulate_samp: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(19) var paint_tex: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(20) var paint_samp: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(21) var splat_tex: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(22) var splat_samp: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(23) var bubble_layout_tex: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(24) var bubble_layout_samp: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(25) var bubble_tex: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(26) var bubble_samp: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(27) var paint_env_tex: texture_cube<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(28) var paint_env_samp: sampler;
 
 // Tangent-space basis used for directional lightmaps (x: S, y: T, z: normal).
 const BUMP_BASIS_0 = vec3<f32>(0.81649658, 0.0, 0.57735027);
@@ -152,6 +163,114 @@ fn solid_energy(in: VertexOutput, uv: vec2<f32>) -> vec4<f32> {
     let c = material.color.rgb * mask * view.exposure;
     // Additive: fog toward black, premultiplied with zero alpha.
     return vec4<f32>(fade_with_fog(c, in.world_position.xyz), 0.0);
+}
+
+fn smooth01(x: f32) -> f32 {
+    let t = saturate(x);
+    return t * t * (3.0 - 2.0 * t);
+}
+
+fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
+    return select(pow((c + 0.055) / 1.055, vec3<f32>(2.4)), c / 12.92, c <= vec3<f32>(0.04045));
+}
+
+// The paint over a surface (docs/re/paint.md): rgb before tone mapping and
+// fog, a the coverage. The paint map holds the paint's sRGB colour and
+// amount per luxel. Its thickness (amount plus the splat texture's height)
+// picks bands: thin paint is steep-edged and greyed, thick paint carries
+// bubbles that face the viewer. The game scales its splat and bubble
+// textures by the luxel position on a 512 x 256 lightmap page.
+fn paint_layer(in: VertexOutput, n: vec3<f32>, lm_uv: vec2<f32>, lm_step: f32) -> vec4<f32> {
+    let p = textureSampleLevel(paint_tex, paint_samp, lm_uv, 0.0);
+    let atlas = vec2<f32>(textureDimensions(paint_tex));
+    let luxel = lm_uv * atlas;
+    var t = vec3<f32>(1.0, 0.0, 0.0);
+    var w = 1.0;
+    @if(VERTEX_TANGENTS) {
+        t = normalize(in.world_tangent.xyz);
+        w = in.world_tangent.w;
+    }
+    let b = cross(n, t) * w;
+    let to_eye = normalize(view.world_position - in.world_position.xyz);
+    let vt = vec3<f32>(dot(to_eye, t), dot(to_eye, b), dot(to_eye, n));
+
+    // Splat normal map with a parallax step by its own height.
+    let splat_uv = luxel * 0.078125;
+    let s0 = textureSample(splat_tex, splat_samp, splat_uv);
+    let s1 = textureSample(splat_tex, splat_samp, splat_uv + vt.xy * s0.a * 0.01);
+    let h = s0.a + p.a;
+    let thin = smooth01((0.6 - h * 0.5) / 0.3);
+    let cover = smooth01((h * 0.5 - 0.34) / 0.29);
+    let deep = smooth01(h - 1.0);
+    var ns = s1.xyz * 2.0 - 1.0;
+    ns = vec3<f32>(ns.xy * (thin * cover * 3.9 + 0.1), ns.z);
+    let nw = t * ns.x + b * ns.y + n * ns.z;
+    let refraction = (view.view_from_world * vec4<f32>(nw, 0.0)).xy * (h * deep);
+
+    // Two bubble layers; their spots are foreshortened toward the viewer.
+    let layout_uv = luxel * 0.5078125 + vt.xy * 0.0014;
+    let la = textureSample(bubble_layout_tex, bubble_layout_samp, layout_uv * 1.76 + vt.xy * 0.0007);
+    let lb = textureSample(bubble_layout_tex, bubble_layout_samp, layout_uv + vt.xy * 0.03);
+    let len_nt = max(length(vt.zx), 1e-4);
+    let along = vt.z / len_nt;
+    let across = vt.x / len_nt;
+    let oa = la.xy - 0.5;
+    let ob = lb.xy - 0.5;
+    let qa = vec2<f32>(oa.x * along, oa.y * len_nt - oa.x * vt.y * across) + 0.5 + refraction * 0.2;
+    let qb = vec2<f32>(ob.x * along, ob.y * len_nt - ob.x * vt.y * across) + 0.5 + refraction * 0.05;
+    let ba = textureSample(bubble_tex, bubble_samp, qa);
+    let bb = textureSample(bubble_tex, bubble_samp, qb);
+    let b3 = textureSample(bubble_tex, bubble_samp, ob * 0.5 + 0.5);
+    let pres_a = la.b * smooth01((h * 0.5 - 0.4) / 0.35);
+    let pres_b = lb.b * smooth01((h * 0.5 - 0.75) * 20.0);
+    let flat_bubble = vec4<f32>(0.5, 0.5, 1.0, 0.0);
+    let ga = flat_bubble + pres_a * (ba - flat_bubble);
+    let gb = flat_bubble + pres_b * (bb - flat_bubble);
+    let g = mix(ga * vec4<f32>(1.0, 1.0, 1.0, 0.4), gb, gb.a);
+    let gn = g.xyz * 2.0 - 1.0;
+    let bubble4 = vec4<f32>(t * gn.x + b * gn.y + n * gn.z, g.a);
+    let bubble = bubble4 / max(length(bubble4), 1e-4);
+
+    // The surface normal also takes the small bubbles' bumps.
+    let bumps = (b3.xyz * 2.0 - 1.0) * vec3<f32>(-2.0, -2.0, 1.0) * pow(pres_b, 3.5) * 0.4;
+    let nt = normalize(ns + bumps);
+    let surface = t * nt.x + b * nt.y + n * nt.z;
+
+    // Colour, from a second read nearer the thick part, greyed where thin.
+    let ahead = vec2<f32>(0.003 * (1.0 - h)) * vec2<f32>(512.0, 256.0) / atlas;
+    let p2 = textureSampleLevel(paint_tex, paint_samp, lm_uv + ahead, 0.0);
+    let rgb = srgb_to_linear(mix(p.rgb, p2.rgb, smooth01((p2.a - 0.9) * 10.0)));
+    let lum = dot(rgb, vec3<f32>(0.299, 0.587, 0.114));
+    let albedo = lum * 0.5 + cover * (rgb - lum * 0.5);
+
+    // Reflections of the paint's own environment map, a sixteenth strong.
+    let ndv = dot(surface, to_eye);
+    let env_bubble = textureSample(paint_env_tex, paint_env_samp, reflect(-to_eye, normalize(bubble.xyz + vec3<f32>(0.0, 0.0, 1e-5)))).rgb;
+    let env_surface = textureSample(paint_env_tex, paint_env_samp, reflect(-to_eye, surface)).rgb;
+    let spec = env_bubble * (1.0 / 16.0) * albedo * bubble.w * ndv * 2.0 + env_surface * (1.0 / 16.0) * (1.5 - ndv) * 0.67;
+
+    var light = textureSampleLevel(lightmap_tex, lightmap_samp, lm_uv, 0.0).rgb;
+    if lm_step > 0.0 {
+        let l1 = textureSampleLevel(lightmap_tex, lightmap_samp, lm_uv + vec2<f32>(lm_step, 0.0), 0.0).rgb;
+        let l2 = textureSampleLevel(lightmap_tex, lightmap_samp, lm_uv + vec2<f32>(lm_step * 2.0, 0.0), 0.0).rgb;
+        let l3 = textureSampleLevel(lightmap_tex, lightmap_samp, lm_uv + vec2<f32>(lm_step * 3.0, 0.0), 0.0).rgb;
+        var dp = vec3<f32>(
+            saturate(dot(nt, BUMP_BASIS_0)),
+            saturate(dot(nt, BUMP_BASIS_1)),
+            saturate(dot(nt, BUMP_BASIS_2)),
+        );
+        dp = dp * dp;
+        light = (dp.x * l1 + dp.y * l2 + dp.z * l3) / max(dp.x + dp.y + dp.z, 1e-4);
+    }
+    light = light * material.lightmap_scale;
+
+    let color = albedo * (light * 0.82 + 0.04) * vec3<f32>(0.8, 0.85, 1.0) + spec * (light + 1.0);
+    let bubbles = ga.a * 0.2 + gb.a * 0.3;
+    var alpha = saturate((smooth01((h * 0.5 - 0.4) * 20.0) - bubbles * 1.25) * 0.85);
+    if p.a < 0.01 {
+        alpha = 0.0;
+    }
+    return vec4<f32>(color, alpha);
 }
 
 @fragment
@@ -286,10 +405,6 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
         }
         let v = normalize(view.world_position - in.world_position.xyz);
         let r = reflect(-v, wn);
-        var spec = textureSample(envmap_tex, envmap_samp, r).rgb;
-        let lum = luminance(spec);
-        spec = mix(vec3<f32>(lum), spec, material.envmap_saturation);
-        spec = mix(spec, spec * spec, material.envmap_contrast);
         var mask = vec3<f32>(1.0);
         if has(FLAG_ENVMAPMASK) {
             mask = textureSample(envmask_tex, envmask_samp, uv).rgb;
@@ -300,13 +415,33 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
         if has(FLAG_NORMALALPHA_ENVMAPMASK) {
             mask = vec3<f32>(bump.a);
         }
+        // As the game's shader: masked and tinted first, then the contrast
+        // (toward the square) and saturation (around the luminance).
+        var spec = textureSample(envmap_tex, envmap_samp, r).rgb * mask * material.envmap_tint.rgb;
+        spec = mix(spec, spec * spec, material.envmap_contrast);
+        let lum = dot(spec, vec3<f32>(0.299, 0.587, 0.114));
+        spec = mix(vec3<f32>(lum), spec, material.envmap_saturation);
         // Reflections fade with the baked lighting so dark corners stay dark.
         spec = spec * mix(vec3<f32>(1.0), diffuse, saturate(material.envmap_light_scale));
-        color = color + spec * material.envmap_tint.rgb * mask;
+        color = color + spec;
     }
 
     if has(FLAG_SELFILLUM) {
         color = mix(color, albedo * material.selfillum_tint.rgb, base.a);
+    }
+
+    if has(FLAG_PAINT) {
+        var paint_uv = vec2<f32>(0.0);
+        @if(VERTEX_UVS_B) {
+            paint_uv = in.uv_b;
+        }
+        var paint_step = 0.0;
+        @if(VERTEX_COLORS) {
+            paint_step = in.color.r;
+        }
+        // Faces with directional lightmaps light their paint with them.
+        let paint = paint_layer(in, n, paint_uv, paint_step);
+        color = mix(color, paint.rgb, paint.a);
     }
 
     if has(FLAG_ADDITIVE) {

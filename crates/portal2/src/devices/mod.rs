@@ -4,6 +4,7 @@
 
 pub mod bridge;
 pub mod catapult;
+pub mod func_tank;
 pub mod funnel;
 pub mod laser;
 pub mod security_camera;
@@ -34,6 +35,7 @@ impl Plugin for DevicesPlugin {
                 catapult::CatapultPlugin,
                 turret::TurretPlugin,
                 security_camera::SecurityCameraPlugin,
+                func_tank::FuncTankPlugin,
             ));
     }
 }

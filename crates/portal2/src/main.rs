@@ -17,6 +17,7 @@ mod entities;
 mod gameui;
 mod hud;
 mod models;
+mod paint;
 mod particles;
 mod physics;
 mod player;
@@ -67,7 +68,7 @@ fn main() {
             (entities::EntitiesPlugin, script::ScriptPlugin, player::PlayerPlugin, physics::GamePhysicsPlugin),
             (portals::PortalsPlugin, devices::DevicesPlugin, screen::ScreenPlugin, render::fog::FogPlugin, render::projected::ProjectedPlugin, render::sprites::SpritePlugin, render::spotlights::SpotlightPlugin, render::movies::MoviePlugin, render::tonemap::TonemapPlugin, audio::AudioPlugin, captions::CaptionsPlugin),
             (camera::CameraPlugin, screenshot::ScreenshotPlugin, shots::ShotsPlugin, smoke::SmokePlugin, chain::ChainPlugin, probe::ProbePlugin),
-            (save::SavePlugin, vgui::VguiPlugin, hud::HudPlugin, video::VideoPlugin, gameui::GameUiPlugin, particles::ParticlePlugin),
+            (save::SavePlugin, vgui::VguiPlugin, hud::HudPlugin, video::VideoPlugin, gameui::GameUiPlugin, particles::ParticlePlugin, paint::PaintPlugin),
         ))
         .run();
 }

@@ -198,6 +198,14 @@ fn load_map_system(
     }
     let skybox_batches = std::mem::take(&mut geometry.skybox);
     material_cache.lightmap = Some(lightmap.clone());
+    // Maps with paint draw it from a paint map laid out like the lightmaps.
+    match crate::paint::build_paint_map(&bsp, &geometry, &fs, &mut images) {
+        Some(paint) => {
+            material_cache.paint = Some(crate::paint::paint_textures(&paint, &fs, &mut textures, &mut images));
+            commands.insert_resource(paint);
+        }
+        None => commands.remove_resource::<crate::paint::PaintMap>(),
+    }
 
     let mut ctx = MaterialContext { fs: &fs, textures: &mut textures, images: &mut images };
     let mut model_meshes = Vec::with_capacity(geometry.models.len());
@@ -253,6 +261,8 @@ fn load_map_system(
         let material = match world_materials.get(&info.handle).cloned() {
             Some(mut m) if m.depth_bias == 0 => {
                 m.depth_bias = crate::render::source_material::DECAL_DEPTH_BIAS;
+                // Overlays cover paint; they never show it themselves.
+                m.params.flags &= !world_flags::PAINT;
                 world_materials.add(m)
             }
             _ => info.handle.clone(),

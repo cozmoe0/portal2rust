@@ -2,21 +2,27 @@
 //! acceleration, air control capped to a small wish speed, gravity, sliding
 //! along multiple surfaces, stair stepping and ground snapping, plus Portal
 //! 2's air steering rules and its pull toward floor portals
-//! (`docs/re/gameplay.md`).
+//! (`docs/re/gameplay.md`), and what bounce and speed gel do
+//! (`docs/re/paint.md`).
 //!
 //! Tuning values are the game's console-variable defaults; the hull and eye
 //! dimensions are the standard documented Source player sizes.
 
 use bevy::prelude::*;
 
+use std::cell::RefCell;
+
 use crate::collision::{Physics, Trace, mask};
+use crate::paint::power::{self, BounceCheck, GelSettings, SpeedCheck};
+use crate::paint::{PaintMap, PaintType};
 use crate::portals::placement::{HALF_HEIGHT, HALF_WIDTH, PortalFrame};
 
 pub const GRAVITY: f32 = 600.0;
 pub const FRICTION: f32 = 4.0;
 pub const STOP_SPEED: f32 = 100.0;
 pub const ACCELERATE: f32 = 10.0;
-pub const AIR_ACCELERATE: f32 = 10.0;
+/// Portal 2's air move uses `sv_paintairacceleration`, not `sv_airaccelerate`.
+pub const AIR_ACCELERATE: f32 = 5.0;
 pub const MAX_SPEED: f32 = 175.0;
 pub const STEP_SIZE: f32 = 18.0;
 pub const MAX_VELOCITY: f32 = 3500.0;
@@ -167,6 +173,19 @@ pub struct MoveState {
     /// 0 = standing view, 1 = fully ducked view.
     pub duck_fraction: f32,
     pub jump_held: bool,
+    /// Top speed: `sv_speed_normal`, raised by speed gel.
+    #[serde(default = "normal_speed")]
+    pub max_speed: f32,
+    /// Time on bounce gel since leaving speed gel (the top speed holds a moment).
+    #[serde(default)]
+    pub speed_delay: f32,
+    /// Gel under the player at the end of the last tick.
+    #[serde(skip)]
+    pub ground_paint: Option<PaintType>,
+}
+
+fn normal_speed() -> f32 {
+    MAX_SPEED
 }
 
 impl Default for MoveState {
@@ -180,6 +199,9 @@ impl Default for MoveState {
             ducked: false,
             duck_fraction: 0.0,
             jump_held: false,
+            max_speed: MAX_SPEED,
+            speed_delay: 0.0,
+            ground_paint: None,
         }
     }
 }
@@ -198,6 +220,10 @@ pub struct Mover<'a, 'w, 's> {
     pub physics: &'a Physics<'w, 's>,
     pub ignore: &'a [Entity],
     pub funnel: Option<&'a Funnel>,
+    /// The map's paint and the gel settings, on maps with paint.
+    pub gels: Option<(&'a PaintMap, &'a GelSettings)>,
+    /// Surfaces touched during the tick: hull origin and surface normal.
+    pub contacts: RefCell<Vec<(Vec3, Vec3)>>,
 }
 
 impl Mover<'_, '_, '_> {
@@ -205,17 +231,38 @@ impl Mover<'_, '_, '_> {
         self.physics.trace(start, end, mins, maxs, mask::PLAYER_SOLID, self.ignore)
     }
 
-    /// Advances the player by one tick.
-    pub fn step(&self, s: &mut MoveState, input: &MoveInput, dt: f32) {
+    /// Advances the player by one tick. Returns whether bounce gel threw
+    /// the player off a surface.
+    pub fn step(&self, s: &mut MoveState, input: &MoveInput, dt: f32) -> bool {
         self.unstick(s);
         self.update_duck(s, input, dt);
+        self.contacts.borrow_mut().clear();
+        let pre_velocity = s.velocity;
+        let was_in_air = !s.on_ground;
+        // Standing on something counts as touching it this tick, even if
+        // the move then jumps off it.
+        if s.on_ground {
+            self.contacts.borrow_mut().push((s.origin, s.ground_normal));
+        }
 
         let yaw = input.angles.y.to_radians();
         let forward = Vec3::new(yaw.cos(), yaw.sin(), 0.0);
         let right = Vec3::new(yaw.sin(), -yaw.cos(), 0.0);
-        let mut wish = forward * input.forward + right * input.right;
+        let input_dir = (forward * input.forward + right * input.right).normalize_or_zero();
+        // A raised top speed (speed gel) weakens whichever of forward and
+        // side is less aligned with the velocity.
+        let max_speed = s.max_speed.max(MAX_SPEED);
+        let mut axes = (1.0, 1.0);
+        if max_speed > MAX_SPEED
+            && let Some((_, g)) = self.gels
+        {
+            axes = power::move_axis_scales(forward, right, s.velocity, input.forward, input.right, s.on_ground, g);
+        }
+        let keys = Vec2::new(input.forward, input.right);
+        let scaled = keys.normalize_or_zero() * Vec2::new(axes.0, axes.1);
+        let mut wish = forward * scaled.x + right * scaled.y;
         wish.z = 0.0;
-        let mut wish_speed = wish.length().min(1.0) * MAX_SPEED;
+        let mut wish_speed = keys.length().min(1.0) * scaled.length() * max_speed;
         let wish_dir = wish.normalize_or_zero();
         if s.ducked && s.on_ground {
             wish_speed *= DUCK_SPEED_SCALE;
@@ -239,13 +286,93 @@ impl Mover<'_, '_, '_> {
             // Gravity is split around the move for a symmetric arc.
             s.velocity.z -= GRAVITY * dt * 0.5;
             let wish = self.air_wish(s, input, dt);
-            air_accelerate(&mut s.velocity, wish.normalize_or_zero(), wish.length().min(MAX_SPEED), AIR_ACCELERATE, dt);
+            air_accelerate(&mut s.velocity, wish.normalize_or_zero(), wish.length().min(max_speed), AIR_ACCELERATE, dt);
             clamp_velocity(&mut s.velocity);
             self.slide_move(s, dt);
             s.velocity.z -= GRAVITY * dt * 0.5;
         }
         self.categorize_position(s);
         clamp_velocity(&mut s.velocity);
+        let Some((paint, g)) = self.gels else { return false };
+        self.apply_gels(s, input, paint, g, pre_velocity, was_in_air, input_dir, forward, dt)
+    }
+
+    /// Looks up the gel at each surface touched this tick: bounce gel can
+    /// throw the player off it, speed gel raises the top speed (which falls
+    /// back off it).
+    #[allow(clippy::too_many_arguments)]
+    fn apply_gels(
+        &self,
+        s: &mut MoveState,
+        input: &MoveInput,
+        paint: &PaintMap,
+        g: &GelSettings,
+        pre_velocity: Vec3,
+        was_in_air: bool,
+        wish_dir: Vec3,
+        forward: Vec3,
+        dt: f32,
+    ) -> bool {
+        let mut contacts = std::mem::take(&mut *self.contacts.borrow_mut());
+        if s.on_ground {
+            contacts.push((s.origin, s.ground_normal));
+        }
+        let standing = !was_in_air || s.on_ground;
+        let (mins, maxs) = s.hull();
+        let half = (maxs - mins) * 0.5;
+        let eye_forward = crate::coords::angles_to_quat(input.angles) * Vec3::X;
+        let mut ground_paint = None;
+        let mut bounce = None;
+        let mut touching = None;
+        for &(origin, n) in &contacts {
+            // The point of the hull against the surface.
+            let reach = n.x.abs() * half.x + n.y.abs() * half.y + n.z.abs() * half.z;
+            let point = origin + (mins + maxs) * 0.5 - n * reach + n * 0.1;
+            let ty = paint.dominant(0, point, g.detection_radius, g.min_valid_amount);
+            touching = Some(n);
+            if standing && n.z >= MIN_WALKABLE_NORMAL && ground_paint.is_none() {
+                ground_paint = ty;
+            }
+            if ty == Some(PaintType::Bounce) && bounce.is_none() {
+                let check = BounceCheck {
+                    velocity: pre_velocity,
+                    normal: n,
+                    up: Vec3::Z,
+                    in_air: was_in_air,
+                    jump_held: input.jump,
+                    ducked: s.ducked,
+                    max_speed: s.max_speed,
+                    eye_forward,
+                };
+                if power::should_bounce(&check, g) {
+                    bounce = Some(n);
+                }
+            }
+        }
+        if let Some(n) = bounce {
+            s.velocity = power::bounce_velocity(pre_velocity, n, Vec3::Z, g);
+            debug!("bounce gel at {} (normal {n}): {pre_velocity} -> {}", s.origin, s.velocity);
+            clamp_velocity(&mut s.velocity);
+            s.on_ground = false;
+            s.ground_entity = None;
+        }
+        let check = SpeedCheck {
+            max_speed: s.max_speed.max(g.normal_speed),
+            velocity: s.velocity,
+            wish: wish_dir,
+            on_ground: s.on_ground,
+            ground_normal: s.ground_normal,
+            forward,
+        };
+        s.max_speed = if ground_paint == Some(PaintType::Speed) {
+            s.speed_delay = 0.0;
+            power::speed_on_gel(&check, g, dt)
+        } else {
+            let on_bounce = ground_paint == Some(PaintType::Bounce);
+            power::speed_off_gel(&check, touching, on_bounce, &mut s.speed_delay, g, dt)
+        };
+        s.ground_paint = ground_paint;
+        bounce.is_some()
     }
 
     /// The wish velocity in the air. The view's forward axis is flattened
@@ -260,9 +387,10 @@ impl Mover<'_, '_, '_> {
         }
         let yaw = input.angles.y.to_radians();
         let right = Vec3::new(yaw.sin(), -yaw.cos(), 0.0);
-        let mut moves = Vec2::new(input.forward, input.right) * MAX_SPEED;
-        if moves.length() > MAX_SPEED {
-            moves = moves.normalize() * MAX_SPEED;
+        let max_speed = s.max_speed.max(MAX_SPEED);
+        let mut moves = Vec2::new(input.forward, input.right) * max_speed;
+        if moves.length() > max_speed {
+            moves = moves.normalize() * max_speed;
         }
         let mut wish = forward * moves.x + right * moves.y;
 
@@ -434,6 +562,7 @@ impl Mover<'_, '_, '_> {
                 break;
             }
             time_left -= time_left * tr.fraction;
+            self.contacts.borrow_mut().push((s.origin, tr.normal));
             if planes.len() >= 5 {
                 s.velocity = Vec3::ZERO;
                 break;
@@ -508,7 +637,9 @@ fn apply_friction(s: &mut MoveState, dt: f32) {
     if speed < 0.1 {
         return;
     }
-    let control = speed.max(STOP_SPEED);
+    // On speed or portal gel a slow player stops as if at twice the stop speed.
+    let gel = matches!(s.ground_paint, Some(PaintType::Speed | PaintType::Portal));
+    let control = if gel && speed < STOP_SPEED { STOP_SPEED * 2.0 } else { speed.max(STOP_SPEED) };
     let drop = control * FRICTION * dt;
     let new_speed = (speed - drop).max(0.0);
     s.velocity *= new_speed / speed;

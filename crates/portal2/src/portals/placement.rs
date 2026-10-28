@@ -89,8 +89,9 @@ pub struct Helper {
 pub struct PlacementContext<'a, 'w, 's> {
     pub physics: &'a Physics<'w, 's>,
     pub ignore: &'a [Entity],
-    /// Whether a surface (texinfo index from a trace) accepts portals.
-    pub portalable: &'a dyn Fn(i32) -> bool,
+    /// Whether a surface accepts portals: texinfo index from a trace,
+    /// the hit point and normal (portal gel makes any surface take them).
+    pub portalable: &'a dyn Fn(i32, Vec3, Vec3) -> bool,
     pub noportal_volumes: &'a [Entity],
     pub bumpers: &'a [Entity],
     pub cleansers: &'a [Entity],
@@ -109,7 +110,7 @@ impl PlacementContext<'_, '_, '_> {
         if tr.normal.dot(n) < 0.99 || (n.dot(tr.end) - frame.plane_dist()).abs() > 0.5 {
             return false;
         }
-        (self.portalable)(tr.surface)
+        (self.portalable)(tr.surface, tr.end, tr.normal)
     }
 
     fn in_any(&self, list: &[Entity], p: Vec3) -> bool {
@@ -198,7 +199,7 @@ impl PlacementContext<'_, '_, '_> {
         if tr.surface < 0 {
             return Err(PlacementFail::NoMaterial);
         }
-        if !(self.portalable)(tr.surface) {
+        if !(self.portalable)(tr.surface, tr.end, tr.normal) {
             return Err(PlacementFail::NotPortalable);
         }
         let n = tr.normal.normalize();

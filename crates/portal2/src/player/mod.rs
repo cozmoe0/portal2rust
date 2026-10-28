@@ -173,8 +173,11 @@ fn player_tick(
     portals: Option<Res<crate::portals::Portals>>,
     portal_query: Query<&crate::portals::Portal>,
     mut players: Query<(Entity, &mut Player, &mut Transform)>,
+    (paint, mut sounds): (Option<Res<crate::paint::PaintMap>>, MessageWriter<crate::audio::SoundRequest>),
 ) {
     let speed_scale = speed_mod.map(|s| s.0).unwrap_or(1.0);
+    let gel_settings = crate::paint::power::GelSettings::from_console(&console);
+    let gels = paint.as_deref().map(|p| (p, &gel_settings));
     let dt = time.delta_secs();
     let now = time.elapsed_secs_f64();
     let held = holding.and_then(|h| h.entity);
@@ -200,7 +203,7 @@ fn player_tick(
         }
         // The carried prop never blocks its carrier.
         let ignore: Vec<Entity> = std::iter::once(e).chain(held).collect();
-        let mover = Mover { physics: &physics, ignore: &ignore, funnel: funnel.as_ref() };
+        let mover = Mover { physics: &physics, ignore: &ignore, funnel: funnel.as_ref(), gels, contacts: Default::default() };
         let mut state = p.state;
         let mut move_input = input.input;
         // player_speedmod slows walking.
@@ -224,8 +227,8 @@ fn player_tick(
             let wish = (q * Vec3::X * move_input.forward - q * Vec3::Y * move_input.right) * steer;
             let flow = crate::devices::funnel::player_flow(&pull, center, wish);
             mover.funnel_move(&mut state, &move_input, flow, dt);
-        } else {
-            mover.step(&mut state, &move_input, dt);
+        } else if mover.step(&mut state, &move_input, dt) {
+            sounds.write(crate::audio::SoundRequest::on("Player.JumpPowerUse", e));
         }
         p.state = state;
         p.ground_ref = state.ground_entity.and_then(|g| placements.get(g).ok().map(|gt| (g, gt.affine())));

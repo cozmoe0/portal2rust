@@ -54,8 +54,9 @@ the code in `crates/portal2` is written from them.
 - While air control is suppressed (after a faith plate launch) the wish is
   zeroed, but the floor-portal pull below still applies.
 - Air acceleration builds speed along the wish direction up to 60 u/s (not
-  the usual 30), `sv_airaccelerate × wish speed × dt` per tick, the wish
-  speed at most the player's maximum speed.
+  the usual 30), `sv_paintairacceleration × wish speed × dt` per tick
+  (5, not `sv_airaccelerate`'s 10), the wish speed at most the player's
+  maximum speed (raised by speed gel, see paint.md).
 
 ## Funneling into floor portals (`sv_player_funnel_into_portals`)
 

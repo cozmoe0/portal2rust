@@ -1,0 +1,3 @@
+# Paint blobs in flight for M11: one of the sp_a3_jump_intro spawn
+# sprayers restarted, seen from the side while its stream falls.
+blobs_stream sp_a3_jump_intro -864 1250 950 20 270 0 ent_fire paint_sprayer_jump_2 start

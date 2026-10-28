@@ -44,6 +44,9 @@ pub mod world_flags {
     /// texture's alpha, scrolled along the flow map in two phases, times
     /// `$flow_color` and masked by `$flowbounds` (`detail`).
     pub const SOLID_ENERGY: u32 = 524288;
+    /// Paint (gels) drawn over the surface from the map's paint map (see
+    /// docs/re/paint.md); set on paintable materials of paint maps.
+    pub const PAINT: u32 = 1 << 20;
 }
 
 pub mod model_flags {
@@ -197,6 +200,22 @@ pub struct WorldMaterial {
     #[texture(17)]
     #[sampler(18)]
     pub blend_modulate: Option<Handle<Image>>,
+    /// The map's paint map, laid out like the lightmap atlas.
+    #[texture(19)]
+    #[sampler(20)]
+    pub paint: Option<Handle<Image>>,
+    #[texture(21)]
+    #[sampler(22)]
+    pub paint_splat: Option<Handle<Image>>,
+    #[texture(23)]
+    #[sampler(24)]
+    pub paint_bubble_layout: Option<Handle<Image>>,
+    #[texture(25)]
+    #[sampler(26)]
+    pub paint_bubble: Option<Handle<Image>>,
+    #[texture(27, dimension = "cube")]
+    #[sampler(28)]
+    pub paint_envmap: Option<Handle<Image>>,
     #[storage(30, read_only)]
     pub projected_lights: Handle<ShaderBuffer>,
     #[texture(31, dimension = "2d_array")]
@@ -238,6 +257,11 @@ impl Default for WorldMaterial {
             detail: None,
             bump2: None,
             blend_modulate: None,
+            paint: None,
+            paint_splat: None,
+            paint_bubble_layout: None,
+            paint_bubble: None,
+            paint_envmap: None,
             projected_lights,
             cookies,
             shadow0,

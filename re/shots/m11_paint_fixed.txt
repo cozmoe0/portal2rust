@@ -1,0 +1,4 @@
+# The M11 paint views with the tone map scale forced to 1 on both sides
+# (ours: --exposure 1), so only the surfaces differ.
+paint_fixed_far sp_a3_jump_intro -384 1250 1250 5 270 0 mat_force_tonemap_scale 1
+paint_fixed_near sp_a3_jump_intro -384 1060 1270 10 270 0 mat_force_tonemap_scale 1

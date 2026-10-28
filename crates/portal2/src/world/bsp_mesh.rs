@@ -83,6 +83,9 @@ pub struct WorldGeometry {
     pub skybox: Vec<MeshBatch>,
     pub skybox_overlays: Vec<MeshBatch>,
     pub atlas: LightmapAtlas,
+    /// Atlas texel holding luxel (0, 0) of each lightmapped face's flat
+    /// lightmap, by face index (paint maps share this layout).
+    pub face_luxels: HashMap<usize, [u32; 2]>,
 }
 
 fn face_is_drawn(bsp: &Bsp, face: &Face) -> bool {
@@ -509,7 +512,8 @@ pub fn build_world_geometry(bsp: &Bsp, skybox_area: Option<u16>) -> WorldGeometr
     let (overlays, skybox_overlays) = build_overlays(bsp, &rects, atlas_size, &in_skybox);
     let mut skybox: Vec<MeshBatch> = sky_batches.into_values().filter(|b| !b.indices.is_empty()).collect();
     skybox.sort_by(|a, b| a.texdata_name.cmp(&b.texdata_name));
-    WorldGeometry { models, overlays, skybox, skybox_overlays, atlas }
+    let face_luxels = rects.iter().map(|(&f, r)| (f, [r.x + 1, r.y + 1])).collect();
+    WorldGeometry { models, overlays, skybox, skybox_overlays, atlas, face_luxels }
 }
 
 fn build_face(bsp: &Bsp, face: &Face, m: &FaceMapping, batch: &mut MeshBatch) {

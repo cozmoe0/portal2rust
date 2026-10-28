@@ -1,0 +1,6 @@
+# Paint for M11: the sp_a3_jump_intro walls painted by the silent sprayers
+# at map spawn. name map x y z pitch yaw roll (feet origin, as setpos).
+# Capture with --map-settle 12 --settle 3; ours with --shot-map-settle 12.
+paint_wall_far sp_a3_jump_intro -384 1250 1250 5 270 0
+paint_wall_near sp_a3_jump_intro -384 1060 1270 10 270 0
+paint_wall_side sp_a3_jump_intro -600 1150 1260 0 300 0

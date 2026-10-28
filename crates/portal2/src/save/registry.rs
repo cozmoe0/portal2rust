@@ -124,6 +124,9 @@ pub fn register_all(r: &mut SaveRegistry) {
     crate::render::spotlights::register_save(r);
     crate::render::movies::register_save(r);
     crate::render::tonemap::register_save(r);
+    crate::paint::blobs::register_save(r);
+    crate::paint::bomb::register_save(r);
+    crate::devices::func_tank::register_save(r);
     r.custom("animator", save_animator, load_animator);
     r.custom("physics", save_physics, load_physics);
     r.custom("script_scope", crate::script::save::save_scope, crate::script::save::load_scope);
