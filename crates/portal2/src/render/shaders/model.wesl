@@ -27,6 +27,10 @@ struct ModelParams {
     fresnel: vec4<f32>,
     // rgb: specular tint
     phong_tint: vec4<f32>,
+    // rgb: 0 = reflection as is, 1 = squared (not phong)
+    envmap_contrast: vec4<f32>,
+    // rgb: 0 = grey, 1 = as is (not phong)
+    envmap_saturation: vec4<f32>,
     ambient: array<vec4<f32>, 6>,
     lights: array<ModelLight, 4>,
     flags: u32,
@@ -54,6 +58,7 @@ const FLAG_HALF_LAMBERT: u32 = 32768u;
 const FLAG_LIGHTWARP: u32 = 65536u;
 const FLAG_SELFILLUM_MASK: u32 = 131072u;
 const FLAG_BASEMAPLUMINANCE_PHONGMASK: u32 = 262144u;
+const FLAG_INVERT_PHONG_ENVMAPMASK: u32 = 524288u;
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> material: ModelParams;
 @group(constants::MATERIAL_BIND_GROUP) @binding(1) var base_tex: texture_2d<f32>;
@@ -240,19 +245,36 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
         var spec = textureSample(envmap_tex, envmap_samp, r).rgb * material.envmap_tint.rgb;
         var mask = vec3<f32>(1.0);
         if has(FLAG_PHONG) {
-            // Phong materials mask reflections like their highlights unless
-            // told to use the base alpha, and can share the Fresnel ranges.
-            mask = vec3<f32>(phong_mask);
+            // Phong materials mask reflections by base alpha, or with
+            // `$normalmapalphaenvmapmask` like their highlights, optionally
+            // inverted; they have no mask texture. They can share the Fresnel
+            // ranges.
+            var m = base.a;
+            if has(FLAG_NORMALALPHA_ENVMAPMASK) {
+                m = phong_mask;
+            }
+            if has(FLAG_INVERT_PHONG_ENVMAPMASK) {
+                m = 1.0 - m;
+            }
+            mask = vec3<f32>(m);
             spec = spec * mix(1.0, fresnel, material.fresnel.w);
-        }
-        if has(FLAG_ENVMAPMASK) {
-            mask = textureSample(envmask_tex, envmask_samp, uv).rgb;
-        }
-        if has(FLAG_BASEALPHA_ENVMAPMASK) {
-            mask = vec3<f32>(base.a);
-        }
-        if has(FLAG_NORMALALPHA_ENVMAPMASK) {
-            mask = vec3<f32>(bump.a);
+        } else {
+            // The rest mask first (the mask texture's red channel), then
+            // apply contrast and saturation to the tinted reflection.
+            var m = 1.0;
+            if has(FLAG_ENVMAPMASK) {
+                m = textureSample(envmask_tex, envmask_samp, uv).r;
+            }
+            if has(FLAG_BASEALPHA_ENVMAPMASK) {
+                m = base.a;
+            }
+            if has(FLAG_NORMALALPHA_ENVMAPMASK) {
+                m = bump.a;
+            }
+            spec = spec * m;
+            spec = mix(spec, spec * spec, material.envmap_contrast.rgb);
+            let grey = dot(spec, vec3<f32>(0.299, 0.587, 0.114));
+            spec = mix(vec3<f32>(grey), spec, material.envmap_saturation.rgb);
         }
         color = color + spec * mask;
     }

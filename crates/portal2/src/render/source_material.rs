@@ -10,6 +10,7 @@ use bevy::shader::ShaderRef;
 
 pub const WORLD_SHADER: &str = "embedded://portal2/render/shaders/world.wesl";
 pub const MODEL_SHADER: &str = "embedded://portal2/render/shaders/model.wesl";
+pub const REFRACT_SHADER: &str = "embedded://portal2/render/shaders/refract.wesl";
 
 pub mod world_flags {
     pub const BASE2: u32 = 1;
@@ -53,6 +54,20 @@ pub mod model_flags {
     /// Self-illumination mask from its own texture instead of base alpha.
     pub const SELFILLUM_MASK: u32 = 131072;
     pub const BASEMAPLUMINANCE_PHONGMASK: u32 = 262144;
+    /// `$invertphongmask`: phong reflections use one minus their mask.
+    pub const INVERT_PHONG_ENVMAPMASK: u32 = 524288;
+}
+
+pub mod refract_flags {
+    /// `$localrefract`: refract a parallax lookup into the base texture
+    /// instead of the scene behind the surface.
+    pub const LOCAL: u32 = 1;
+    pub const NORMALMAP: u32 = 2;
+    pub const ENVMAP: u32 = 4;
+    /// Four-tap blur of the scene behind (`$bluramount` of 1 or more).
+    pub const BLUR: u32 = 8;
+    /// `$refracttinttexture` multiplies the tint (times two).
+    pub const TINT_TEXTURE: u32 = 16;
 }
 
 /// Pipeline state that cannot live in uniforms.
@@ -216,6 +231,10 @@ pub struct ModelParams {
     pub fresnel: Vec4,
     /// rgb: `$phongtint` (white when unset).
     pub phong_tint: Vec4,
+    /// rgb: `$envmapcontrast` (0 = reflection as is, 1 = squared); not used by phong.
+    pub envmap_contrast: Vec4,
+    /// rgb: `$envmapsaturation` (0 = grey, 1 = as is); not used by phong.
+    pub envmap_saturation: Vec4,
     pub ambient: [Vec4; 6],
     pub lights: [ModelLight; 4],
     pub flags: u32,
@@ -265,6 +284,7 @@ impl Default for ModelMaterial {
                 phong: Vec4::new(5.0, 1.0, 0.0, 0.0),
                 fresnel: Vec4::new(0.0, 0.5, 1.0, 0.0),
                 phong_tint: Vec4::ONE,
+                envmap_saturation: Vec4::ONE,
                 ambient: [Vec4::splat(0.2); 6],
                 alpha_ref: 0.5,
                 ..default()
@@ -296,6 +316,109 @@ impl Material for ModelMaterial {
 
     fn alpha_mode(&self) -> AlphaMode {
         self.alpha_mode
+    }
+
+    fn enable_prepass() -> bool {
+        false
+    }
+
+    fn enable_shadows() -> bool {
+        false
+    }
+
+    fn specialize(
+        _pipeline: &MaterialPipeline,
+        descriptor: &mut RenderPipelineDescriptor,
+        _layout: &MeshVertexBufferLayoutRef,
+        key: MaterialPipelineKey<Self>,
+    ) -> Result<(), SpecializedMeshPipelineError> {
+        apply_key(descriptor, key.bind_group_data, key.mesh_key);
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, ShaderType)]
+pub struct RefractParams {
+    /// rgb: `$refracttint`, already converted to linear.
+    pub refract_tint: Vec4,
+    /// rgb: `$envmaptint`, already converted to linear.
+    pub envmap_tint: Vec4,
+    /// rgb: `$envmapcontrast` (0 = as is, 1 = squared).
+    pub envmap_contrast: Vec4,
+    /// rgb: `$envmapsaturation` (0 = grey, 1 = as is).
+    pub envmap_saturation: Vec4,
+    /// x: `$refractamount`, y: `$localrefractdepth`, z: base texture height
+    /// over width as a whole number (scales the parallax offset in u).
+    pub refract: Vec4,
+    pub flags: u32,
+    pub _pad1: f32,
+    pub _pad2: f32,
+    pub _pad3: f32,
+}
+
+/// Source's `Refract` shader on studio models: the scene behind the surface
+/// (Bevy's copy of the opaque pass), or with `$localrefract` the base
+/// texture, offset by the normal map and tinted, plus a cube map reflection.
+#[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
+#[bind_group_data(SourceMaterialKey)]
+pub struct RefractMaterial {
+    #[uniform(0)]
+    pub params: RefractParams,
+    #[texture(1)]
+    #[sampler(2)]
+    pub base: Option<Handle<Image>>,
+    #[texture(3)]
+    #[sampler(4)]
+    pub normal: Option<Handle<Image>>,
+    #[texture(5, dimension = "cube")]
+    #[sampler(6)]
+    pub envmap: Option<Handle<Image>>,
+    #[texture(7)]
+    #[sampler(8)]
+    pub tint: Option<Handle<Image>>,
+    pub alpha_mode: AlphaMode,
+    pub cull: Option<Face>,
+}
+
+impl Default for RefractMaterial {
+    fn default() -> Self {
+        Self {
+            params: RefractParams {
+                refract_tint: Vec4::ONE,
+                envmap_tint: Vec4::ONE,
+                envmap_saturation: Vec4::ONE,
+                refract: Vec4::new(2.0, 0.05, 1.0, 0.0),
+                ..default()
+            },
+            base: None,
+            normal: None,
+            envmap: None,
+            tint: None,
+            alpha_mode: AlphaMode::Opaque,
+            cull: Some(Face::Back),
+        }
+    }
+}
+
+impl From<&RefractMaterial> for SourceMaterialKey {
+    fn from(m: &RefractMaterial) -> Self {
+        Self { cull: cull_code(m.cull), depth_bias: 0 }
+    }
+}
+
+impl Material for RefractMaterial {
+    fn fragment_shader() -> ShaderRef {
+        REFRACT_SHADER.into()
+    }
+
+    fn alpha_mode(&self) -> AlphaMode {
+        self.alpha_mode
+    }
+
+    /// Everything but local refraction samples the scene drawn before it,
+    /// which puts it in the transmissive pass after a copy of the opaque one.
+    fn reads_view_transmission_texture(&self) -> bool {
+        self.params.flags & refract_flags::LOCAL == 0
     }
 
     fn enable_prepass() -> bool {

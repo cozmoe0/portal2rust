@@ -280,6 +280,7 @@ fn apply_placements(
                 bevy::render::view::DebandDither::Disabled,
                 exposure,
                 Msaa::Off,
+                bevy::pbr::ScreenSpaceTransmission::default(),
                 Projection::custom(PortalProjection::new(base)),
                 RenderLayers::layer(0),
                 Transform::default(),

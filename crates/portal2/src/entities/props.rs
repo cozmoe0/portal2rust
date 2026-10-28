@@ -8,6 +8,8 @@
 use bevy::ecs::system::SystemState;
 use bevy::mesh::skinning::SkinnedMeshInverseBindposes;
 use bevy::prelude::*;
+use source_formats::bsp::StaticProp;
+use source_formats::studio::StudioModel;
 use source_formats::vhv::Vhv;
 
 use super::io::{FireOutput, InputCall, InputHandlers, fire_output};
@@ -19,7 +21,7 @@ use crate::models::animation::AnimationFinished;
 use crate::models::lighting;
 use crate::models::{ModelCache, SpawnModel, StudioAnimator, spawn_model_parts};
 use crate::render::materials::{MaterialCache, MaterialContext};
-use crate::render::source_material::ModelMaterial;
+use crate::render::source_material::{ModelMaterial, RefractMaterial};
 use crate::render::textures::TextureCache;
 use crate::vfs::GameFs;
 use crate::world::{CurrentMap, MapObject};
@@ -34,7 +36,6 @@ pub fn register(app: &mut App) {
             s.register(class, spawn_dynamic);
         }
         s.register("prop_testchamber_door", spawn_chamber_door);
-        s.register("npc_personality_core", spawn_personality_core);
         for class in ["prop_button", "prop_under_button"] {
             s.register(class, spawn_pedestal_button);
         }
@@ -96,29 +97,6 @@ fn attach_placeholder(world: &mut World, e: Entity) {
     let child = commands.spawn((Mesh3d(mesh), MeshMaterial3d(mat), Transform::from_xyz(0.0, 0.0, 8.0))).id();
     commands.entity(e).add_child(child);
     state.apply(world);
-}
-
-/// The server's model for personality cores (Wheatley and the other
-/// spheres); `ModelSkin` picks the core's skin.
-const PERSONALITY_CORE_MODEL: &str = "models/npcs/personality_sphere/personality_sphere_skins.mdl";
-
-fn spawn_personality_core(world: &mut World, e: Entity) {
-    if let Some(mut me) = world.get_mut::<MapEntity>(e) {
-        if me.get("model").is_none_or(|m| !m.to_ascii_lowercase().ends_with(".mdl")) {
-            me.set("model", PERSONALITY_CORE_MODEL);
-        }
-        if let Some(skin) = me.get("modelskin").map(str::to_owned) {
-            me.set("skin", &skin);
-        }
-    }
-    attach_entity_model(world, e, true);
-    if let Some(mut anim) = world.get_mut::<StudioAnimator>(e) {
-        let idle = anim.model.studio.find_sequence_by_activity("ACT_IDLE").or_else(|| anim.model.studio.find_sequence("sphere_idle_neutral"));
-        if let Some(i) = idle {
-            anim.set_sequence_index(i);
-            anim.default_sequence = Some(i);
-        }
-    }
 }
 
 /// Default handling for `prop_*` classes without a dedicated spawner.
@@ -245,7 +223,7 @@ fn animation_done_outputs(mut finished: MessageReader<AnimationFinished>, mut ou
 
 // --------------------------------------------------------- prop_testchamber_door
 
-#[derive(Component, serde::Serialize, serde::Deserialize)]
+#[derive(Component)]
 pub struct ChamberDoor {
     pub open: bool,
     pub locked: bool,
@@ -296,14 +274,14 @@ fn set_door(world: &mut World, e: Entity, open: bool) {
 }
 
 /// Door waiting for its open/close animation to finish.
-#[derive(Component, serde::Serialize, serde::Deserialize)]
+#[derive(Component)]
 struct PendingDoorReport {
     open: bool,
 }
 
 // ------------------------------------------------------------ pedestal buttons
 
-#[derive(Component, serde::Serialize, serde::Deserialize)]
+#[derive(Component)]
 pub struct PedestalButton {
     pub pressed_until: Option<f64>,
     pub delay: f32,
@@ -382,7 +360,7 @@ fn button_timers(
 
 // --------------------------------------------------------------- floor buttons
 
-#[derive(Component, serde::Serialize, serde::Deserialize)]
+#[derive(Component)]
 pub struct FloorButton {
     pub pressed: bool,
     /// Last time something rested on the button (seconds).
@@ -443,6 +421,7 @@ type StaticPropParams<'w, 's> = (
     ResMut<'w, Assets<Image>>,
     ResMut<'w, Assets<Mesh>>,
     ResMut<'w, Assets<ModelMaterial>>,
+    ResMut<'w, Assets<RefractMaterial>>,
     ResMut<'w, Assets<SkinnedMeshInverseBindposes>>,
 );
 
@@ -452,7 +431,7 @@ pub fn spawn_static_props(world: &mut World) {
         return;
     }
     let mut state: SystemState<StaticPropParams> = SystemState::new(world);
-    let (mut commands, fs, map, mut cache, mut mats, mut textures, mut images, mut meshes, mut model_mats, mut bindposes) =
+    let (mut commands, fs, map, mut cache, mut mats, mut textures, mut images, mut meshes, mut model_mats, mut refract_mats, mut bindposes) =
         state.get_mut(world).expect("render resources available");
     let props = &map.bsp.static_props;
     let mut missing_lighting = 0;
@@ -463,13 +442,14 @@ pub fn spawn_static_props(world: &mut World) {
             .read(&format!("sp_hdr_{i}.vhv"))
             .or_else(|| fs.read(&format!("sp_{i}.vhv")))
             .and_then(|b| Vhv::parse(&b).ok());
+        let light_origin = static_prop_lighting_origin(prop, &model.studio);
         let lighting = if vhv.is_none() {
             missing_lighting += 1;
-            let p = if prop.lighting_origin != Vec3::ZERO { prop.lighting_origin } else { prop.origin };
-            Some(lighting::compute(&map.bsp, p))
+            Some(lighting::compute(&map.bsp, light_origin))
         } else {
             None
         };
+        let envmap = lighting::nearest_cubemap(&map.bsp, &map.name, light_origin, &fs, &mut textures, &mut images);
         let transform = Transform::from_translation(prop.origin)
             .with_rotation(angles_to_quat(prop.angles))
             .with_scale(Vec3::splat(prop.uniform_scale.max(0.001)));
@@ -485,29 +465,30 @@ pub fn spawn_static_props(world: &mut World) {
                 vhv: vhv.as_ref(),
                 animated: false,
                 lighting,
+                envmap,
             },
             &fs,
             &mut ctx,
             &mut mats,
             &mut meshes,
             &mut model_mats,
+            &mut refract_mats,
         );
     }
     info!("static props: {} ({} without baked lighting)", props.props.len(), missing_lighting);
     state.apply(world);
 }
 
-impl crate::save::Restore for ChamberDoor {}
+/// Static prop lump flag: light the prop from its stored lighting origin.
+const STATIC_PROP_USE_LIGHTING_ORIGIN: u8 = 2;
 
-impl crate::save::Restore for FloorButton {}
-
-impl crate::save::Restore for PedestalButton {}
-
-impl crate::save::Restore for PendingDoorReport {}
-
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
-    r.component::<ChamberDoor>("chamber_door");
-    r.component::<FloorButton>("floor_button");
-    r.component::<PedestalButton>("pedestal_button");
-    r.component::<PendingDoorReport>("pending_door_report");
+/// Where the engine lights a static prop and picks its cube map: the lump's
+/// lighting origin when the prop is flagged to use it, otherwise the model's
+/// illumination point placed with the prop (its scale plays no part).
+fn static_prop_lighting_origin(prop: &StaticProp, studio: &StudioModel) -> Vec3 {
+    if prop.flags & STATIC_PROP_USE_LIGHTING_ORIGIN != 0 {
+        prop.lighting_origin
+    } else {
+        prop.origin + angles_to_quat(prop.angles) * studio.mdl.illum_position
+    }
 }

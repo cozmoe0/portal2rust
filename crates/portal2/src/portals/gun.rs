@@ -25,7 +25,7 @@ use crate::models::lighting;
 use crate::models::{ModelCache, SpawnModel, StudioAnimator, spawn_model_parts};
 use crate::player::{Player, PlayerCameraSet, PlayerInput};
 use crate::render::materials::{MaterialCache, MaterialContext, load_vmt};
-use crate::render::source_material::ModelMaterial;
+use crate::render::source_material::{ModelMaterial, RefractMaterial};
 use crate::render::textures::TextureCache;
 use crate::vfs::GameFs;
 use crate::world::{CurrentMap, PlayerStart};
@@ -285,6 +285,7 @@ type ViewmodelParams<'w, 's> = (
     ResMut<'w, Assets<Image>>,
     ResMut<'w, Assets<Mesh>>,
     ResMut<'w, Assets<ModelMaterial>>,
+    ResMut<'w, Assets<RefractMaterial>>,
     ResMut<'w, Assets<SkinnedMeshInverseBindposes>>,
 );
 
@@ -323,7 +324,7 @@ fn attach_viewmodel(world: &mut World) {
     };
     let root = world.spawn((Name::new("viewmodel"), Viewmodel { light_timer: 0.0 }, Transform::default(), Visibility::Visible)).id();
     let mut state: SystemState<ViewmodelParams> = SystemState::new(world);
-    let (mut commands, fs, map, mut cache, mut mats, mut textures, mut images, mut meshes, mut model_mats, mut bindposes) =
+    let (mut commands, fs, map, mut cache, mut mats, mut textures, mut images, mut meshes, mut model_mats, mut refract_mats, mut bindposes) =
         state.get_mut(world).expect("render resources available");
     let Some(model) = cache.get(&path, &fs, &mut meshes, &mut bindposes) else {
         state.apply(world);
@@ -335,12 +336,13 @@ fn attach_viewmodel(world: &mut World) {
     let joints = spawn_model_parts(
         &mut commands,
         root,
-        SpawnModel { model: &model, skin: 0, body: 0, vhv: None, animated: true, lighting: Some(light) },
+        SpawnModel { model: &model, skin: 0, body: 0, vhv: None, animated: true, lighting: Some(light), envmap: None },
         &fs,
         &mut ctx,
         &mut mats,
         &mut meshes,
         &mut model_mats,
+        &mut refract_mats,
     );
     let mut animator = StudioAnimator::new(model.clone(), joints);
     animator.set_default_sequence("idle");

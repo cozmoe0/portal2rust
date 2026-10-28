@@ -117,10 +117,15 @@ L the unit vector to the light and A its colour times its attenuation:
   `lerp(b, c, 2f − 1)` above. The ranges are used as written, so
   `[5 1 2]` (the portal gun) makes facing highlights five times stronger.
 - Cube map: `cube(reflect(−E, N)) × $envmaptint`, scaled by
-  `lerp(1, Fresnel, $envmapfresnel)` and masked by either base alpha or the
-  specular mask above (optionally inverted). Which of the two a material
-  gets is a shader constant whose source has not been traced; we use the
-  specular mask unless `$basealphaenvmapmask` is set.
+  `lerp(1, Fresnel, $envmapfresnel)` and masked by base alpha, or with
+  `$normalmapalphaenvmapmask` by the specular mask above (the material flag
+  goes straight into a shader constant, normal map or not). With
+  `$invertphongmask` that reflection mask becomes one minus itself; the
+  highlights keep theirs, whatever the parameter's help text says ("invert
+  the phong mask"). Phong has no `$envmapmask` texture and no
+  `$envmapcontrast` / `$envmapsaturation`, and its tint is passed as written
+  (not converted from gamma). `$basemapalphaenvmapmask`, which some glass
+  materials set, is not a parameter of the shader and does nothing.
 - Everything is then multiplied by screen-space ambient occlusion and the
   tone mapping scale, and fogged.
 - The exponent texture defaults to white when a material has none, so
@@ -131,3 +136,39 @@ The half-Lambert variant is chosen when `$phongdisablehalflambert` is
 undefined or zero (`stdshader_dx9.dll`), so phong materials use half-Lambert
 by default. Non-phong `VertexLitGeneric` uses it only with `$halflambert`.
 
+## Reflections without phong
+
+Plain `VertexLitGeneric` (`vertexlit_and_unlit_generic_ps30`, and the
+`_bump_` variant for materials with a normal map) builds its reflection as
+`cube(R) × mask × $envmaptint`, then applies contrast,
+`lerp(c, c², $envmapcontrast)`, and saturation,
+`lerp(luminance, c, $envmapsaturation)` with weights 0.299, 0.587, 0.114,
+and adds the result after the diffuse term. The mask is the red channel of
+`$envmapmask`, base alpha with `$basealphaenvmapmask` or normal map alpha
+with `$normalmapalphaenvmapmask` (1 without any). The tint is passed as
+written, not converted from gamma; the bumped variant uses only the first
+component of the contrast.
+
+## Which cube map a model gets
+
+- At map load the engine reads the cube map samples (origin and size) and
+  loads `materials/maps/<map>/c<x>_<y>_<z>` for each, the `.hdr` version in
+  HDR mode, falling back to the plain one, then the map's
+  `cubemapdefault`, then `engine/defaultcubemap`. The first sample's texture
+  becomes the default cube map (`cubemapdefault` when the map has none).
+- A model whose materials use `env_cubemap` (a studio header flag set when
+  its materials load) is drawn with the sample nearest its lighting origin,
+  by straight distance with no visibility test; on ties the earlier sample
+  wins. The choice is part of the light cache entry, so it is made once.
+- Static props: the lighting origin is the lump's lighting origin when the
+  prop has the "use lighting origin" flag (2), otherwise the model's
+  illumination point (`illumposition`, or an attachment if the model names
+  one) placed with the prop's origin and angles; the prop's scale plays no
+  part. This holds whether or not the prop has baked vertex lighting.
+- Dynamic models: their light cache entry at the lighting origin (the one
+  the entity provides, else the illumination point placed with the model).
+- The baked HDR cube maps are RGBA16F with small texels (the brightest in
+  `sp_a1_intro7` is about 0.04). Used as stored, reflections match the
+  game, for example the puddle in `sp_a1_intro7`, which reflects in the same
+  place and shape; ours is somewhat stronger relative to the floor beneath,
+  whose own brightness is lower in ours.
