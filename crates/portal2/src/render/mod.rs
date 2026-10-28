@@ -14,9 +14,11 @@ impl Plugin for RenderSetupPlugin {
         embedded_asset!(app, "shaders/model.wesl");
         embedded_asset!(app, "shaders/portal.wesl");
         embedded_asset!(app, "shaders/effect.wesl");
+        embedded_asset!(app, "shaders/refract.wesl");
         app.add_plugins((
             MaterialPlugin::<source_material::WorldMaterial>::default(),
             MaterialPlugin::<source_material::ModelMaterial>::default(),
+            MaterialPlugin::<source_material::RefractMaterial>::default(),
         ))
         .init_resource::<textures::TextureCache>()
         .init_resource::<materials::MaterialCache>()

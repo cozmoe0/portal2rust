@@ -7,6 +7,8 @@ use bevy::prelude::*;
 use source_formats::bsp::{Bsp, WorldLight};
 
 use crate::render::source_material::{ModelLight, ModelParams};
+use crate::render::textures::TextureCache;
+use crate::vfs::GameFs;
 
 /// Local lights per model (`r_worldlights`, 3 by default).
 pub const MAX_MODEL_LIGHTS: usize = 3;
@@ -31,7 +33,6 @@ const CUBE_AXES: [Vec3; 6] = [Vec3::X, Vec3::NEG_X, Vec3::Y, Vec3::NEG_Y, Vec3::
 pub struct ModelLighting {
     pub ambient: [Vec3; 6],
     pub lights: Vec<ModelLight>,
-    pub envmap: Option<Handle<Image>>,
 }
 
 impl ModelLighting {
@@ -144,10 +145,29 @@ pub fn compute(bsp: &Bsp, p: Vec3) -> ModelLighting {
         }
     }
     let lights = candidates.iter().take(MAX_MODEL_LIGHTS).map(|(.., l)| to_shader_light(l)).collect();
-    ModelLighting { ambient, lights, envmap: None }
+    ModelLighting { ambient, lights }
 }
 
-/// Path of the baked cube map closest to `p`, if the map has any.
+/// The baked cube map the engine binds for a model's `env_cubemap` materials:
+/// the sample nearest the model's lighting origin, by straight distance (no
+/// visibility test), loaded in its HDR version when there is one.
+pub fn nearest_cubemap(
+    bsp: &Bsp,
+    map_name: &str,
+    p: Vec3,
+    fs: &GameFs,
+    textures: &mut TextureCache,
+    images: &mut Assets<Image>,
+) -> Option<Handle<Image>> {
+    let cube = nearest_cubemap_path(bsp, map_name, p)?;
+    textures
+        .load(fs, images, &format!("{cube}.hdr.vtf"), false)
+        .or_else(|| textures.load(fs, images, &format!("{cube}.vtf"), true))
+        .map(|t| t.handle)
+}
+
+/// Path of the baked cube map closest to `p`, if the map has any. Ties go to
+/// the earlier sample, as in the engine.
 pub fn nearest_cubemap_path(bsp: &Bsp, map_name: &str, p: Vec3) -> Option<String> {
     let c = bsp.cubemaps.iter().min_by(|a, b| {
         let da = Vec3::new(a.origin[0] as f32, a.origin[1] as f32, a.origin[2] as f32).distance_squared(p);

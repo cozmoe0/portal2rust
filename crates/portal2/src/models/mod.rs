@@ -15,7 +15,7 @@ use source_formats::studio::{StudioMesh, StudioModel};
 use source_formats::vhv::Vhv;
 
 use crate::render::materials::{MaterialCache, MaterialContext};
-use crate::render::source_material::ModelMaterial;
+use crate::render::source_material::{ModelMaterial, RefractMaterial, model_flags};
 use crate::vfs::GameFs;
 
 pub use animation::StudioAnimator;
@@ -223,6 +223,9 @@ pub struct SpawnModel<'a> {
     pub vhv: Option<&'a Vhv>,
     pub animated: bool,
     pub lighting: Option<lighting::ModelLighting>,
+    /// Cube map for materials using `env_cubemap` (the baked sample nearest
+    /// the model's lighting origin).
+    pub envmap: Option<Handle<Image>>,
 }
 
 /// Spawns render meshes for a model under `root`. Returns joint entities
@@ -236,6 +239,7 @@ pub fn spawn_model_parts(
     material_cache: &mut MaterialCache,
     meshes: &mut Assets<Mesh>,
     model_materials: &mut Assets<ModelMaterial>,
+    refract_materials: &mut Assets<RefractMaterial>,
 ) -> Vec<Entity> {
     let model = spec.model;
     let studio = &model.studio;
@@ -266,11 +270,13 @@ pub fn spawn_model_parts(
         }
         let material_path = skins.get(m.material).cloned().flatten();
         let baked = spec.vhv.is_some();
-        let info = match &material_path {
-            Some(p) => material_cache.model(p, baked, ctx, model_materials),
-            None => material_cache.model("materials/__missing.vmt", baked, ctx, model_materials),
+        let refract = material_path.as_deref().and_then(|p| material_cache.refract(p, ctx, refract_materials));
+        let info = match (&refract, &material_path) {
+            (Some(_), _) => None,
+            (None, Some(p)) => Some(material_cache.model(p, baked, ctx, model_materials)),
+            (None, None) => Some(material_cache.model("materials/__missing.vmt", baked, ctx, model_materials)),
         };
-        if info.surface.shader.contains("eyeball") || info.surface.shader == "eyerefract" {
+        if info.as_ref().is_some_and(|i| i.surface.shader.contains("eyeball") || i.surface.shader == "eyerefract") {
             continue;
         }
         let mesh_handle = if spec.animated {
@@ -284,19 +290,36 @@ pub fn spawn_model_parts(
         } else {
             model.posed_meshes[mi].clone()
         };
-        let material = match &spec.lighting {
-            Some(l) => {
-                let mut mat = model_materials.get(&info.handle).cloned().unwrap_or_default();
-                l.apply(&mut mat.params);
-                if l.envmap.is_some() && mat.envmap.is_none() && material_path.as_deref().is_some_and(|p| uses_env_cubemap(fs, p)) {
-                    mat.envmap = l.envmap.clone();
-                    mat.params.flags |= crate::render::source_material::model_flags::ENVMAP;
-                }
-                model_materials.add(mat)
+        let mut e = match (info, refract) {
+            (Some(info), _) => {
+                let envmap = spec.envmap.as_ref().filter(|_| info.env_cubemap);
+                let material = match (&spec.lighting, envmap) {
+                    (Some(l), _) => {
+                        let mut mat = model_materials.get(&info.handle).cloned().unwrap_or_default();
+                        l.apply(&mut mat.params);
+                        if let Some(env) = envmap {
+                            mat.envmap = Some(env.clone());
+                            mat.params.flags |= model_flags::ENVMAP;
+                        }
+                        model_materials.add(mat)
+                    }
+                    // Baked lighting lives in the mesh, so props near the same
+                    // probe can share one material.
+                    (None, Some(env)) => material_cache.model_with_cubemap(&info.handle, env, model_materials),
+                    (None, None) => info.handle.clone(),
+                };
+                commands.spawn((Mesh3d(mesh_handle), MeshMaterial3d(material), Transform::IDENTITY))
             }
-            None => info.handle.clone(),
+            (None, Some(refract)) => {
+                // Refract is unlit; only an `env_cubemap` needs the instance's probe.
+                let material = match spec.envmap.as_ref().filter(|_| refract.env_cubemap) {
+                    Some(env) => material_cache.refract_with_cubemap(&refract.handle, env, refract_materials),
+                    None => refract.handle.clone(),
+                };
+                commands.spawn((Mesh3d(mesh_handle), MeshMaterial3d(material), Transform::IDENTITY))
+            }
+            (None, None) => continue,
         };
-        let mut e = commands.spawn((Mesh3d(mesh_handle), MeshMaterial3d(material), Transform::IDENTITY));
         if spec.animated {
             e.insert(SkinnedMesh { inverse_bindposes: model.inverse_bindposes.clone(), joints: joints.clone() });
         }
@@ -304,10 +327,4 @@ pub fn spawn_model_parts(
         commands.entity(root).add_child(id);
     }
     joints
-}
-
-fn uses_env_cubemap(fs: &GameFs, material: &str) -> bool {
-    crate::render::materials::load_vmt(fs, material)
-        .and_then(|v| v.get("$envmap").map(|e| e.eq_ignore_ascii_case("env_cubemap")))
-        .unwrap_or(false)
 }

@@ -8,6 +8,8 @@
 use bevy::ecs::system::SystemState;
 use bevy::mesh::skinning::SkinnedMeshInverseBindposes;
 use bevy::prelude::*;
+use source_formats::bsp::StaticProp;
+use source_formats::studio::StudioModel;
 use source_formats::vhv::Vhv;
 
 use super::io::{FireOutput, InputCall, InputHandlers, fire_output};
@@ -19,7 +21,7 @@ use crate::models::animation::AnimationFinished;
 use crate::models::lighting;
 use crate::models::{ModelCache, SpawnModel, StudioAnimator, spawn_model_parts};
 use crate::render::materials::{MaterialCache, MaterialContext};
-use crate::render::source_material::ModelMaterial;
+use crate::render::source_material::{ModelMaterial, RefractMaterial};
 use crate::render::textures::TextureCache;
 use crate::vfs::GameFs;
 use crate::world::{CurrentMap, MapObject};
@@ -419,6 +421,7 @@ type StaticPropParams<'w, 's> = (
     ResMut<'w, Assets<Image>>,
     ResMut<'w, Assets<Mesh>>,
     ResMut<'w, Assets<ModelMaterial>>,
+    ResMut<'w, Assets<RefractMaterial>>,
     ResMut<'w, Assets<SkinnedMeshInverseBindposes>>,
 );
 
@@ -428,7 +431,7 @@ pub fn spawn_static_props(world: &mut World) {
         return;
     }
     let mut state: SystemState<StaticPropParams> = SystemState::new(world);
-    let (mut commands, fs, map, mut cache, mut mats, mut textures, mut images, mut meshes, mut model_mats, mut bindposes) =
+    let (mut commands, fs, map, mut cache, mut mats, mut textures, mut images, mut meshes, mut model_mats, mut refract_mats, mut bindposes) =
         state.get_mut(world).expect("render resources available");
     let props = &map.bsp.static_props;
     let mut missing_lighting = 0;
@@ -439,13 +442,14 @@ pub fn spawn_static_props(world: &mut World) {
             .read(&format!("sp_hdr_{i}.vhv"))
             .or_else(|| fs.read(&format!("sp_{i}.vhv")))
             .and_then(|b| Vhv::parse(&b).ok());
+        let light_origin = static_prop_lighting_origin(prop, &model.studio);
         let lighting = if vhv.is_none() {
             missing_lighting += 1;
-            let p = if prop.lighting_origin != Vec3::ZERO { prop.lighting_origin } else { prop.origin };
-            Some(lighting::compute(&map.bsp, p))
+            Some(lighting::compute(&map.bsp, light_origin))
         } else {
             None
         };
+        let envmap = lighting::nearest_cubemap(&map.bsp, &map.name, light_origin, &fs, &mut textures, &mut images);
         let transform = Transform::from_translation(prop.origin)
             .with_rotation(angles_to_quat(prop.angles))
             .with_scale(Vec3::splat(prop.uniform_scale.max(0.001)));
@@ -461,14 +465,30 @@ pub fn spawn_static_props(world: &mut World) {
                 vhv: vhv.as_ref(),
                 animated: false,
                 lighting,
+                envmap,
             },
             &fs,
             &mut ctx,
             &mut mats,
             &mut meshes,
             &mut model_mats,
+            &mut refract_mats,
         );
     }
     info!("static props: {} ({} without baked lighting)", props.props.len(), missing_lighting);
     state.apply(world);
+}
+
+/// Static prop lump flag: light the prop from its stored lighting origin.
+const STATIC_PROP_USE_LIGHTING_ORIGIN: u8 = 2;
+
+/// Where the engine lights a static prop and picks its cube map: the lump's
+/// lighting origin when the prop is flagged to use it, otherwise the model's
+/// illumination point placed with the prop (its scale plays no part).
+fn static_prop_lighting_origin(prop: &StaticProp, studio: &StudioModel) -> Vec3 {
+    if prop.flags & STATIC_PROP_USE_LIGHTING_ORIGIN != 0 {
+        prop.lighting_origin
+    } else {
+        prop.origin + angles_to_quat(prop.angles) * studio.mdl.illum_position
+    }
 }

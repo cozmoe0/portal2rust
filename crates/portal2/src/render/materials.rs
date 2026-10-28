@@ -1,5 +1,6 @@
 //! VMT materials to render materials (`WorldMaterial` for brushes,
-//! `ModelMaterial` for studio models).
+//! `ModelMaterial` for studio models, `RefractMaterial` for models using the
+//! `Refract` shader).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -7,8 +8,9 @@ use std::sync::Arc;
 use bevy::prelude::*;
 use bevy::render::render_resource::Face;
 use source_formats::vmt::{Vmt, material_path};
+use source_formats::vtf;
 
-use super::source_material::{ModelMaterial, WorldMaterial, model_flags, world_flags};
+use super::source_material::{ModelMaterial, RefractMaterial, WorldMaterial, model_flags, refract_flags, world_flags};
 use super::textures::{TextureCache, TextureInfo};
 use crate::vfs::GameFs;
 
@@ -42,6 +44,15 @@ pub struct WorldMaterialInfo {
 pub struct ModelMaterialInfo {
     pub surface: SurfaceInfo,
     pub handle: Handle<ModelMaterial>,
+    /// `$envmap env_cubemap`: the nearest cube map is filled in per instance.
+    pub env_cubemap: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct RefractMaterialInfo {
+    pub handle: Handle<RefractMaterial>,
+    /// `$envmap env_cubemap`: the nearest cube map is filled in per instance.
+    pub env_cubemap: bool,
 }
 
 /// Per-map caches of world and model materials.
@@ -49,6 +60,12 @@ pub struct ModelMaterialInfo {
 pub struct MaterialCache {
     world: HashMap<String, WorldMaterialInfo>,
     model: HashMap<(String, bool), ModelMaterialInfo>,
+    /// `None` for materials whose shader is not `Refract`.
+    refract: HashMap<String, Option<RefractMaterialInfo>>,
+    /// Copies of `env_cubemap` materials with a cube map filled in, shared by
+    /// every instance near the same probe.
+    model_cubemaps: HashMap<(AssetId<ModelMaterial>, AssetId<Image>), Handle<ModelMaterial>>,
+    refract_cubemaps: HashMap<(AssetId<RefractMaterial>, AssetId<Image>), Handle<RefractMaterial>>,
     pub lightmap: Option<Handle<Image>>,
     /// Fallback cube map for `env_cubemap` (nearest probe is chosen per model later).
     pub default_cubemap: Option<Handle<Image>>,
@@ -150,6 +167,9 @@ impl MaterialCache {
     pub fn clear(&mut self) {
         self.world.clear();
         self.model.clear();
+        self.refract.clear();
+        self.model_cubemaps.clear();
+        self.refract_cubemaps.clear();
         self.lightmap = None;
         self.default_cubemap = None;
     }
@@ -292,6 +312,10 @@ impl MaterialCache {
                 // arrives per instance (`env_cubemap` resolved near the model).
                 if vmt.get("$envmap").is_some() {
                     p.envmap_tint = vmt.get_vec3("$envmaptint").unwrap_or(Vec3::ONE).extend(1.0);
+                    // The bumped shader variant takes the first component only.
+                    let contrast = vmt.get_vec3("$envmapcontrast").unwrap_or(Vec3::ZERO);
+                    p.envmap_contrast = if m.bump.is_some() { Vec3::splat(contrast.x) } else { contrast }.extend(0.0);
+                    p.envmap_saturation = vmt.get_vec3("$envmapsaturation").unwrap_or(Vec3::ONE).extend(1.0);
                     if let Some(t) = ctx.tex(vmt, "$envmapmask", false) {
                         m.envmask = Some(t.handle);
                         p.flags |= model_flags::ENVMAPMASK;
@@ -299,8 +323,12 @@ impl MaterialCache {
                     if vmt.get_bool("$basealphaenvmapmask") {
                         p.flags |= model_flags::BASEALPHA_ENVMAPMASK;
                     }
-                    if vmt.get_bool("$normalmapalphaenvmapmask") && m.bump.is_some() {
+                    // Phong materials honour the flag with or without a normal map.
+                    if vmt.get_bool("$normalmapalphaenvmapmask") && (m.bump.is_some() || vmt.get_bool("$phong")) {
                         p.flags |= model_flags::NORMALALPHA_ENVMAPMASK;
+                    }
+                    if vmt.get_bool("$invertphongmask") {
+                        p.flags |= model_flags::INVERT_PHONG_ENVMAPMASK;
                     }
                 }
                 if let Some(env) = ctx.cubemap(vmt, "$envmap").or_else(|| {
@@ -380,8 +408,133 @@ impl MaterialCache {
             }
         }
         let _ = Face::Back;
-        let info = ModelMaterialInfo { surface, handle: materials.add(m) };
+        let env_cubemap = vmt.as_ref().and_then(|v| v.get("$envmap")).is_some_and(|e| e.eq_ignore_ascii_case("env_cubemap"));
+        let info = ModelMaterialInfo { surface, handle: materials.add(m), env_cubemap };
         self.model.insert(key, info.clone());
         info
     }
+
+    /// The material of a model surface if its shader is `Refract`.
+    pub fn refract(
+        &mut self,
+        path: &str,
+        ctx: &mut MaterialContext,
+        materials: &mut Assets<RefractMaterial>,
+    ) -> Option<RefractMaterialInfo> {
+        if let Some(info) = self.refract.get(path) {
+            return info.clone();
+        }
+        let info = load_vmt(ctx.fs, path).filter(|vmt| vmt.shader == "refract").map(|vmt| {
+            let mut m = RefractMaterial::default();
+            let p = &mut m.params;
+            let mut translucent_normal = false;
+            if let Some(t) = ctx.tex(&vmt, "$normalmap", false) {
+                translucent_normal = t.flags & (vtf::flags::ONEBITALPHA | vtf::flags::EIGHTBITALPHA) != 0;
+                m.normal = Some(t.handle);
+                p.flags |= refract_flags::NORMALMAP;
+            }
+            // Local refraction looks into the base texture; without one the
+            // game would fall back to the scene, so do the same.
+            let local = vmt.get_bool("$localrefract");
+            if let Some(t) = local.then(|| ctx.tex(&vmt, "$basetexture", true)).flatten() {
+                // A whole-number ratio, as the game computes it.
+                p.refract.z = (t.height / t.width.max(1)) as f32;
+                m.base = Some(t.handle);
+                p.flags |= refract_flags::LOCAL;
+            }
+            p.refract.x = vmt.get_f32("$refractamount").unwrap_or(2.0);
+            p.refract.y = vmt.get_f32("$localrefractdepth").unwrap_or(0.05);
+            p.refract_tint = gamma_to_linear(vmt.get_vec3("$refracttint").unwrap_or(Vec3::ONE)).extend(1.0);
+            if vmt.get_f32("$bluramount").unwrap_or(0.0) >= 1.0 {
+                p.flags |= refract_flags::BLUR;
+            }
+            if let Some(t) = ctx.tex(&vmt, "$refracttinttexture", true) {
+                m.tint = Some(t.handle);
+                p.flags |= refract_flags::TINT_TEXTURE;
+            }
+            let has_envmap = vmt.get("$envmap").is_some();
+            let env_cubemap = vmt.get("$envmap").is_some_and(|e| e.eq_ignore_ascii_case("env_cubemap"));
+            if has_envmap {
+                p.envmap_tint = gamma_to_linear(vmt.get_vec3("$envmaptint").unwrap_or(Vec3::ONE)).extend(1.0);
+                p.envmap_contrast = vmt.get_vec3("$envmapcontrast").unwrap_or(Vec3::ZERO).extend(0.0);
+                p.envmap_saturation = vmt.get_vec3("$envmapsaturation").unwrap_or(Vec3::ONE).extend(1.0);
+                if let Some(env) = ctx.cubemap(&vmt, "$envmap").or_else(|| env_cubemap.then(|| self.default_cubemap.clone()).flatten()) {
+                    m.envmap = Some(env);
+                    p.flags |= refract_flags::ENVMAP;
+                }
+            }
+            if vmt.get_bool("$nocull") {
+                m.cull = None;
+            }
+            // With a cube map the game draws the result as is (the scene behind
+            // is already in it); otherwise it blends like its other shaders, by
+            // the normal map's alpha.
+            m.alpha_mode = if has_envmap {
+                AlphaMode::Opaque
+            } else if vmt.get_bool("$additive") {
+                AlphaMode::Add
+            } else if translucent_normal || vmt.get_bool("$vertexalpha") || vmt.get_f32("$alpha").is_some_and(|a| a < 1.0) {
+                AlphaMode::Blend
+            } else {
+                AlphaMode::Opaque
+            };
+            RefractMaterialInfo { handle: materials.add(m), env_cubemap }
+        });
+        self.refract.insert(path.to_owned(), info.clone());
+        info
+    }
+
+    /// `base` with its `env_cubemap` resolved to `env`, one copy per pair.
+    pub fn model_with_cubemap(
+        &mut self,
+        base: &Handle<ModelMaterial>,
+        env: &Handle<Image>,
+        materials: &mut Assets<ModelMaterial>,
+    ) -> Handle<ModelMaterial> {
+        self.model_cubemaps
+            .entry((base.id(), env.id()))
+            .or_insert_with(|| {
+                let mut m = materials.get(base).cloned().unwrap_or_default();
+                m.envmap = Some(env.clone());
+                m.params.flags |= model_flags::ENVMAP;
+                materials.add(m)
+            })
+            .clone()
+    }
+
+    /// `base` with its `env_cubemap` resolved to `env`, one copy per pair.
+    pub fn refract_with_cubemap(
+        &mut self,
+        base: &Handle<RefractMaterial>,
+        env: &Handle<Image>,
+        materials: &mut Assets<RefractMaterial>,
+    ) -> Handle<RefractMaterial> {
+        self.refract_cubemaps
+            .entry((base.id(), env.id()))
+            .or_insert_with(|| {
+                let mut m = materials.get(base).cloned().unwrap_or_default();
+                m.envmap = Some(env.clone());
+                m.params.flags |= refract_flags::ENVMAP;
+                materials.add(m)
+            })
+            .clone()
+    }
+}
+
+/// Colour parameters the game passes through its gamma-to-linear table:
+/// channels up to 1 are raised to 2.2 from the nearest 0-255 step, except that
+/// 0.95 and above count as exactly 1; larger values pass unchanged.
+fn gamma_to_linear(c: Vec3) -> Vec3 {
+    let f = |v: f32| {
+        if v > 1.0 {
+            v
+        } else if v >= 0.95 {
+            1.0
+        } else if v <= 0.0 {
+            0.0
+        } else {
+            ((v * 255.0).round() / 255.0).powf(2.2)
+        }
+    };
+    Vec3::new(f(c.x), f(c.y), f(c.z))
 }

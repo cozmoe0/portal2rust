@@ -55,6 +55,8 @@ fn spawn_camera(mut commands: Commands, args: Res<Args>) {
         bevy::render::view::Tonemapping::None,
         bevy::render::view::DebandDither::Disabled,
         Msaa::Sample4,
+        // Refract materials read a copy of the opaque pass.
+        bevy::pbr::ScreenSpaceTransmission::default(),
         ViewAngles::default(),
         bevy::camera::visibility::RenderLayers::from_layers(&[0, crate::portals::PORTAL_LAYER]),
         Transform::default(),

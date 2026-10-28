@@ -11,7 +11,7 @@ use super::MapEntity;
 use crate::models::lighting::{self, ModelLighting};
 use crate::models::{LoadedModel, ModelCache, SpawnModel, StudioAnimator, spawn_model_parts};
 use crate::render::materials::{MaterialCache, MaterialContext};
-use crate::render::source_material::ModelMaterial;
+use crate::render::source_material::{ModelMaterial, RefractMaterial};
 use crate::render::textures::TextureCache;
 use crate::vfs::GameFs;
 use crate::world::{CurrentMap, is_invisible_brush_class, spawn_model_meshes};
@@ -61,6 +61,7 @@ type ModelParams<'w, 's> = (
     ResMut<'w, Assets<Image>>,
     ResMut<'w, Assets<Mesh>>,
     ResMut<'w, Assets<ModelMaterial>>,
+    ResMut<'w, Assets<RefractMaterial>>,
     ResMut<'w, Assets<SkinnedMeshInverseBindposes>>,
 );
 
@@ -69,18 +70,12 @@ type ModelParams<'w, 's> = (
 pub fn attach_studio_model(world: &mut World, e: Entity, path: &str, opts: ModelOptions) -> Option<Arc<LoadedModel>> {
     let origin = super::world_transform(world, e).translation();
     let mut state: SystemState<ModelParams> = SystemState::new(world);
-    let (mut commands, fs, map, mut cache, mut mats, mut textures, mut images, mut meshes, mut model_mats, mut bindposes) =
+    let (mut commands, fs, map, mut cache, mut mats, mut textures, mut images, mut meshes, mut model_mats, mut refract_mats, mut bindposes) =
         state.get_mut(world).expect("render resources available");
     let model = cache.get(path, &fs, &mut meshes, &mut bindposes)?;
     let light_point = opts.light_origin.unwrap_or(origin + Vec3::Z * 4.0);
-    let mut light: ModelLighting = lighting::compute(&map.bsp, light_point);
-    if let Some(cube) = lighting::nearest_cubemap_path(&map.bsp, &map.name, light_point) {
-        let hdr = format!("{cube}.hdr.vtf");
-        light.envmap = textures
-            .load(&fs, &mut images, &hdr, false)
-            .or_else(|| textures.load(&fs, &mut images, &format!("{cube}.vtf"), true))
-            .map(|t| t.handle);
-    }
+    let light: ModelLighting = lighting::compute(&map.bsp, light_point);
+    let envmap = lighting::nearest_cubemap(&map.bsp, &map.name, light_point, &fs, &mut textures, &mut images);
     let mut ctx = MaterialContext { fs: &fs, textures: &mut textures, images: &mut images };
     let joints = spawn_model_parts(
         &mut commands,
@@ -92,12 +87,14 @@ pub fn attach_studio_model(world: &mut World, e: Entity, path: &str, opts: Model
             vhv: None,
             animated: opts.animated,
             lighting: Some(light),
+            envmap,
         },
         &fs,
         &mut ctx,
         &mut mats,
         &mut meshes,
         &mut model_mats,
+        &mut refract_mats,
     );
     if opts.animated {
         commands.entity(e).insert(StudioAnimator::new(model.clone(), joints));
