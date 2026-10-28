@@ -209,6 +209,8 @@ impl Buttons {
 /// Runs bound commands for this frame's key presses and releases.
 pub fn process_binds(world: &mut World) {
     world.resource_mut::<Buttons>().begin_frame();
+    // Menus and the console take the keyboard: only releases get through.
+    let focused = world.get_resource::<crate::gameui::UiFocus>().is_some_and(|f| f.0);
     let mut events: Vec<(&'static str, bool)> = Vec::new();
     {
         let keys = world.resource::<ButtonInput<KeyCode>>();
@@ -236,6 +238,9 @@ pub fn process_binds(world: &mut World) {
             events.push((name, true));
             events.push((name, false));
         }
+    }
+    if focused {
+        events.retain(|(_, down)| !down);
     }
     for (key, down) in events {
         let Some(binding) = world.resource::<Console>().binds.get(key).cloned() else { continue };

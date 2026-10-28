@@ -60,6 +60,11 @@ impl Plugin for SavePlugin {
         c.register_command("autosavedangerous", |w, _| save_named(w, "autosavedangerous", false));
         c.register_command("autosavedangerousissafe", |w, _| commit_dangerous(w));
         c.register_command("reload", reload_command);
+        c.register_command("load_latest", |w, _| {
+            if let Some(name) = newest_save() {
+                load_named(w, &name);
+            }
+        });
     }
 }
 
@@ -142,6 +147,21 @@ pub fn save_dir() -> PathBuf {
 fn path_for(name: &str) -> PathBuf {
     let name = name.trim().trim_end_matches(".sav");
     save_dir().join(format!("{name}.sav"))
+}
+
+/// The most recently written save's name (without `.sav`).
+pub fn newest_save() -> Option<String> {
+    let dir = std::fs::read_dir(save_dir()).ok()?;
+    dir.flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("sav")))
+        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+        .max_by_key(|(t, _)| *t)
+        .and_then(|(_, p)| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+}
+
+/// The map of the most recent save, if any.
+pub fn newest_save_map() -> Option<String> {
+    read_file(&newest_save()?).ok().map(|f| f.map)
 }
 
 pub fn write_file(name: &str, file: &SaveFile) -> Result<PathBuf, String> {

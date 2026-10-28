@@ -22,6 +22,10 @@ opt-level = 1
 [profile.dev.package."*"]
 opt-level = 3
 
+# Video decoding runs every frame of the menus.
+[profile.dev.package.bink]
+opt-level = 3
+
 [profile.release]
 codegen-units = 16
 lto = "thin"

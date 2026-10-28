@@ -37,6 +37,12 @@ pub struct SoundCache {
 }
 
 impl SoundCache {
+    /// Makes `pcm` the sound for `path` (sound decoded elsewhere, such as a
+    /// video's audio track).
+    pub fn insert(&mut self, path: &str, pcm: Pcm) {
+        self.loaded.insert(path.to_ascii_lowercase().replace('\\', "/"), Some(Arc::new(pcm)));
+    }
+
     /// `path` is the file path (`sound/...`) without sound characters.
     pub fn get(&mut self, fs: &GameFileSystem, path: &str) -> Option<Arc<Pcm>> {
         let key = path.to_ascii_lowercase().replace('\\', "/");

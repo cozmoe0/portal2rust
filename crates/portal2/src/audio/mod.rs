@@ -306,6 +306,14 @@ pub fn emit(world: &mut World, name: &str, params: Emit) -> Option<u64> {
     Some(id)
 }
 
+/// Registers decoded samples under a wave path (`sound/...`), so that
+/// `emit` can play them by that name.
+pub fn register_pcm(world: &mut World, path: &str, rate: u32, channels: u16, samples: Vec<i16>) {
+    let Some(mut sounds) = world.get_resource_mut::<Sounds>() else { return };
+    let frames = (samples.len() / channels.max(1) as usize) as u32;
+    sounds.cache.insert(path, Pcm { rate, channels, frames, samples, loop_start: None });
+}
+
 /// Stops sounds of `name` (entry or wave) on `entity` (or unattached ones).
 pub fn stop(world: &mut World, entity: Option<Entity>, name: &str) {
     let Some(mut sounds) = world.get_resource_mut::<Sounds>() else { return };

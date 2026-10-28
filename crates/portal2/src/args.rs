@@ -4,8 +4,15 @@ use bevy::prelude::*;
 
 #[derive(Resource, Clone, Debug)]
 pub struct Args {
-    /// Map to load on startup (without `maps/` and `.bsp`).
+    /// Map to load on startup (without `maps/` and `.bsp`); empty starts at
+    /// the main menu.
     pub map: String,
+    /// `-novid`: skip the startup videos.
+    pub novid: bool,
+    /// `-nomenuvid`: still image instead of the menu background movie.
+    pub nomenuvid: bool,
+    /// `-background <act>`: menu background act.
+    pub background: Option<i32>,
     /// Save a screenshot to this path after `frames` frames, then exit.
     pub screenshot: Option<String>,
     pub frames: u32,
@@ -71,7 +78,10 @@ pub struct Args {
 impl Default for Args {
     fn default() -> Self {
         Self {
-            map: "sp_a2_laser_intro".to_owned(),
+            map: String::new(),
+            novid: false,
+            nomenuvid: false,
+            background: None,
             screenshot: None,
             frames: 240,
             pos: None,
@@ -139,6 +149,9 @@ impl Args {
                 "--noclip" => args.noclip = true,
                 "--fullbright" => args.fullbright = true,
                 "--nosound" | "-nosound" => args.nosound = true,
+                "--novid" | "-novid" => args.novid = true,
+                "--nomenuvid" | "-nomenuvid" => args.nomenuvid = true,
+                "--background" | "-background" => args.background = it.next().and_then(|s| s.parse().ok()),
                 "--snd-record" => args.snd_record = it.next(),
                 "--snd-seconds" => args.snd_seconds = it.next().and_then(|s| s.parse().ok()).unwrap_or(10.0),
                 "--io-debug" => args.io_debug = true,

@@ -36,6 +36,7 @@ pub fn register(app: &mut App) {
             s.register(class, spawn_dynamic);
         }
         s.register("prop_testchamber_door", spawn_chamber_door);
+        s.register("npc_personality_core", spawn_personality_core);
         for class in ["prop_button", "prop_under_button"] {
             s.register(class, spawn_pedestal_button);
         }
@@ -97,6 +98,29 @@ fn attach_placeholder(world: &mut World, e: Entity) {
     let child = commands.spawn((Mesh3d(mesh), MeshMaterial3d(mat), Transform::from_xyz(0.0, 0.0, 8.0))).id();
     commands.entity(e).add_child(child);
     state.apply(world);
+}
+
+/// The server's model for personality cores (Wheatley and the other
+/// spheres); `ModelSkin` picks the core's skin.
+const PERSONALITY_CORE_MODEL: &str = "models/npcs/personality_sphere/personality_sphere_skins.mdl";
+
+fn spawn_personality_core(world: &mut World, e: Entity) {
+    if let Some(mut me) = world.get_mut::<MapEntity>(e) {
+        if me.get("model").is_none_or(|m| !m.to_ascii_lowercase().ends_with(".mdl")) {
+            me.set("model", PERSONALITY_CORE_MODEL);
+        }
+        if let Some(skin) = me.get("modelskin").map(str::to_owned) {
+            me.set("skin", &skin);
+        }
+    }
+    attach_entity_model(world, e, true);
+    if let Some(mut anim) = world.get_mut::<StudioAnimator>(e) {
+        let idle = anim.model.studio.find_sequence_by_activity("ACT_IDLE").or_else(|| anim.model.studio.find_sequence("sphere_idle_neutral"));
+        if let Some(i) = idle {
+            anim.set_sequence_index(i);
+            anim.default_sequence = Some(i);
+        }
+    }
 }
 
 /// Default handling for `prop_*` classes without a dedicated spawner.
@@ -223,7 +247,7 @@ fn animation_done_outputs(mut finished: MessageReader<AnimationFinished>, mut ou
 
 // --------------------------------------------------------- prop_testchamber_door
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct ChamberDoor {
     pub open: bool,
     pub locked: bool,
@@ -274,14 +298,14 @@ fn set_door(world: &mut World, e: Entity, open: bool) {
 }
 
 /// Door waiting for its open/close animation to finish.
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 struct PendingDoorReport {
     open: bool,
 }
 
 // ------------------------------------------------------------ pedestal buttons
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct PedestalButton {
     pub pressed_until: Option<f64>,
     pub delay: f32,
@@ -360,7 +384,7 @@ fn button_timers(
 
 // --------------------------------------------------------------- floor buttons
 
-#[derive(Component)]
+#[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct FloorButton {
     pub pressed: bool,
     /// Last time something rested on the button (seconds).
@@ -491,4 +515,19 @@ fn static_prop_lighting_origin(prop: &StaticProp, studio: &StudioModel) -> Vec3 
     } else {
         prop.origin + angles_to_quat(prop.angles) * studio.mdl.illum_position
     }
+}
+
+impl crate::save::Restore for ChamberDoor {}
+
+impl crate::save::Restore for FloorButton {}
+
+impl crate::save::Restore for PedestalButton {}
+
+impl crate::save::Restore for PendingDoorReport {}
+
+pub fn register_save(r: &mut crate::save::SaveRegistry) {
+    r.component::<ChamberDoor>("chamber_door");
+    r.component::<FloorButton>("floor_button");
+    r.component::<PedestalButton>("pedestal_button");
+    r.component::<PendingDoorReport>("pending_door_report");
 }

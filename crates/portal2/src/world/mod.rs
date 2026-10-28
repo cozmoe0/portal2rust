@@ -63,6 +63,18 @@ impl LoadMap {
     }
 }
 
+/// With the menus running, a map load waits two frames so the loading
+/// screen is on screen while the (blocking) load runs.
+#[derive(Resource, Default)]
+pub struct PendingLoad {
+    pub enabled: bool,
+    pub request: Option<LoadMap>,
+    pub frames: u32,
+    /// Whether a map was loaded when the request came (a level change
+    /// rather than a load from the menu).
+    pub in_game: bool,
+}
+
 /// Sent after a map's geometry has been built so other plugins can populate it.
 #[derive(Message, Clone, Debug)]
 pub struct MapLoaded(pub String);
@@ -73,13 +85,16 @@ impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<LoadMap>()
             .add_message::<MapLoaded>()
+            .init_resource::<PendingLoad>()
             .add_systems(Startup, request_initial_map)
             .add_systems(PreUpdate, load_map_system.in_set(LoadMapSet));
     }
 }
 
 fn request_initial_map(args: Res<Args>, mut writer: MessageWriter<LoadMap>) {
-    writer.write(LoadMap::new(args.map.clone(), MapLoadType::NewGame));
+    if !args.map.is_empty() {
+        writer.write(LoadMap::new(args.map.clone(), MapLoadType::NewGame));
+    }
 }
 
 /// Map loading; entity spawning runs after it.
@@ -122,8 +137,27 @@ fn load_map_system(
     mut meshes: ResMut<Assets<Mesh>>,
     mut world_materials: ResMut<Assets<WorldMaterial>>,
     old: Query<Entity, With<MapObject>>,
+    mut pending: ResMut<PendingLoad>,
+    current: Option<Res<CurrentMap>>,
 ) {
-    let Some(LoadMap { name, kind }) = requests.read().last().cloned() else { return };
+    if let Some(req) = requests.read().last().cloned() {
+        if pending.enabled {
+            pending.in_game = current.is_some();
+            pending.request = Some(req);
+            pending.frames = 0;
+            return;
+        }
+        pending.request = Some(req);
+        pending.frames = u32::MAX;
+    }
+    if pending.request.is_none() {
+        return;
+    }
+    if pending.frames < 2 {
+        pending.frames += 1;
+        return;
+    }
+    let Some(LoadMap { name, kind }) = pending.request.take() else { return };
     let started = std::time::Instant::now();
     // Children go with their parents; the ones already gone are skipped.
     for e in &old {
@@ -195,6 +229,27 @@ fn load_map_system(
     commands.insert_resource(start);
     commands.insert_resource(map);
     loaded.write(MapLoaded(name));
+}
+
+/// `disconnect`: leaves the map; nothing of it stays in the world.
+pub fn unload_map(world: &mut World) {
+    let objects: Vec<Entity> = world.query_filtered::<Entity, With<MapObject>>().iter(world).collect();
+    for e in objects {
+        if let Ok(e) = world.get_entity_mut(e) {
+            e.despawn();
+        }
+    }
+    let player = world.get_resource::<crate::entities::EntityRegistry>().and_then(|r| r.player);
+    if let Some(p) = player
+        && let Ok(e) = world.get_entity_mut(p)
+    {
+        e.despawn();
+    }
+    if let Some(mut r) = world.get_resource_mut::<crate::entities::EntityRegistry>() {
+        r.player = None;
+    }
+    world.remove_resource::<CurrentMap>();
+    world.remove_resource::<PlayerStart>();
 }
 
 pub fn spawn_model_meshes(commands: &mut Commands, map: &CurrentMap, model: usize, parent: Entity) {

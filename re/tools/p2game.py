@@ -99,8 +99,9 @@ class NetConsole:
 class Game:
     """Context manager: launches the game, backs up and restores settings."""
 
-    def __init__(self, width=1600, height=900, log_name="game_console.log"):
+    def __init__(self, width=1600, height=900, log_name="game_console.log", extra_args=()):
         self.width, self.height = width, height
+        self.extra_args = list(extra_args)
         self.root = find_install()
         self.cfg_dir = os.path.join(self.root, "portal2", "cfg")
         self.backup_dir = os.path.join("re", "out", "capture_backup")
@@ -123,7 +124,7 @@ class Game:
             "-novid", "-windowed", "-noborder",
             "-w", str(self.width), "-h", str(self.height),
             "-netconport", str(PORT), "-netconpassword", password,
-        ]
+        ] + self.extra_args
         print("launching Portal 2 with its network console on port", PORT)
         subprocess.Popen(cmd, cwd=self.root)
         self.con = NetConsole(password, self.log_path)

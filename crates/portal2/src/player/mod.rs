@@ -132,10 +132,11 @@ fn gather_input(
     cursor: Query<&CursorOptions, With<PrimaryWindow>>,
     mut input: ResMut<PlayerInput>,
     mut players: Query<&mut Player>,
+    focus: Option<Res<crate::gameui::UiFocus>>,
 ) {
     let grabbed = cursor.single().is_ok_and(|c| c.grab_mode != CursorGrabMode::None);
     let i = &mut input.input;
-    if grabbed {
+    if grabbed && !focus.is_some_and(|f| f.0) {
         let sens = console.f32("sensitivity");
         i.angles.y -= motion.delta.x * sens * console.f32("m_yaw");
         i.angles.x = (i.angles.x + motion.delta.y * sens * console.f32("m_pitch"))

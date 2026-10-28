@@ -4971,6 +4971,7 @@ version = "0.1.0"
 dependencies = [
  "avian3d",
  "bevy",
+ "bink",
  "bytemuck",
  "ciborium",
  "cpal",
@@ -4982,6 +4983,7 @@ dependencies = [
  "source_formats",
  "squirrel",
  "symphonia",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

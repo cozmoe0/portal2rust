@@ -1,8 +1,8 @@
 //! Screen effects driven by map entities: fades (`env_fade`) and on-screen
 //! messages (`game_text`), plus the game's localized strings.
 //!
-//! Text uses a stand-in font until the game's own fonts are loaded by the
-//! UI milestone; timing, colours and placement follow the entities.
+//! Both are drawn with the interface painter: the fade in the view layer,
+//! messages in the HUD with the scheme fonts of their channel.
 
 use std::collections::HashMap;
 
@@ -12,6 +12,7 @@ use crate::clock::GameClock;
 use crate::entities::io::{InputCall, InputHandlers, fire_output};
 use crate::entities::{MapEntity, SpawnHandlers};
 use crate::vfs::GameFs;
+use crate::vgui::{FontId, Schemes, Surface, VguiPaint, layer};
 
 pub struct ScreenPlugin;
 
@@ -19,8 +20,8 @@ impl Plugin for ScreenPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ScreenFade>()
             .init_resource::<Messages>()
-            .add_systems(Startup, (load_localization, spawn_overlay))
-            .add_systems(Update, (draw_fade, draw_messages));
+            .add_systems(Startup, load_localization)
+            .add_systems(PostUpdate, (draw_fade, draw_messages).in_set(VguiPaint));
         let world = app.world_mut();
         {
             let mut s = world.resource_mut::<SpawnHandlers>();
@@ -51,7 +52,16 @@ impl Localization {
 
 fn load_localization(mut commands: Commands, fs: Res<GameFs>) {
     let mut tokens = HashMap::new();
-    for file in ["resource/portal2_english.txt", "resource/basemodui_english.txt", "resource/gameui_english.txt"] {
+    for file in [
+        "resource/valve_english.txt",
+        "resource/vgui_english.txt",
+        "resource/platform_english.txt",
+        "resource/gameui_english.txt",
+        "resource/portal2_english.txt",
+        "resource/portal2dlc2_english.txt",
+        "resource/basemodui_english.txt",
+        "resource/basemodui_tu_english.txt",
+    ] {
         let Some(text) = fs.read_string(file) else { continue };
         let Some(root) = source_formats::kv::parse(&text) else { continue };
         let Some(t) = root.get("tokens") else { continue };
@@ -101,20 +111,6 @@ impl ScreenFade {
     }
 }
 
-#[derive(Component)]
-struct FadeOverlay;
-
-fn spawn_overlay(mut commands: Commands) {
-    commands.spawn((
-        Name::new("screen fade"),
-        FadeOverlay,
-        Node { position_type: PositionType::Absolute, width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
-        BackgroundColor(Color::NONE),
-        GlobalZIndex(100),
-        Pickable::IGNORE,
-    ));
-}
-
 fn fade_input(world: &mut World, call: &InputCall) -> bool {
     let reverse = match call.input.as_str() {
         "fade" => false,
@@ -140,19 +136,22 @@ fn fade_input(world: &mut World, call: &InputCall) -> bool {
     true
 }
 
-fn draw_fade(fade: Res<ScreenFade>, clock: Res<GameClock>, mut q: Query<&mut BackgroundColor, With<FadeOverlay>>) {
+/// The fade is part of the 3D view, under the HUD: a full-screen colour,
+/// or with `modulate` a multiply of the scene towards the colour.
+fn draw_fade(fade: Res<ScreenFade>, clock: Res<GameClock>, mut surface: ResMut<Surface>) {
     let a = fade.alpha(clock.curtime);
+    if a <= 0.0 {
+        return;
+    }
     let c = fade.color;
-    for mut bg in &mut q {
-        let color = if fade.modulate {
-            // Modulation darkens toward the colour; approximate with alpha.
-            Color::srgba(c.x, c.y, c.z, a * 0.5)
-        } else {
-            Color::srgba(c.x, c.y, c.z, a)
-        };
-        if bg.0 != color {
-            bg.0 = color;
-        }
+    let byte = |v: f32| (v.clamp(0.0, 1.0) * 255.0) as u8;
+    surface.set_layer(layer::VIEW);
+    let (w, h) = (surface.wide, surface.tall);
+    if fade.modulate {
+        let m = |v: f32| byte(1.0 + (v - 1.0) * a);
+        surface.modulate(0, 0, w, h, [m(c.x), m(c.y), m(c.z), 255]);
+    } else {
+        surface.fill(0, 0, w, h, [byte(c.x), byte(c.y), byte(c.z), byte(a)]);
     }
 }
 
@@ -175,22 +174,6 @@ pub struct Message {
 }
 
 impl Message {
-    fn alpha(&self, t: f64) -> f32 {
-        let since = (t - self.start) as f32;
-        if since < 0.0 {
-            return 0.0;
-        }
-        let fade_in = if self.effect == 2 { self.fade_in * self.text.chars().count() as f32 } else { self.fade_in };
-        if since < fade_in {
-            return if fade_in > 0.0 { since / fade_in } else { 1.0 };
-        }
-        let after = since - fade_in - self.hold;
-        if after < 0.0 {
-            return 1.0;
-        }
-        if self.fade_out > 0.0 { (1.0 - after / self.fade_out).max(0.0) } else { 0.0 }
-    }
-
     fn done(&self, t: f64) -> bool {
         let fade_in = if self.effect == 2 { self.fade_in * self.text.chars().count() as f32 } else { self.fade_in };
         (t - self.start) as f32 > fade_in + self.hold + self.fade_out
@@ -200,7 +183,7 @@ impl Message {
 /// Active messages by channel.
 #[derive(Resource, Default)]
 pub struct Messages {
-    pub channels: HashMap<i32, (Message, Option<Entity>)>,
+    pub channels: HashMap<i32, Message>,
 }
 
 fn color_kv(me: &MapEntity, key: &str, default: Vec3) -> Vec4 {
@@ -248,73 +231,125 @@ fn display(world: &mut World, e: Entity) {
         start: world.resource::<GameClock>().curtime,
     };
     let channel = me.get_i32("channel").unwrap_or(1);
-    let old = world.resource_mut::<Messages>().channels.remove(&channel);
-    if let Some((_, Some(node))) = old {
-        world.entity_mut(node).despawn();
-    }
-    world.resource_mut::<Messages>().channels.insert(channel, (msg, None));
+    world.resource_mut::<Messages>().channels.insert(channel, msg);
 }
 
+/// One frame of a text message, following the game's `CHudMessage`: the
+/// text is laid out line by line in the channel's font, each line placed by
+/// `x`/`y` (-1 centres; negative values count from the right / bottom), and
+/// every character gets its colour from the message effect: 0/1 fade the
+/// whole message in and out, 2 types the characters out one every `fadein`
+/// seconds, each flashing from `color2` to `color` over `fxtime`.
 fn draw_messages(
-    mut commands: Commands,
     clock: Res<GameClock>,
     console: Res<crate::console::Console>,
+    schemes: Res<Schemes>,
+    mut surface: ResMut<Surface>,
     mut messages: ResMut<Messages>,
-    mut texts: Query<(&mut Node, &mut TextColor, &mut Text)>,
 ) {
     let now = clock.curtime;
-    let hidden = !console.bool("cl_drawhud");
-    let mut finished = Vec::new();
-    for (channel, (msg, node)) in messages.channels.iter_mut() {
-        if msg.done(now) {
-            finished.push(*channel);
-            continue;
-        }
-        let a = if hidden { 0.0 } else { msg.alpha(now) };
-        let shown: String = if msg.effect == 2 && msg.fade_in > 0.0 {
-            let n = ((now - msg.start) as f32 / msg.fade_in).floor().max(0.0) as usize;
-            msg.text.chars().take(n).collect()
-        } else {
-            msg.text.clone()
+    messages.channels.retain(|_, m| !m.done(now));
+    if !console.bool("cl_drawhud") {
+        return;
+    }
+    surface.set_layer(layer::HUD);
+    let tall = surface.tall;
+    let mut channels: Vec<_> = messages.channels.iter().map(|(c, m)| (*c, m.clone())).collect();
+    channels.sort_by_key(|(c, _)| *c);
+    for (channel, msg) in channels {
+        let font_name = match channel {
+            2 => "InGameChapterTitle",
+            3 => "InGameChapterSubtitle",
+            _ => "InGameChapterTitle",
         };
-        let c = msg.color;
-        let color = Color::srgba(c.x, c.y, c.z, c.w * a);
-        // -1 centres on that axis: a full-width line with centred text.
-        let left = if msg.x < 0.0 { Val::Px(0.0) } else { Val::Percent(msg.x * 100.0) };
-        let width = if msg.x < 0.0 { Val::Percent(100.0) } else { Val::Auto };
-        let top = if msg.y < 0.0 { Val::Percent(45.0) } else { Val::Percent(msg.y * 100.0) };
-        match node {
-            Some(n) => {
-                if let Ok((mut layout, mut tc, mut text)) = texts.get_mut(*n) {
-                    layout.left = left;
-                    layout.top = top;
-                    layout.width = width;
-                    tc.0 = color;
-                    if text.0 != shown {
-                        text.0 = shown;
+        let Some(spec) = schemes.basemodui.font_spec(font_name, tall, true) else { continue };
+        let font = surface.font(spec);
+        draw_message(&mut surface, font, &msg, (now - msg.start) as f32);
+    }
+}
+
+fn draw_message(surface: &mut Surface, font: FontId, msg: &Message, time: f32) {
+    let text: Vec<char> = msg.text.chars().filter(|c| *c != '\r').collect();
+    let lines: Vec<&[char]> = text.split(|c| *c == '\n').collect();
+    let line_tall = surface.font_tall(font);
+    let widths: Vec<i32> = lines.iter().map(|l| l.iter().map(|c| surface.char_width(font, *c)).sum()).collect();
+    let max_width = widths.iter().copied().max().unwrap_or(0);
+    let total_tall = line_tall * lines.len() as i32;
+    let (sw, sh) = (surface.wide, surface.tall);
+    let mut y = if msg.y == -1.0 {
+        (sh - total_tall) / 2
+    } else if msg.y < 0.0 {
+        ((1.0 + msg.y) * sh as f32) as i32 - total_tall
+    } else {
+        (msg.y * sh as f32) as i32
+    };
+    if y + total_tall > sh {
+        y = sh - total_tall;
+    }
+    let y = y.max(0);
+    let length = text.len() as f32;
+    // Whole-message blend towards "off" (255).
+    let (fade_time, fade_blend) = match msg.effect {
+        2 => {
+            let fade_time = msg.fade_in * length + msg.hold;
+            let blend = if time > fade_time && msg.fade_out > 0.0 { (time - fade_time) / msg.fade_out * 255.0 } else { 0.0 };
+            (fade_time, blend as i32)
+        }
+        _ => {
+            let fade_time = msg.fade_in + msg.hold;
+            let blend = if time < msg.fade_in {
+                ((msg.fade_in - time) * (1.0 / msg.fade_in) * 255.0) as i32
+            } else if time > fade_time {
+                if msg.fade_out > 0.0 { ((time - fade_time) / msg.fade_out * 255.0) as i32 } else { 255 }
+            } else {
+                0
+            };
+            (fade_time, blend)
+        }
+    };
+    let alpha = (255 - fade_blend.min(255)).max(0) as u8;
+    let src = msg.color.truncate() * 255.0;
+    let fx = msg.color2.truncate() * 255.0;
+    let mut char_time = 0.0f32;
+    let mut line_y = y;
+    for (line, width) in lines.iter().zip(&widths) {
+        let mut x = if msg.x == -1.0 {
+            (sw - width) / 2
+        } else if msg.x >= 0.0 {
+            (sw as f32 * msg.x) as i32
+        } else {
+            (sw as f64 * (msg.x + 1.0) as f64 - max_width as f64) as i32
+        };
+        if x + width > sw {
+            x = sw - width;
+        }
+        let mut x = x.max(0);
+        for &ch in line.iter() {
+            let (mut s, mut d, mut blend) = (src, Vec3::ZERO, 0i32);
+            if msg.effect == 2 {
+                char_time += msg.fade_in;
+                if char_time > time {
+                    s = Vec3::ZERO;
+                } else {
+                    let delta = time - char_time;
+                    if time <= fade_time {
+                        if delta <= msg.fx_time {
+                            d = fx;
+                            blend = (255.0 - (1.0 / msg.fx_time * delta * 255.0 + 0.5)) as i32;
+                        }
+                    } else {
+                        blend = fade_blend;
                     }
                 }
+            } else {
+                blend = fade_blend;
             }
-            None => {
-                let id = commands
-                    .spawn((
-                        Name::new(format!("game_text channel {channel}")),
-                        Text::new(shown),
-                        TextFont { font_size: bevy::text::FontSize::Px(28.0), ..default() },
-                        TextColor(color),
-                        TextLayout::justify(if msg.x < 0.0 { Justify::Center } else { Justify::Left }),
-                        Node { position_type: PositionType::Absolute, left, top, width, ..default() },
-                        GlobalZIndex(90),
-                    ))
-                    .id();
-                *node = Some(id);
-            }
+            let blend = blend.clamp(0, 255);
+            let mix = |a: f32, b: f32| ((blend * b as i32 + a as i32 * (255 - blend)) >> 8).clamp(0, 255) as u8;
+            let color = [mix(s.x, d.x), mix(s.y, d.y), mix(s.z, d.z), alpha];
+            x += surface.draw_char(font, x, line_y, ch, color);
         }
-    }
-    for c in finished {
-        if let Some((_, Some(n))) = messages.channels.remove(&c) {
-            commands.entity(n).despawn();
-        }
+        line_y += line_tall;
     }
 }
 

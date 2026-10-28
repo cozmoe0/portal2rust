@@ -206,6 +206,8 @@ enum Tok {
 struct Lexer<'a> {
     src: &'a [u8],
     pos: usize,
+    /// Truth of each `$SYMBOL` in conditionals.
+    symbols: &'a dyn Fn(&str) -> bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -273,10 +275,22 @@ impl<'a> Lexer<'a> {
     }
 }
 
+/// The symbols that hold for the PC build of the game when nothing more
+/// specific (screen size, language) is known.
+pub fn pc_symbol(name: &str) -> bool {
+    matches!(name, "WIN32" | "WINDOWS" | "PC")
+}
+
 /// Evaluates a platform conditional for the PC build of the game.
 pub fn eval_condition(cond: &str) -> bool {
+    eval_condition_with(cond, &pc_symbol)
+}
+
+/// Evaluates a conditional such as `$WIN32 && !$X360`; `symbols` gives the
+/// value of each (upper-case) symbol name.
+pub fn eval_condition_with(cond: &str, symbols: &dyn Fn(&str) -> bool) -> bool {
     // Grammar: expr := term (('||'|'&&') term)* ; term := '!'? '$'NAME | '(' expr ')'
-    fn term(s: &[u8], i: &mut usize) -> bool {
+    fn term(s: &[u8], i: &mut usize, symbols: &dyn Fn(&str) -> bool) -> bool {
         skip_ws(s, i);
         let mut negate = false;
         while *i < s.len() && s[*i] == b'!' {
@@ -286,7 +300,7 @@ pub fn eval_condition(cond: &str) -> bool {
         }
         let v = if *i < s.len() && s[*i] == b'(' {
             *i += 1;
-            let v = expr(s, i);
+            let v = expr(s, i, symbols);
             skip_ws(s, i);
             if *i < s.len() && s[*i] == b')' {
                 *i += 1;
@@ -301,7 +315,7 @@ pub fn eval_condition(cond: &str) -> bool {
                 *i += 1;
             }
             let name = std::str::from_utf8(&s[start..*i]).unwrap_or("").to_ascii_uppercase();
-            matches!(name.as_str(), "WIN32" | "WINDOWS" | "PC")
+            symbols(&name)
         };
         v != negate
     }
@@ -310,17 +324,17 @@ pub fn eval_condition(cond: &str) -> bool {
             *i += 1;
         }
     }
-    fn expr(s: &[u8], i: &mut usize) -> bool {
-        let mut v = term(s, i);
+    fn expr(s: &[u8], i: &mut usize, symbols: &dyn Fn(&str) -> bool) -> bool {
+        let mut v = term(s, i, symbols);
         loop {
             skip_ws(s, i);
             if s[*i..].starts_with(b"||") {
                 *i += 2;
-                let r = term(s, i);
+                let r = term(s, i, symbols);
                 v = v || r;
             } else if s[*i..].starts_with(b"&&") {
                 *i += 2;
-                let r = term(s, i);
+                let r = term(s, i, symbols);
                 v = v && r;
             } else {
                 return v;
@@ -329,15 +343,21 @@ pub fn eval_condition(cond: &str) -> bool {
     }
     let s = cond.as_bytes();
     let mut i = 0;
-    expr(s, &mut i)
+    expr(s, &mut i, symbols)
 }
 
 /// Parses a KeyValues document.
 pub fn parse_document(text: &str) -> Document {
-    let mut lx = Lexer { src: text.as_bytes(), pos: 0 };
+    parse_document_with(text, &pc_symbol)
+}
+
+/// Parses a KeyValues document, keeping the entries whose conditionals hold
+/// under `symbols`.
+pub fn parse_document_with(text: &str, symbols: &dyn Fn(&str) -> bool) -> Document {
+    let mut lx = Lexer { src: text.as_bytes(), pos: 0, symbols };
     let mut doc = Document::default();
     let mut peeked: Option<Tok> = None;
-    let mut next = |lx: &mut Lexer, peeked: &mut Option<Tok>| peeked.take().or_else(|| lx.next());
+    let next = |lx: &mut Lexer, peeked: &mut Option<Tok>| peeked.take().or_else(|| lx.next());
 
     // Top level is a sequence of `key value` or `key { ... }` entries.
     loop {
@@ -387,7 +407,7 @@ fn parse_entry(key: String, lx: &mut Lexer, peeked: &mut Option<Tok>) -> Option<
         }
         Tok::Cond(c) => {
             // Condition between key and block: "key" [$X360] { ... }
-            let ok = eval_condition(&c);
+            let ok = eval_condition_with(&c, lx.symbols);
             let inner = parse_entry(key, lx, peeked)?;
             return ok.then_some(inner);
         }
@@ -402,7 +422,7 @@ fn parse_entry(key: String, lx: &mut Lexer, peeked: &mut Option<Tok>) -> Option<
 fn take_condition(lx: &mut Lexer, peeked: &mut Option<Tok>) -> bool {
     let tok = peeked.take().or_else(|| lx.next());
     match tok {
-        Some(Tok::Cond(c)) => eval_condition(&c),
+        Some(Tok::Cond(c)) => eval_condition_with(&c, lx.symbols),
         other => {
             *peeked = other;
             true
@@ -456,6 +476,18 @@ mod tests {
         assert_eq!(root.get_str("$envmap"), Some("env_cubemap"));
         assert!(root.get("$foo").is_none());
         assert!(root.path("Proxies/AnimatedTexture").is_some());
+    }
+
+    #[test]
+    fn symbols() {
+        let text = r#""a" { "x" "1" [$WIN32WIDE] "x" "2" [!$WIN32WIDE] "y" [$WIN32HIDEF && !$DECK] { "z" "3" } }"#;
+        let wide = |s: &str| matches!(s, "WIN32" | "WIN32WIDE" | "WIN32HIDEF");
+        let root = &parse_document_with(text, &wide).roots[0];
+        assert_eq!(root.get_str("x"), Some("1"));
+        assert_eq!(root.path("y/z").and_then(|k| k.as_str()), Some("3"));
+        let root = &parse_document(text).roots[0];
+        assert_eq!(root.get_str("x"), Some("2"));
+        assert!(root.get("y").is_none());
     }
 
     #[test]

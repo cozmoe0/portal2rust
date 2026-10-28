@@ -98,8 +98,13 @@ fn grab_cursor(
     mut cursor: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
+    ui: Option<Res<crate::gameui::GameUi>>,
 ) {
     let Ok(mut cursor) = cursor.single_mut() else { return };
+    // The menus own the mouse while they are up.
+    if ui.is_some_and(|u| u.active()) {
+        return;
+    }
     if mouse.just_pressed(MouseButton::Left) {
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;

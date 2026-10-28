@@ -9,6 +9,7 @@ description = "A Portal 2 engine reimplementation written in Rust on top of Bevy
 bevy = { workspace = true, features = ["serialize"] }
 source_formats = { path = "../source_formats" }
 squirrel = { path = "../squirrel", features = ["serde"] }
+bink = { path = "../bink" }
 serde = { version = "1", features = ["derive"] }
 # Saved games restore components in place, leaving skipped (runtime-only)
 # fields as the spawn code built them.
@@ -21,3 +22,7 @@ avian3d = "0.8"
 half = "2"
 cpal = "0.17"
 symphonia = { version = "0.5.4", default-features = false, features = ["mp3"] }
+
+# The interface rasterizes fonts with GDI, as the game does on Windows.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Graphics_Gdi", "Win32_System_Time"] }

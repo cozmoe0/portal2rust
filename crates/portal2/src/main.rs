@@ -14,6 +14,8 @@ mod console;
 mod coords;
 mod devices;
 mod entities;
+mod gameui;
+mod hud;
 mod models;
 mod physics;
 mod player;
@@ -27,6 +29,8 @@ mod screenshot;
 mod shots;
 mod smoke;
 mod vfs;
+mod vgui;
+mod video;
 mod world;
 
 use bevy::prelude::*;
@@ -62,7 +66,7 @@ fn main() {
             (entities::EntitiesPlugin, script::ScriptPlugin, player::PlayerPlugin, physics::GamePhysicsPlugin),
             (portals::PortalsPlugin, devices::DevicesPlugin, screen::ScreenPlugin, render::fog::FogPlugin, audio::AudioPlugin, captions::CaptionsPlugin),
             (camera::CameraPlugin, screenshot::ScreenshotPlugin, shots::ShotsPlugin, smoke::SmokePlugin, chain::ChainPlugin, probe::ProbePlugin),
-            save::SavePlugin,
+            (save::SavePlugin, vgui::VguiPlugin, hud::HudPlugin, video::VideoPlugin, gameui::GameUiPlugin),
         ))
         .run();
 }

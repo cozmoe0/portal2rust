@@ -26,6 +26,15 @@ a different engine for the game you already own.
 ## Running
 
 ```bash
+cargo run --release -p portal2
+```
+
+Without a map the game starts like the original: the Valve intro video, then
+the main menu over its background movie, with Single Player (Continue, New
+Game with chapter select, Load Game), the pause menu in a game (`Esc`), the
+quit confirmation and the loading screens. Give a map to go straight into it:
+
+```bash
 cargo run --release -p portal2 -- sp_a2_laser_intro
 ```
 
@@ -37,7 +46,8 @@ Useful options:
 
 | Option | Meaning |
 | --- | --- |
-| `<map>` / `--map <map>` | Map to load, e.g. `sp_a1_intro3` |
+| `<map>` / `--map <map>` | Map to load, e.g. `sp_a1_intro3` (none: start at the main menu) |
+| `-novid` / `-nomenuvid` | Skip the intro video / show the menu background still instead of the movie |
 | `--pos x,y,z` / `--ang p,y,r` | Override the start view (Source units / degrees) |
 | `--exposure <scale>` | Fixed exposure multiplier |
 | `--fullbright` | Ignore lighting (debugging) |
@@ -56,8 +66,15 @@ Useful options:
 | `--snd-record <file.wav> [--snd-seconds n]` | Also write the first `n` seconds (default 10) of the mixed output to a WAV file |
 
 Controls come from your own `portal2/cfg/config.cfg` key bindings, as in the
-original game (`+forward`, `+jump`, `+attack`, `+use`, ...). Click to capture
-the mouse, `Esc` releases it, `V` toggles noclip.
+original game (`+forward`, `+jump`, `+attack`, `+use`, ...). `Esc` opens the
+pause menu, the console key (`` ` ``) the developer console, `V` toggles
+noclip.
+
+The interface is drawn like the game's: its schemes, layout files, fonts
+(rasterized with GDI the same way, effects included) and localized text,
+blended the way the game blends it. The HUD shows the portal crosshair,
+close captions (`closecaption 1`) and chapter titles; `cl_drawhud 0` hides
+it.
 
 ## Console and scripts
 
@@ -113,12 +130,15 @@ saving again gives the same save.
   slot layout, so iteration order matches).
 - `crates/bink` – a Bink 1 video and audio decoder.
 - `crates/portal2` – the Bevy game: rendering, world loading, entities and
-  I/O, scripting, console, cameras.
+  I/O, scripting, console, cameras, the interface (`vgui`), HUD, menus
+  (`gameui`) and video playback.
 - `re/tools` – analysis and parity helpers: `convar_dump.py` (console
   variables and defaults from a game DLL), `capture.py` (reference screenshots
   from the installed game at the views of a shot list, driven through its
   password-protected local network console; your settings files are backed up
-  and restored), `imgdiff.py` (side-by-side comparison with ours),
+  and restored), `capture_ui.py` (the same for the menus and HUD, driving the
+  menus with keys posted to the game window), `imgdiff.py` (side-by-side
+  comparison with ours),
   `vscript_oracle.py` (runs Squirrel snippets in the game's VM and ours).
 - `re/shots/` – shot lists for parity checks.
 - `docs/` – notes on formats and engine behaviour, written in our own words.
