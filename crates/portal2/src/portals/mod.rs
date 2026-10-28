@@ -71,18 +71,36 @@ pub struct PortalParams {
     pub state: Vec4,
 }
 
+/// A portal's opening and rim (the game's `PortalRefract` stages, see
+/// `docs/re/portals.md`): the linked view inside the hole, a fiery rim from
+/// the noise texture through the portal's colour gradient, and the same
+/// fire filling the hole while the portal shows static.
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
 pub struct PortalMaterial {
+    /// color: rgb fallback rim colour, a: `$PortalColorScale`;
+    /// state: x linked, y time, z open amount, w clarity (1 - static).
     #[uniform(0)]
     pub params: PortalParams,
     #[texture(1)]
     #[sampler(2)]
     pub view: Option<Handle<Image>>,
+    /// `models/portals/noise-blur-256x256`.
+    #[texture(3)]
+    #[sampler(4)]
+    pub noise: Option<Handle<Image>>,
+    /// `models/portals/portal-blue-color` / `portal-orange-color`.
+    #[texture(5)]
+    #[sampler(6)]
+    pub gradient: Option<Handle<Image>>,
 }
 
 impl Material for PortalMaterial {
     fn fragment_shader() -> ShaderRef {
         PORTAL_SHADER.into()
+    }
+
+    fn alpha_mode(&self) -> AlphaMode {
+        AlphaMode::Blend
     }
 
     fn enable_prepass() -> bool {
@@ -253,6 +271,7 @@ fn apply_placements(
     mut materials: ResMut<Assets<PortalMaterial>>,
     mut sounds: MessageWriter<crate::audio::SoundRequest>,
     mut fx: MessageWriter<PortalFx>,
+    (fs, mut textures): (Res<crate::vfs::GameFs>, ResMut<crate::render::textures::TextureCache>),
 ) {
     for req in requests.read() {
         let rotation = req.frame.rotation();
@@ -274,9 +293,13 @@ fn apply_placements(
         let (width, height) = windows.single().map(|w| (w.physical_width(), w.physical_height())).unwrap_or((1600, 900));
         let texture = images.add(view_texture(width, height));
         let color = colors.0[req.slot];
+        let gradient = if req.slot == 0 { "portal-blue-color" } else { "portal-orange-color" };
+        let gradient = format!("materials/models/portals/{gradient}.vtf");
         let material = materials.add(PortalMaterial {
             params: PortalParams { color: color.extend(4.0), state: Vec4::ZERO },
             view: Some(texture.clone()),
+            noise: textures.load(&fs, &mut images, "materials/models/portals/noise-blur-256x256.vtf", false).map(|t| t.handle),
+            gradient: textures.load(&fs, &mut images, &gradient, true).map(|t| t.handle),
         });
         let (base, exposure) = main
             .single()
@@ -380,11 +403,17 @@ fn animate_portals(
     mut cameras: Query<&mut Camera>,
 ) {
     let now = time.elapsed_secs_f64();
-    let linked = portals.entities.iter().all(|e| e.is_some_and(|e| query.get(e).is_ok()));
-    for p in portals.entities.iter().flatten().filter_map(|e| query.get(*e).ok()) {
+    let open_portals: Vec<&Portal> = portals.entities.iter().flatten().filter_map(|e| query.get(*e).ok()).collect();
+    let linked = open_portals.len() == 2;
+    // Static comes back whenever either portal of the pair (re)opens and
+    // fades at 1 per second; an unlinked portal is all static.
+    let last_opened = open_portals.iter().map(|p| p.opened_at).fold(f64::MIN, f64::max);
+    for p in &open_portals {
         if let Some(mut m) = materials.get_mut(&p.material) {
-            let open = ((now - p.opened_at) / 0.25).clamp(0.0, 1.0) as f32;
-            m.params.state = Vec4::new(if linked { 1.0 } else { 0.0 }, now as f32, open, 0.0);
+            // The opening grows at 2 per second.
+            let open = ((now - p.opened_at) * 2.0).clamp(0.0, 1.0) as f32;
+            let static_amount = if linked { (1.0 - (now - last_opened)).clamp(0.0, 1.0) as f32 } else { 1.0 };
+            m.params.state = Vec4::new(if linked { 1.0 } else { 0.0 }, now as f32, open, 1.0 - static_amount);
         }
         if let Ok(mut c) = cameras.get_mut(p.camera) {
             c.is_active = linked;
