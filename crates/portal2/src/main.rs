@@ -64,7 +64,7 @@ fn main() {
             (clock::ClockPlugin, vfs::VfsPlugin, console::ConsolePlugin),
             (render::RenderSetupPlugin, world::WorldPlugin, models::ModelsPlugin, collision::CollisionPlugin),
             (entities::EntitiesPlugin, script::ScriptPlugin, player::PlayerPlugin, physics::GamePhysicsPlugin),
-            (portals::PortalsPlugin, devices::DevicesPlugin, screen::ScreenPlugin, render::fog::FogPlugin, audio::AudioPlugin, captions::CaptionsPlugin),
+            (portals::PortalsPlugin, devices::DevicesPlugin, screen::ScreenPlugin, render::fog::FogPlugin, render::projected::ProjectedPlugin, render::sprites::SpritePlugin, render::spotlights::SpotlightPlugin, render::movies::MoviePlugin, render::tonemap::TonemapPlugin, audio::AudioPlugin, captions::CaptionsPlugin),
             (camera::CameraPlugin, screenshot::ScreenshotPlugin, shots::ShotsPlugin, smoke::SmokePlugin, chain::ChainPlugin, probe::ProbePlugin),
             (save::SavePlugin, vgui::VguiPlugin, hud::HudPlugin, video::VideoPlugin, gameui::GameUiPlugin),
         ))

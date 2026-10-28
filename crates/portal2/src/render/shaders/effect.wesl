@@ -4,6 +4,7 @@
 
 import bevy_pbr::render::forward_io::VertexOutput;
 import bevy_pbr::render::mesh_view_bindings::view;
+import bevy_pbr::render::mesh_view_bindings::fog;
 
 struct EffectParams {
     // rgb: colour (linear), a: opacity
@@ -16,6 +17,10 @@ struct EffectParams {
 
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
+    // Effects stay out of projected-texture shadow maps.
+    if fog.mode == 2u {
+        discard;
+    }
     var uv = vec2<f32>(0.5);
     @if(VERTEX_UVS_A) {
         uv = in.uv;

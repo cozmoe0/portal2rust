@@ -5,6 +5,7 @@
 import bevy_pbr::render::forward_io::VertexOutput;
 import bevy_pbr::render::mesh_view_bindings::view;
 import bevy_pbr::render::mesh_view_bindings::fog;
+import portal2::render::shaders::projected::{is_shadow_view, projected_lighting};
 
 struct ModelLight {
     // xyz: position, w: kind (0 point, 1 spot, 2 directional)
@@ -59,6 +60,7 @@ const FLAG_LIGHTWARP: u32 = 65536u;
 const FLAG_SELFILLUM_MASK: u32 = 131072u;
 const FLAG_BASEMAPLUMINANCE_PHONGMASK: u32 = 262144u;
 const FLAG_INVERT_PHONG_ENVMAPMASK: u32 = 524288u;
+const FLAG_ADDITIVE: u32 = 1048576u;
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> material: ModelParams;
 @group(constants::MATERIAL_BIND_GROUP) @binding(1) var base_tex: texture_2d<f32>;
@@ -149,6 +151,13 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     if has(FLAG_ALPHATEST) && alpha < material.alpha_ref {
         discard;
     }
+    if is_shadow_view() {
+        // Shadow maps hold the distance to the nearest opaque surface.
+        if has(FLAG_TRANSLUCENT) {
+            discard;
+        }
+        return vec4<f32>(distance(view.world_position, in.world_position.xyz), 0.0, 0.0, 1.0);
+    }
 
     var n = normalize(in.world_normal);
     if !is_front {
@@ -217,6 +226,9 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     }
 
     var color = albedo * diffuse;
+    if !has(FLAG_UNLIT) {
+        color = color + albedo * projected_lighting(p, n);
+    }
     if has(FLAG_SELFILLUM) {
         var mask = vec3<f32>(base.a);
         if has(FLAG_SELFILLUM_MASK) {
@@ -278,5 +290,20 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
         }
         color = color + spec * mask;
     }
+    if has(FLAG_ADDITIVE) {
+        // Premultiplied blending: added in full, fogging toward black.
+        return vec4<f32>(fade_with_fog(color * view.exposure * alpha, in.world_position.xyz), 0.0);
+    }
     return vec4<f32>(apply_source_fog(color * view.exposure, in.world_position.xyz), alpha);
+}
+
+// Additive surfaces fade out in fog instead of taking on its colour.
+fn fade_with_fog(color: vec3<f32>, world_position: vec3<f32>) -> vec3<f32> {
+    if fog.mode != 1u {
+        return color;
+    }
+    let forward = -view.world_from_view[2].xyz;
+    let depth = dot(world_position - view.world_position, forward);
+    let f = saturate(min(fog.directional_light_exponent, (depth - fog.be.x) / max(fog.be.y - fog.be.x, 1.0)));
+    return color * (1.0 - f);
 }

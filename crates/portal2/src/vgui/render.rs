@@ -60,6 +60,10 @@ pub struct VguiFrame {
     pub backdrop: bool,
 }
 
+/// The pass that draws the interface over the finished 3D view.
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct VguiDrawSet;
+
 /// Marks the camera that composites the interface (the last on the window).
 #[derive(Component, Clone, Copy, Default, ExtractComponent)]
 #[extract_app(RenderApp)]
@@ -83,7 +87,7 @@ impl Plugin for VguiRenderPlugin {
                     prepare_bind_groups.in_set(RenderSystems::PrepareBindGroups),
                 ),
             )
-            .add_systems(Core3d, draw_interface.in_set(Core3dSystems::PostProcess));
+            .add_systems(Core3d, draw_interface.in_set(Core3dSystems::PostProcess).in_set(VguiDrawSet));
     }
 }
 

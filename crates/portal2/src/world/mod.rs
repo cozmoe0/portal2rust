@@ -1,6 +1,8 @@
 //! Map loading: BSP geometry, lightmaps, brush entities and static props.
 
 pub mod bsp_mesh;
+pub mod ropes;
+pub mod sky;
 
 use std::sync::Arc;
 
@@ -83,7 +85,8 @@ pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<LoadMap>()
+        app.add_plugins((sky::SkyPlugin, ropes::RopePlugin))
+            .add_message::<LoadMap>()
             .add_message::<MapLoaded>()
             .init_resource::<PendingLoad>()
             .add_systems(Startup, request_initial_map)
@@ -181,8 +184,19 @@ fn load_map_system(
     textures.clear();
     material_cache.clear();
 
-    let geometry = build_world_geometry(&bsp);
+    let skybox = sky::Skybox3d::from_bsp(&bsp);
+    let mut geometry = build_world_geometry(&bsp, skybox.map(|s| s.area));
     let lightmap = images.add(lightmap_image(&geometry.atlas));
+    let mut overlay_batches: Vec<(MeshBatch, bool)> = std::mem::take(&mut geometry.overlays)
+        .into_iter()
+        .map(|b| (b, false))
+        .chain(std::mem::take(&mut geometry.skybox_overlays).into_iter().map(|b| (b, true)))
+        .collect();
+    // `P2R_NO_OVERLAYS=1`: leave overlays out (A/B checks).
+    if std::env::var_os("P2R_NO_OVERLAYS").is_some() {
+        overlay_batches.clear();
+    }
+    let skybox_batches = std::mem::take(&mut geometry.skybox);
     material_cache.lightmap = Some(lightmap.clone());
 
     let mut ctx = MaterialContext { fs: &fs, textures: &mut textures, images: &mut images };
@@ -213,9 +227,48 @@ fn load_map_system(
         model_meshes: Arc::new(model_meshes),
     };
 
-    // World geometry (model 0).
+    // World geometry (model 0); the 3D sky box's part only shows in its view.
     let world = commands.spawn((Name::new("worldspawn"), MapObject, Transform::IDENTITY, Visibility::Visible)).id();
-    spawn_model_meshes(&mut commands, &map, 0, world);
+    for (mesh, material) in &map.model_meshes[0] {
+        let id = commands.spawn((Mesh3d(mesh.clone()), MeshMaterial3d(material.clone()), Transform::IDENTITY, sky::SkyChecked)).id();
+        commands.entity(world).add_child(id);
+    }
+    let mut ctx = MaterialContext { fs: &fs, textures: &mut textures, images: &mut images };
+    for batch in skybox_batches {
+        let info = material_cache.world(&batch.texdata_name, &mut ctx, &mut world_materials);
+        let id = commands
+            .spawn((
+                Mesh3d(meshes.add(batch_to_mesh(batch))),
+                MeshMaterial3d(info.handle.clone()),
+                Transform::IDENTITY,
+                sky::SkyChecked,
+                bevy::camera::visibility::RenderLayers::layer(sky::SKYBOX_LAYER),
+            ))
+            .id();
+        commands.entity(world).add_child(id);
+    }
+    // Overlays draw over the faces they lie on, pulled forward in depth.
+    for (batch, in_skybox) in overlay_batches {
+        let info = material_cache.world(&batch.texdata_name, &mut ctx, &mut world_materials);
+        let material = match world_materials.get(&info.handle).cloned() {
+            Some(mut m) if m.depth_bias == 0 => {
+                m.depth_bias = crate::render::source_material::DECAL_DEPTH_BIAS;
+                world_materials.add(m)
+            }
+            _ => info.handle.clone(),
+        };
+        let mesh = meshes.add(batch_to_mesh(batch));
+        let mut overlay = commands.spawn((Name::new("overlay"), Mesh3d(mesh), MeshMaterial3d(material), Transform::IDENTITY, sky::SkyChecked));
+        if in_skybox {
+            overlay.insert(bevy::camera::visibility::RenderLayers::layer(sky::SKYBOX_LAYER));
+        }
+        let id = overlay.id();
+        commands.entity(world).add_child(id);
+    }
+    match skybox {
+        Some(s) => commands.insert_resource(s),
+        None => commands.remove_resource::<sky::Skybox3d>(),
+    }
 
     let start = find_player_start(&bsp.entities);
     info!(

@@ -76,6 +76,12 @@ pub struct BrushModelMeshes {
 
 pub struct WorldGeometry {
     pub models: Vec<BrushModelMeshes>,
+    /// `info_overlay` decals, by material, in render order.
+    pub overlays: Vec<MeshBatch>,
+    /// World faces and overlays inside the 3D sky box's area (left out of
+    /// `models[0]` and `overlays`).
+    pub skybox: Vec<MeshBatch>,
+    pub skybox_overlays: Vec<MeshBatch>,
     pub atlas: LightmapAtlas,
 }
 
@@ -199,11 +205,271 @@ impl FaceMapping {
     }
 }
 
-pub fn build_world_geometry(bsp: &Bsp) -> WorldGeometry {
+fn face_mapping(bsp: &Bsp, fi: usize, rects: &HashMap<usize, AtlasRect>, atlas_size: Vec2) -> FaceMapping {
+    let face = &bsp.faces[fi];
+    let ti = &bsp.texinfo[face.texinfo as usize];
+    let td = &bsp.texdata[ti.texdata as usize];
+    FaceMapping {
+        tex_s: ti.texture_vecs[0],
+        tex_t: ti.texture_vecs[1],
+        tex_size: Vec2::new(td.width.max(1) as f32, td.height.max(1) as f32),
+        lm_s: ti.lightmap_vecs[0],
+        lm_t: ti.lightmap_vecs[1],
+        lm_mins: Vec2::new(face.lightmap_mins[0] as f32, face.lightmap_mins[1] as f32),
+        rect: rects.get(&fi).copied(),
+        atlas_size,
+    }
+}
+
+/// Overlays, as the engine builds them: the overlay's quad lies in the plane
+/// through its origin spanned by basis U (packed into the z of its first
+/// three UV points) and V = normal x U; it is clipped against each face it
+/// lists, in that plane, and the pieces are projected onto the faces along
+/// the normal. Texture coordinates run from (U0, V0) at the first corner
+/// through (U0, V1), (U1, V1) to (U1, V0); the pieces take the faces'
+/// lightmaps. On displacements the quad is clipped against each triangle of
+/// the undisplaced grid and the pieces follow the displaced surface.
+fn build_overlays(
+    bsp: &Bsp,
+    rects: &HashMap<usize, AtlasRect>,
+    atlas_size: Vec2,
+    in_skybox: &dyn Fn(usize) -> bool,
+) -> (Vec<MeshBatch>, Vec<MeshBatch>) {
+    let mut batches: Vec<(u16, i32, bool, MeshBatch)> = Vec::new();
+    for ov in &bsp.overlays {
+        let Some(ti) = bsp.texinfo.get(ov.texinfo.max(0) as usize) else { continue };
+        let Some(td) = bsp.texdata.get(ti.texdata as usize) else { continue };
+        let n = ov.basis_normal.normalize_or_zero();
+        let u = Vec3::new(ov.uv_points[0].z, ov.uv_points[1].z, ov.uv_points[2].z);
+        if u == Vec3::ZERO || n == Vec3::ZERO {
+            continue;
+        }
+        let v = n.cross(u).normalize_or_zero();
+        let quad: [Vec2; 4] = std::array::from_fn(|i| ov.uv_points[i].truncate());
+        let tex: [Vec2; 4] = [
+            Vec2::new(ov.u[0], ov.v[0]),
+            Vec2::new(ov.u[0], ov.v[1]),
+            Vec2::new(ov.u[1], ov.v[1]),
+            Vec2::new(ov.u[1], ov.v[0]),
+        ];
+        let sky = ov.faces.first().is_some_and(|&f| in_skybox(f.max(0) as usize));
+        let key = (ov.render_order, ti.texdata, sky);
+        let pos = match batches.iter().position(|(o, t, s, _)| (*o, *t, *s) == key) {
+            Some(i) => i,
+            None => {
+                let name = bsp.texdata_strings.get(td.name_index as usize).cloned().unwrap_or_default();
+                batches.push((key.0, key.1, key.2, MeshBatch { texdata_name: name, ..Default::default() }));
+                batches.len() - 1
+            }
+        };
+        let before = batches[pos].3.indices.len();
+        for &fi in &ov.faces {
+            let Some(face) = bsp.faces.get(fi.max(0) as usize) else { continue };
+            if face.dispinfo >= 0 {
+                let m = face_mapping(bsp, fi as usize, rects, atlas_size);
+                let Some(g) = disp_grid(bsp, face, face.dispinfo as usize, &m) else { continue };
+                let to2d = |p: Vec3| Vec2::new((p - ov.origin).dot(u), (p - ov.origin).dot(v));
+                let batch = &mut batches[pos].3;
+                batch.lightmapped |= m.rect.is_some();
+                batch.bumped |= m.rect.is_some_and(|r| r.bumped);
+                for t in &g.triangles {
+                    let tri2 = t.map(|k| to2d(g.base_pos[k]));
+                    let clipped = clip_convex(&quad, &tri2);
+                    if clipped.len() < 3 {
+                        continue;
+                    }
+                    let d = (tri2[1] - tri2[0]).perp_dot(tri2[2] - tri2[0]);
+                    if d.abs() < 1e-6 {
+                        continue;
+                    }
+                    let base = batch.positions.len() as u32;
+                    for q in &clipped {
+                        let w1 = (*q - tri2[0]).perp_dot(tri2[2] - tri2[0]) / d;
+                        let w2 = (tri2[1] - tri2[0]).perp_dot(*q - tri2[0]) / d;
+                        let w = [1.0 - w1 - w2, w1, w2];
+                        let mix3 = |f: &dyn Fn(usize) -> Vec3| (0..3).map(|i| f(t[i]) * w[i]).sum::<Vec3>();
+                        let p = mix3(&|k| g.pos[k]);
+                        let nrm = mix3(&|k| g.normals[k]).normalize_or(Vec3::Z);
+                        let lux = (0..3).map(|i| g.lm[t[i]] * w[i]).sum::<Vec2>();
+                        batch.push_vertex(VertexIn {
+                            pos: p,
+                            normal: nrm,
+                            tangent: m.tangent(nrm),
+                            uv0: quad_texcoord(&quad, &tex, *q),
+                            uv1: m.luxel_to_uv1(lux),
+                            bump_step: m.bump_step(),
+                            alpha: 1.0,
+                        });
+                    }
+                    // Grid triangles are already front-facing for Bevy.
+                    for i in 1..clipped.len() as u32 - 1 {
+                        batch.indices.extend([base, base + i, base + i + 1]);
+                    }
+                }
+                continue;
+            }
+            let verts = bsp.face_vertices(face);
+            if verts.len() < 3 {
+                continue;
+            }
+            let plane = &bsp.planes[face.plane as usize];
+            let to2d = |p: Vec3| Vec2::new((p - ov.origin).dot(u), (p - ov.origin).dot(v));
+            let poly: Vec<Vec2> = verts.iter().map(|&p| to2d(p)).collect();
+            let clipped = clip_convex(&quad, &poly);
+            if clipped.len() < 3 {
+                continue;
+            }
+            let denom = plane.normal.dot(n);
+            if denom.abs() < 1e-4 {
+                continue;
+            }
+            let m = face_mapping(bsp, fi as usize, rects, atlas_size);
+            let tangent = {
+                let t = (u - plane.normal * plane.normal.dot(u)).normalize_or(Vec3::X);
+                let w = if plane.normal.cross(t).dot(v) >= 0.0 { 1.0 } else { -1.0 };
+                [t.x, t.y, t.z, w]
+            };
+            let batch = &mut batches[pos].3;
+            batch.lightmapped |= m.rect.is_some();
+            batch.bumped |= m.rect.is_some_and(|r| r.bumped);
+            let base = batch.positions.len() as u32;
+            for q in &clipped {
+                let on_plane = ov.origin + u * q.x + v * q.y;
+                let t = (plane.dist - plane.normal.dot(on_plane)) / denom;
+                let p = on_plane + n * t;
+                batch.push_vertex(VertexIn {
+                    pos: p,
+                    normal: plane.normal,
+                    tangent,
+                    uv0: quad_texcoord(&quad, &tex, *q),
+                    uv1: m.luxel_to_uv1(m.luxel(p)),
+                    bump_step: m.bump_step(),
+                    alpha: 1.0,
+                });
+            }
+            // The clipped polygon follows the face's winding (clockwise in
+            // Source); flip it to Bevy's counter-clockwise fronts.
+            for i in 1..clipped.len() as u32 - 1 {
+                batch.indices.extend([base, base + i + 1, base + i]);
+            }
+        }
+        log::trace!(
+            "overlay {} {}: {} faces, {} triangles, origin {:?} normal {:?} u {:?} quad {:?}",
+            ov.id,
+            batches[pos].3.texdata_name,
+            ov.faces.len(),
+            (batches[pos].3.indices.len() - before) / 3,
+            ov.origin,
+            n,
+            u,
+            quad
+        );
+    }
+    batches.sort_by_key(|(order, _, _, _)| *order);
+    let (sky, world): (Vec<_>, Vec<_>) =
+        batches.into_iter().filter(|(_, _, _, b)| !b.indices.is_empty()).partition(|(_, _, sky, _)| *sky);
+    (world.into_iter().map(|(_, _, _, b)| b).collect(), sky.into_iter().map(|(_, _, _, b)| b).collect())
+}
+
+/// The BSP area of every face: from the leaves that list it, or for faces
+/// no leaf lists (displacements, brush models), the area just in front of
+/// the face's centre.
+pub fn face_areas(bsp: &Bsp) -> Vec<u16> {
+    let mut areas = vec![u16::MAX; bsp.faces.len()];
+    for leaf in &bsp.leafs {
+        let first = leaf.first_leaf_face as usize;
+        for &lf in bsp.leaf_faces.get(first..first + leaf.num_leaf_faces as usize).unwrap_or(&[]) {
+            if let Some(a) = areas.get_mut(lf as usize)
+                && *a == u16::MAX
+            {
+                *a = leaf.area;
+            }
+        }
+    }
+    for (fi, face) in bsp.faces.iter().enumerate() {
+        if areas[fi] != u16::MAX {
+            continue;
+        }
+        let verts = bsp.face_vertices(face);
+        if verts.is_empty() {
+            continue;
+        }
+        let centre = verts.iter().copied().sum::<Vec3>() / verts.len() as f32;
+        let normal = bsp.planes[face.plane as usize].normal;
+        if let Some(leaf) = bsp.leafs.get(bsp.find_leaf(centre + normal * 2.0)) {
+            areas[fi] = leaf.area;
+        }
+    }
+    areas
+}
+
+/// Sutherland-Hodgman: `subject` clipped to the convex polygon `clip`
+/// (either winding); the result winds like `clip`.
+fn clip_convex(subject: &[Vec2], clip: &[Vec2]) -> Vec<Vec2> {
+    let area: f32 = (0..clip.len()).map(|i| clip[i].perp_dot(clip[(i + 1) % clip.len()])).sum();
+    let sign = if area >= 0.0 { 1.0 } else { -1.0 };
+    let sub_area: f32 = (0..subject.len()).map(|i| subject[i].perp_dot(subject[(i + 1) % subject.len()])).sum();
+    let mut out: Vec<Vec2> = if sub_area * sign >= 0.0 { subject.to_vec() } else { subject.iter().rev().copied().collect() };
+    for i in 0..clip.len() {
+        let (a, b) = (clip[i], clip[(i + 1) % clip.len()]);
+        let inside = |p: Vec2| (b - a).perp_dot(p - a) * sign >= -1e-4;
+        let input = std::mem::take(&mut out);
+        for j in 0..input.len() {
+            let (p, q) = (input[j], input[(j + 1) % input.len()]);
+            let (pi, qi) = (inside(p), inside(q));
+            if pi {
+                out.push(p);
+            }
+            if pi != qi {
+                let d = (b - a).perp_dot(q - p);
+                if d.abs() > 1e-9 {
+                    let t = (b - a).perp_dot(a - p) / d;
+                    out.push(p + (q - p) * t);
+                }
+            }
+        }
+        if out.len() < 3 {
+            return Vec::new();
+        }
+    }
+    out
+}
+
+/// Texture coordinate at `p` inside the overlay quad, by barycentric
+/// interpolation over its two triangles (0,1,2) and (0,2,3).
+fn quad_texcoord(quad: &[Vec2; 4], tex: &[Vec2; 4], p: Vec2) -> Vec2 {
+    let bary = |a: Vec2, b: Vec2, c: Vec2| {
+        let d = (b - a).perp_dot(c - a);
+        if d.abs() < 1e-9 {
+            return None;
+        }
+        let w1 = (p - a).perp_dot(c - a) / d;
+        let w2 = (b - a).perp_dot(p - a) / d;
+        Some((1.0 - w1 - w2, w1, w2))
+    };
+    let tri = |i: [usize; 3]| bary(quad[i[0]], quad[i[1]], quad[i[2]]).map(|w| (i, w));
+    let first = tri([0, 1, 2]);
+    let pick = match (first, tri([0, 2, 3])) {
+        (Some((i, w)), _) if w.0 >= -1e-3 && w.1 >= -1e-3 && w.2 >= -1e-3 => Some((i, w)),
+        (_, Some(second)) => Some(second),
+        (f, None) => f,
+    };
+    match pick {
+        Some((i, (w0, w1, w2))) => tex[i[0]] * w0 + tex[i[1]] * w1 + tex[i[2]] * w2,
+        None => tex[0],
+    }
+}
+
+/// Builds every brush model's batches; with `skybox_area`, the world faces
+/// and overlays in that BSP area go to `skybox` / `skybox_overlays`.
+pub fn build_world_geometry(bsp: &Bsp, skybox_area: Option<u16>) -> WorldGeometry {
     let (atlas, rects) = pack_lightmaps(bsp);
     let atlas_size = Vec2::new(atlas.width as f32, atlas.height as f32);
+    let areas = skybox_area.map(|_| face_areas(bsp)).unwrap_or_default();
+    let in_skybox = |fi: usize| skybox_area.is_some_and(|a| areas.get(fi) == Some(&a));
     let mut models = Vec::with_capacity(bsp.models.len());
-    for model in &bsp.models {
+    let mut sky_batches: HashMap<i32, MeshBatch> = HashMap::new();
+    for (mi, model) in bsp.models.iter().enumerate() {
         let mut batches: HashMap<i32, MeshBatch> = HashMap::new();
         for fi in model.first_face..model.first_face + model.num_faces {
             let fi = fi as usize;
@@ -211,6 +477,7 @@ pub fn build_world_geometry(bsp: &Bsp) -> WorldGeometry {
             if !face_is_drawn(bsp, face) {
                 continue;
             }
+            let target = if mi == 0 && in_skybox(fi) { &mut sky_batches } else { &mut batches };
             let ti = &bsp.texinfo[face.texinfo as usize];
             let td = &bsp.texdata[ti.texdata as usize];
             let mapping = FaceMapping {
@@ -223,7 +490,7 @@ pub fn build_world_geometry(bsp: &Bsp) -> WorldGeometry {
                 rect: rects.get(&fi).copied(),
                 atlas_size,
             };
-            let batch = batches.entry(ti.texdata).or_insert_with(|| MeshBatch {
+            let batch = target.entry(ti.texdata).or_insert_with(|| MeshBatch {
                 texdata_name: bsp.texdata_strings.get(td.name_index as usize).cloned().unwrap_or_default(),
                 ..Default::default()
             });
@@ -239,7 +506,10 @@ pub fn build_world_geometry(bsp: &Bsp) -> WorldGeometry {
         batches.sort_by(|a, b| a.texdata_name.cmp(&b.texdata_name));
         models.push(BrushModelMeshes { batches });
     }
-    WorldGeometry { models, atlas }
+    let (overlays, skybox_overlays) = build_overlays(bsp, &rects, atlas_size, &in_skybox);
+    let mut skybox: Vec<MeshBatch> = sky_batches.into_values().filter(|b| !b.indices.is_empty()).collect();
+    skybox.sort_by(|a, b| a.texdata_name.cmp(&b.texdata_name));
+    WorldGeometry { models, overlays, skybox, skybox_overlays, atlas }
 }
 
 fn build_face(bsp: &Bsp, face: &Face, m: &FaceMapping, batch: &mut MeshBatch) {
@@ -298,11 +568,23 @@ fn build_face(bsp: &Bsp, face: &Face, m: &FaceMapping, batch: &mut MeshBatch) {
     }
 }
 
-fn build_displacement(bsp: &Bsp, face: &Face, disp_index: usize, m: &FaceMapping, batch: &mut MeshBatch) {
+/// A displacement's vertex grid: undisplaced and displaced positions,
+/// lightmap luxels, blend alpha, normals, and its triangles (grid indices,
+/// counter-clockwise from the front).
+struct DispGrid {
+    base_pos: Vec<Vec3>,
+    pos: Vec<Vec3>,
+    lm: Vec<Vec2>,
+    alpha: Vec<f32>,
+    normals: Vec<Vec3>,
+    triangles: Vec<[usize; 3]>,
+}
+
+fn disp_grid(bsp: &Bsp, face: &Face, disp_index: usize, m: &FaceMapping) -> Option<DispGrid> {
     let disp = &bsp.disp_infos[disp_index];
     let corners = bsp.face_vertices(face);
     if corners.len() != 4 {
-        return;
+        return None;
     }
     let start = (0..4)
         .min_by(|&a, &b| {
@@ -335,17 +617,12 @@ fn build_displacement(bsp: &Bsp, face: &Face, disp_index: usize, m: &FaceMapping
             alpha.push((dv.alpha / 255.0).clamp(0.0, 1.0));
         }
     }
-    if alpha.iter().any(|&a| a > 0.0) {
-        batch.has_blend = true;
-    }
     let face_normal = bsp.planes[face.plane as usize].normal;
     // Decide winding from the undisplaced grid so it matches the face orientation.
     let grid_normal = (base_pos[n] - base_pos[0]).cross(base_pos[1] - base_pos[0]);
     let flip = grid_normal.dot(face_normal) < 0.0;
-    let bump_step = m.bump_step();
-
     let at = |i: usize, j: usize| pos[i * n + j];
-    let base = batch.positions.len() as u32;
+    let mut normals = Vec::with_capacity(n * n);
     for i in 0..n {
         for j in 0..n {
             let di = at((i + 1).min(n - 1), j) - at(i.saturating_sub(1), j);
@@ -357,23 +634,15 @@ fn build_displacement(bsp: &Bsp, face: &Face, disp_index: usize, m: &FaceMapping
             if nrm == Vec3::ZERO {
                 nrm = face_normal;
             }
-            let k = i * n + j;
-            batch.push_vertex(VertexIn {
-                pos: pos[k],
-                normal: nrm,
-                tangent: m.tangent(nrm),
-                uv0: m.uv0(base_pos[k]),
-                uv1: m.luxel_to_uv1(lm[k]),
-                bump_step,
-                alpha: alpha[k],
-            });
+            normals.push(nrm);
         }
     }
+    let mut triangles = Vec::with_capacity((n - 1) * (n - 1) * 2);
     for i in 0..n - 1 {
         for j in 0..n - 1 {
-            let v00 = base + (i * n + j) as u32;
+            let v00 = i * n + j;
             let v01 = v00 + 1;
-            let v10 = base + ((i + 1) * n + j) as u32;
+            let v10 = (i + 1) * n + j;
             let v11 = v10 + 1;
             let (t1, t2) = if (i + j) % 2 == 0 {
                 ([v00, v10, v11], [v00, v11, v01])
@@ -383,12 +652,32 @@ fn build_displacement(bsp: &Bsp, face: &Face, disp_index: usize, m: &FaceMapping
             // Both triangles are counter-clockwise around the grid normal
             // (row x column); flip them when that faces away from the surface.
             for t in [t1, t2] {
-                if flip {
-                    batch.indices.extend([t[0], t[2], t[1]]);
-                } else {
-                    batch.indices.extend([t[0], t[1], t[2]]);
-                }
+                triangles.push(if flip { [t[0], t[2], t[1]] } else { t });
             }
         }
+    }
+    Some(DispGrid { base_pos, pos, lm, alpha, normals, triangles })
+}
+
+fn build_displacement(bsp: &Bsp, face: &Face, disp_index: usize, m: &FaceMapping, batch: &mut MeshBatch) {
+    let Some(g) = disp_grid(bsp, face, disp_index, m) else { return };
+    if g.alpha.iter().any(|&a| a > 0.0) {
+        batch.has_blend = true;
+    }
+    let bump_step = m.bump_step();
+    let base = batch.positions.len() as u32;
+    for k in 0..g.pos.len() {
+        batch.push_vertex(VertexIn {
+            pos: g.pos[k],
+            normal: g.normals[k],
+            tangent: m.tangent(g.normals[k]),
+            uv0: m.uv0(g.base_pos[k]),
+            uv1: m.luxel_to_uv1(g.lm[k]),
+            bump_step,
+            alpha: g.alpha[k],
+        });
+    }
+    for t in &g.triangles {
+        batch.indices.extend(t.map(|k| base + k as u32));
     }
 }

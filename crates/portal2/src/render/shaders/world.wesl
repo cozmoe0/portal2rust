@@ -5,6 +5,8 @@
 import bevy_pbr::render::forward_io::VertexOutput;
 import bevy_pbr::render::mesh_view_bindings::view;
 import bevy_pbr::render::mesh_view_bindings::fog;
+import bevy_pbr::render::mesh_view_bindings::globals;
+import portal2::render::shaders::projected::{is_shadow_view, projected_lighting};
 
 struct WorldParams {
     color: vec4<f32>,
@@ -36,6 +38,11 @@ const FLAG_DETAIL: u32 = 1024u;
 const FLAG_LIGHTMAPPED: u32 = 2048u;
 const FLAG_TRANSLUCENT: u32 = 4096u;
 const FLAG_VERTEX_BLEND: u32 = 8192u;
+const FLAG_BUMP2: u32 = 16384u;
+const FLAG_BLEND_MODULATE: u32 = 32768u;
+const FLAG_ADDITIVE: u32 = 65536u;
+const FLAG_WATER: u32 = 131072u;
+const FLAG_WATER_BASE: u32 = 262144u;
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> material: WorldParams;
 @group(constants::MATERIAL_BIND_GROUP) @binding(1) var base_tex: texture_2d<f32>;
@@ -52,6 +59,10 @@ const FLAG_VERTEX_BLEND: u32 = 8192u;
 @group(constants::MATERIAL_BIND_GROUP) @binding(12) var envmask_samp: sampler;
 @group(constants::MATERIAL_BIND_GROUP) @binding(13) var detail_tex: texture_2d<f32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(14) var detail_samp: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(15) var bump2_tex: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(16) var bump2_samp: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(17) var modulate_tex: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(18) var modulate_samp: sampler;
 
 // Tangent-space basis used for directional lightmaps (x: S, y: T, z: normal).
 const BUMP_BASIS_0 = vec3<f32>(0.81649658, 0.0, 0.57735027);
@@ -89,11 +100,50 @@ fn apply_source_fog(color: vec3<f32>, world_position: vec3<f32>) -> vec3<f32> {
     return mix(color, fog.base_color.rgb, f);
 }
 
+// Water and goo (see `water_material` in render/materials.rs).
+fn water(in: VertexOutput, uv: vec2<f32>, n: vec3<f32>) -> vec4<f32> {
+    var light = vec3<f32>(1.0);
+    if has(FLAG_LIGHTMAPPED) {
+        var lm_uv = vec2<f32>(0.0);
+        @if(VERTEX_UVS_B) {
+            lm_uv = in.uv_b;
+        }
+        light = textureSampleLevel(lightmap_tex, lightmap_samp, lm_uv, 0.0).rgb * material.lightmap_scale;
+    }
+    var color = material.color.rgb * light;
+    if has(FLAG_WATER_BASE) {
+        var flow = vec2<f32>(0.0);
+        if has(FLAG_BASE2) {
+            flow = textureSampleLevel(base2_tex, base2_samp, fract(uv), 0.0).rg * 2.0 - 1.0;
+        }
+        // Two phases half a cycle apart, each restarting while unseen.
+        let t = globals.time / material.detail.y;
+        let p0 = fract(t);
+        let p1 = fract(t + 0.5);
+        let base_uv = in.world_position.xy / material.detail.x;
+        let c0 = textureSample(base_tex, base_samp, base_uv + flow * (p0 * material.detail.z));
+        let c1 = textureSample(base_tex, base_samp, base_uv + flow * (p1 * material.detail.z) + vec2<f32>(0.5));
+        let goo = mix(c0, c1, abs(p0 * 2.0 - 1.0));
+        color = mix(color, goo.rgb * light, goo.a);
+    }
+    if has(FLAG_ENVMAP) {
+        let v = normalize(view.world_position - in.world_position.xyz);
+        color = color + textureSample(envmap_tex, envmap_samp, reflect(-v, n)).rgb * material.envmap_tint.rgb;
+    }
+    return vec4<f32>(apply_source_fog(color * view.exposure, in.world_position.xyz), 1.0);
+}
+
 @fragment
 fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @location(0) vec4<f32> {
     var uv = vec2<f32>(0.0);
     @if(VERTEX_UVS_A) {
         uv = in.uv;
+    }
+    if has(FLAG_WATER) {
+        if is_shadow_view() {
+            return vec4<f32>(distance(view.world_position, in.world_position.xyz), 0.0, 0.0, 1.0);
+        }
+        return water(in, uv, normalize(in.world_normal));
     }
     var base = textureSample(base_tex, base_samp, uv);
     var blend = 0.0;
@@ -101,6 +151,15 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
         blend = in.color.a;
     }
     if has(FLAG_VERTEX_BLEND) {
+        // The modulate texture narrows the blend around a per-texel
+        // midpoint (green) with a per-texel width (red).
+        if has(FLAG_BLEND_MODULATE) {
+            let m = textureSample(modulate_tex, modulate_samp, uv);
+            let lo = saturate(m.g - m.r);
+            let hi = saturate(m.g + m.r);
+            let t = saturate((blend - lo) / max(hi - lo, 1e-4));
+            blend = t * t * (3.0 - 2.0 * t);
+        }
         let base2 = textureSample(base2_tex, base2_samp, uv);
         base = mix(base, base2, blend);
     }
@@ -115,6 +174,13 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     if has(FLAG_ALPHATEST) && alpha < material.alpha_ref {
         discard;
     }
+    if is_shadow_view() {
+        // Shadow maps hold the distance to the nearest opaque surface.
+        if has(FLAG_TRANSLUCENT) {
+            discard;
+        }
+        return vec4<f32>(distance(view.world_position, in.world_position.xyz), 0.0, 0.0, 1.0);
+    }
 
     var n = normalize(in.world_normal);
     if !is_front {
@@ -124,6 +190,9 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     var tangent_normal = vec3<f32>(0.0, 0.0, 1.0);
     if has(FLAG_BUMP) {
         bump = textureSample(bump_tex, bump_samp, uv);
+        if has(FLAG_BUMP2) {
+            bump = mix(bump, textureSample(bump2_tex, bump2_samp, uv), blend);
+        }
         tangent_normal = normalize(bump.xyz * 2.0 - 1.0);
     }
 
@@ -162,6 +231,21 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     var color = albedo * diffuse;
     if has(FLAG_UNLIT) {
         color = albedo;
+    } else {
+        // Projected textures light the bumped surface.
+        var light_n = n;
+        @if(VERTEX_TANGENTS) {
+            if has(FLAG_BUMP) {
+                var tn = tangent_normal;
+                if has(FLAG_SSBUMP) {
+                    tn = normalize(bump.x * BUMP_BASIS_0 + bump.y * BUMP_BASIS_1 + bump.z * BUMP_BASIS_2);
+                }
+                let t = normalize(in.world_tangent.xyz);
+                let b = cross(n, t) * in.world_tangent.w;
+                light_n = normalize(t * tn.x + b * tn.y + n * tn.z);
+            }
+        }
+        color = color + albedo * projected_lighting(in.world_position.xyz, light_n);
     }
 
     if has(FLAG_ENVMAP) {
@@ -198,5 +282,20 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
         color = mix(color, albedo * material.selfillum_tint.rgb, base.a);
     }
 
+    if has(FLAG_ADDITIVE) {
+        // Premultiplied blending: added in full, fogging toward black.
+        return vec4<f32>(fade_with_fog(color * view.exposure * alpha, in.world_position.xyz), 0.0);
+    }
     return vec4<f32>(apply_source_fog(color * view.exposure, in.world_position.xyz), alpha);
+}
+
+// Additive surfaces fade out in fog instead of taking on its colour.
+fn fade_with_fog(color: vec3<f32>, world_position: vec3<f32>) -> vec3<f32> {
+    if fog.mode != 1u {
+        return color;
+    }
+    let forward = -view.world_from_view[2].xyz;
+    let depth = dot(world_position - view.world_position, forward);
+    let f = saturate(min(fog.directional_light_exponent, (depth - fog.be.x) / max(fog.be.y - fog.be.x, 1.0)));
+    return color * (1.0 - f);
 }

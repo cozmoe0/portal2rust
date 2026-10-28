@@ -118,6 +118,11 @@ pub fn register_all(r: &mut SaveRegistry) {
     ambient::register_save(r);
     r.component::<soundscape::SoundscapeEnt>("soundscape");
     crate::render::fog::register_save(r);
+    crate::render::projected::register_save(r);
+    crate::render::sprites::register_save(r);
+    crate::render::spotlights::register_save(r);
+    crate::render::movies::register_save(r);
+    crate::render::tonemap::register_save(r);
     r.custom("animator", save_animator, load_animator);
     r.custom("physics", save_physics, load_physics);
     r.custom("script_scope", crate::script::save::save_scope, crate::script::save::load_scope);

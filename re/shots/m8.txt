@@ -1,0 +1,13 @@
+# Visual-parity views for M8: name map x y z pitch yaw roll (feet origin, as setpos).
+# Capture with --map-settle 45 so sp_a3_01's opening fall is over.
+sky_intro3_up sp_a1_intro3 -1376.0 3392.0 100.0 -80.0 90.0 0
+water_intro3 sp_a1_intro3 140.0 1100.0 -322.0 35.0 90.0 0
+blend_intro2_floor sp_a1_intro2 -600.0 250.0 -40.0 50.0 200.0 0 ent_fire spotlight_1 turnon
+rope_intro2 sp_a1_intro2 -420.0 120.0 40.0 -20.0 80.0 0
+goo_pit sp_a2_laser_over_goo 3360.0 -1250.0 150.0 60.0 -90.0 0
+lamps_jump sp_a3_jump_intro -600.0 -30.0 300.0 0.0 180.0 0
+beams_jump sp_a3_jump_intro -1363.0 1350.0 950.0 -15.0 90.0 0
+sky3d_a3_01_wall sp_a3_01 2000.0 4000.0 3000.0 0.0 0.0 0
+sky3d_a3_01_down sp_a3_01 2300.0 4000.0 4500.0 60.0 30.0 0
+sprites_a3_01 sp_a3_01 -400.0 2583.0 1340.0 0.0 0.0 0
+spot_a3_01 sp_a3_01 -500.0 2181.0 450.0 -10.0 0.0 0

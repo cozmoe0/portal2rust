@@ -162,7 +162,7 @@ fn fly_camera(
     }
 }
 
-fn sync_camera_transform(mut q: Query<(&ViewAngles, &mut Transform), With<MainCamera>>) {
+pub fn sync_camera_transform(mut q: Query<(&ViewAngles, &mut Transform), With<MainCamera>>) {
     for (view, mut t) in &mut q {
         t.translation = view.origin;
         t.rotation = camera_rotation(angles_to_quat(view.angles));

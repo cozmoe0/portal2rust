@@ -6,6 +6,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{
     AsBindGroup, Face, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError,
 };
+use bevy::render::storage::ShaderBuffer;
 use bevy::shader::ShaderRef;
 
 pub const WORLD_SHADER: &str = "embedded://portal2/render/shaders/world.wesl";
@@ -27,6 +28,18 @@ pub mod world_flags {
     pub const LIGHTMAPPED: u32 = 2048;
     pub const TRANSLUCENT: u32 = 4096;
     pub const VERTEX_BLEND: u32 = 8192;
+    /// `$bumpmap2`: the second texture's bump map, blended like the base.
+    pub const BUMP2: u32 = 16384;
+    /// `$blendmodulatetexture` sharpens the vertex blend.
+    pub const BLEND_MODULATE: u32 = 32768;
+    /// `$additive`: drawn with premultiplied blending, so the shader puts
+    /// alpha into the colour and writes zero alpha.
+    pub const ADDITIVE: u32 = 65536;
+    /// The `Water` shader: water fog colour (lit by the lightmap) with,
+    /// for goo, the flowing `$basetexture` on top and a dim reflection.
+    pub const WATER: u32 = 131072;
+    /// The water has a `$basetexture` (goo); `base2` holds its flow map.
+    pub const WATER_BASE: u32 = 262144;
 }
 
 pub mod model_flags {
@@ -56,6 +69,8 @@ pub mod model_flags {
     pub const BASEMAPLUMINANCE_PHONGMASK: u32 = 262144;
     /// `$invertphongmask`: phong reflections use one minus their mask.
     pub const INVERT_PHONG_ENVMAPMASK: u32 = 524288;
+    /// `$additive` (see `world_flags::ADDITIVE`).
+    pub const ADDITIVE: u32 = 1 << 20;
 }
 
 pub mod refract_flags {
@@ -68,6 +83,8 @@ pub mod refract_flags {
     pub const BLUR: u32 = 8;
     /// `$refracttinttexture` multiplies the tint (times two).
     pub const TINT_TEXTURE: u32 = 16;
+    /// `$additive` (see `world_flags::ADDITIVE`).
+    pub const ADDITIVE: u32 = 32;
 }
 
 /// Pipeline state that cannot live in uniforms.
@@ -95,8 +112,37 @@ fn apply_key(descriptor: &mut RenderPipelineDescriptor, key: SourceMaterialKey, 
     };
     if let Some(depth_stencil) = descriptor.depth_stencil.as_mut() {
         depth_stencil.bias.constant = key.depth_bias;
+        if key.depth_bias != 0 {
+            // Decals and overlays also get the game's slope-scaled decal
+            // bias (`mat_slopescaledepthbias_decal`, 2 toward the viewer).
+            depth_stencil.bias.slope_scale = DECAL_SLOPE_BIAS;
+        }
     }
 }
+
+/// The projected-texture lights, cookies and shadow maps every world and
+/// model material binds (see render/projected.rs). Set once at startup;
+/// materials built before that (tests) bind nothing usable.
+#[derive(Clone, Debug)]
+pub struct ProjectedHandles {
+    pub lights: Handle<ShaderBuffer>,
+    pub cookies: Handle<Image>,
+    pub shadows: [Handle<Image>; 4],
+}
+
+pub static PROJECTED: std::sync::OnceLock<ProjectedHandles> = std::sync::OnceLock::new();
+
+fn projected_handles() -> (Handle<ShaderBuffer>, Option<Handle<Image>>, [Option<Handle<Image>>; 4]) {
+    match PROJECTED.get() {
+        Some(p) => (p.lights.clone(), Some(p.cookies.clone()), p.shadows.clone().map(Some)),
+        None => (Handle::default(), None, [None, None, None, None]),
+    }
+}
+
+/// Constant depth bias of decal materials and overlays, in steps of the
+/// depth buffer's precision at the surface (reverse Z: toward the viewer).
+pub const DECAL_DEPTH_BIAS: i32 = 64;
+const DECAL_SLOPE_BIAS: f32 = 2.0;
 
 #[derive(Clone, Copy, Debug, Default, ShaderType)]
 pub struct WorldParams {
@@ -141,6 +187,25 @@ pub struct WorldMaterial {
     #[texture(13)]
     #[sampler(14)]
     pub detail: Option<Handle<Image>>,
+    #[texture(15)]
+    #[sampler(16)]
+    pub bump2: Option<Handle<Image>>,
+    #[texture(17)]
+    #[sampler(18)]
+    pub blend_modulate: Option<Handle<Image>>,
+    #[storage(30, read_only)]
+    pub projected_lights: Handle<ShaderBuffer>,
+    #[texture(31, dimension = "2d_array")]
+    #[sampler(32)]
+    pub cookies: Option<Handle<Image>>,
+    #[texture(33)]
+    pub shadow0: Option<Handle<Image>>,
+    #[texture(34)]
+    pub shadow1: Option<Handle<Image>>,
+    #[texture(35)]
+    pub shadow2: Option<Handle<Image>>,
+    #[texture(36)]
+    pub shadow3: Option<Handle<Image>>,
     pub alpha_mode: AlphaMode,
     pub cull: Option<Face>,
     pub depth_bias: i32,
@@ -148,6 +213,7 @@ pub struct WorldMaterial {
 
 impl Default for WorldMaterial {
     fn default() -> Self {
+        let (projected_lights, cookies, [shadow0, shadow1, shadow2, shadow3]) = projected_handles();
         Self {
             params: WorldParams {
                 color: Vec4::ONE,
@@ -166,6 +232,14 @@ impl Default for WorldMaterial {
             envmap: None,
             envmask: None,
             detail: None,
+            bump2: None,
+            blend_modulate: None,
+            projected_lights,
+            cookies,
+            shadow0,
+            shadow1,
+            shadow2,
+            shadow3,
             alpha_mode: AlphaMode::Opaque,
             cull: Some(Face::Back),
             depth_bias: 0,
@@ -269,6 +343,19 @@ pub struct ModelMaterial {
     #[texture(13)]
     #[sampler(14)]
     pub lightwarp: Option<Handle<Image>>,
+    #[storage(30, read_only)]
+    pub projected_lights: Handle<ShaderBuffer>,
+    #[texture(31, dimension = "2d_array")]
+    #[sampler(32)]
+    pub cookies: Option<Handle<Image>>,
+    #[texture(33)]
+    pub shadow0: Option<Handle<Image>>,
+    #[texture(34)]
+    pub shadow1: Option<Handle<Image>>,
+    #[texture(35)]
+    pub shadow2: Option<Handle<Image>>,
+    #[texture(36)]
+    pub shadow3: Option<Handle<Image>>,
     pub alpha_mode: AlphaMode,
     pub cull: Option<Face>,
     pub depth_bias: i32,
@@ -276,6 +363,7 @@ pub struct ModelMaterial {
 
 impl Default for ModelMaterial {
     fn default() -> Self {
+        let (projected_lights, cookies, [shadow0, shadow1, shadow2, shadow3]) = projected_handles();
         Self {
             params: ModelParams {
                 color: Vec4::ONE,
@@ -296,6 +384,12 @@ impl Default for ModelMaterial {
             exponent: None,
             selfillum_mask: None,
             lightwarp: None,
+            projected_lights,
+            cookies,
+            shadow0,
+            shadow1,
+            shadow2,
+            shadow3,
             alpha_mode: AlphaMode::Opaque,
             cull: Some(Face::Back),
             depth_bias: 0,

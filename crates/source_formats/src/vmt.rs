@@ -25,8 +25,10 @@ pub struct VmtEnv {
 
 impl Default for VmtEnv {
     fn default() -> Self {
-        // Portal 2 on PC at the highest settings.
-        Self { dx_level: 95, gpu_level: 3, srgb: false }
+        // Portal 2 on PC at the highest settings. `srgb` follows the
+        // hardware config's sRGB-correct blending, which the game reports
+        // for DX10-class cards (any current GPU).
+        Self { dx_level: 95, gpu_level: 3, srgb: true }
     }
 }
 
@@ -64,10 +66,12 @@ impl VmtEnv {
             };
         }
         match rest {
-            "srgb" => self.srgb,
-            "360" | "x360" | "ps3" | "gameconsole" | "lowfill" | "osx" | "linux" | "posix" => false,
+            "srgb" | "srgb_pc" => self.srgb,
+            "srgb_gameconsole" | "360" | "x360" | "ps3" | "sonyps3" | "gameconsole" | "lowfill" | "osx" | "linux"
+            | "posix" => false,
             "hdr" | "ldr" => rest == "hdr",
-            _ => true,
+            // The game skips keys with conditions it does not know.
+            _ => false,
         }
     }
 }
@@ -244,6 +248,11 @@ mod tests {
         assert!(!env.eval("GPU<2"));
         assert!(!env.eval("360"));
         assert!(env.eval("!360"));
+        assert!(env.eval("srgb") && env.eval("srgb_pc") && !env.eval("!srgb"));
+        assert!(!env.eval("SonyPS3") && !env.eval("srgb_gameconsole"));
+        let glass = r#""LightmappedGeneric" { "$alpha" 1 "srgb?$alpha" "0.5" "SonyPS3?$alpha" ".7" }"#;
+        let vmt = Vmt::parse(glass, &mut |_| None).unwrap();
+        assert_eq!(vmt.get_f32("$alpha"), Some(0.5));
     }
 
     #[test]

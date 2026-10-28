@@ -10,7 +10,7 @@ use bevy::render::render_resource::Face;
 use source_formats::vmt::{Vmt, material_path};
 use source_formats::vtf;
 
-use super::source_material::{ModelMaterial, RefractMaterial, WorldMaterial, model_flags, refract_flags, world_flags};
+use super::source_material::{DECAL_DEPTH_BIAS, ModelMaterial, RefractMaterial, WorldMaterial, model_flags, refract_flags, world_flags};
 use super::textures::{TextureCache, TextureInfo};
 use crate::vfs::GameFs;
 
@@ -163,6 +163,58 @@ impl MaterialContext<'_> {
     }
 }
 
+/// The parts of Portal 2's `Water` shader we draw: the water's fog colour,
+/// lit by the lightmap (`$lightmapwaterfog`) since the bottom is out of
+/// sight a fog length below the surface; for goo the `$basetexture` on top,
+/// its alpha marking the floating scum, scrolled along the `$flowmap` in two
+/// phases half a cycle apart (`$color_flow_*`); and the reflection as the
+/// map's cube map times `$reflectamount` and `$reflecttint`.
+fn water_material(vmt: &Vmt, m: &mut WorldMaterial, ctx: &mut MaterialContext, cubemap: Option<Handle<Image>>) {
+    let p = &mut m.params;
+    let color255 = |key: &str, default: Vec3| {
+        let raw = vmt.get(key).unwrap_or("");
+        let v = vmt.get_vec3(key).unwrap_or(default);
+        if raw.trim_start().starts_with('[') { v } else { v / 255.0 }
+    };
+    let fog = color255("$fogcolor", Vec3::new(0.2, 0.25, 0.2));
+    let fog = Color::srgb(fog.x, fog.y, fog.z).to_linear();
+    p.color = Vec4::new(fog.red, fog.green, fog.blue, 1.0);
+    p.flags &= !(world_flags::TRANSLUCENT | world_flags::UNLIT | world_flags::BUMP | world_flags::SSBUMP);
+    p.flags |= world_flags::WATER;
+    if !vmt.get_bool("$lightmapwaterfog") {
+        p.flags &= !world_flags::LIGHTMAPPED;
+    }
+    m.base = None;
+    m.bump = None;
+    if let Some(t) = ctx.tex(vmt, "$basetexture", true) {
+        m.base = Some(t.handle);
+        p.flags |= world_flags::WATER_BASE;
+        if let Some(flow) = ctx.tex(vmt, "$flowmap", false) {
+            m.base2 = Some(flow.handle);
+            p.flags |= world_flags::BASE2;
+        }
+        p.detail = Vec4::new(
+            vmt.get_f32("$color_flow_uvscale").filter(|v| *v > 0.0).unwrap_or(400.0),
+            vmt.get_f32("$color_flow_timeintervalinseconds").filter(|v| *v > 0.0).unwrap_or(6.0),
+            vmt.get_f32("$color_flow_uvscrolldistance").unwrap_or(0.1),
+            0.0,
+        );
+    }
+    p.flags &= !world_flags::VERTEX_BLEND;
+    p.flags &= !world_flags::ENVMAP;
+    if let Some(env) = cubemap
+        && vmt.get("$reflecttexture").is_some()
+    {
+        let amount = vmt.get_f32("$reflectamount").unwrap_or(0.0);
+        let tint = color255("$reflecttint", Vec3::ONE);
+        let tint = Color::srgb(tint.x, tint.y, tint.z).to_linear();
+        m.envmap = Some(env);
+        p.flags |= world_flags::ENVMAP;
+        p.envmap_tint = Vec4::new(tint.red * amount, tint.green * amount, tint.blue * amount, 1.0);
+    }
+    m.alpha_mode = AlphaMode::Opaque;
+}
+
 impl MaterialCache {
     pub fn clear(&mut self) {
         self.world.clear();
@@ -207,6 +259,18 @@ impl MaterialCache {
                     if ssbump {
                         p.flags |= world_flags::SSBUMP;
                     }
+                    if p.flags & world_flags::VERTEX_BLEND != 0
+                        && let Some(t) = ctx.tex(vmt, "$bumpmap2", false)
+                    {
+                        m.bump2 = Some(t.handle);
+                        p.flags |= world_flags::BUMP2;
+                    }
+                }
+                if p.flags & world_flags::VERTEX_BLEND != 0
+                    && let Some(t) = ctx.tex(vmt, "$blendmodulatetexture", false)
+                {
+                    m.blend_modulate = Some(t.handle);
+                    p.flags |= world_flags::BLEND_MODULATE;
                 }
                 if let Some(env) = ctx.cubemap(vmt, "$envmap").or_else(|| {
                     vmt.get("$envmap").is_some_and(|e| e.eq_ignore_ascii_case("env_cubemap")).then(|| self.default_cubemap.clone()).flatten()
@@ -250,20 +314,15 @@ impl MaterialCache {
                         p.flags |= world_flags::ALPHATEST;
                         p.alpha_ref = vmt.get_f32("$alphatestreference").filter(|v| *v > 0.0).unwrap_or(0.5);
                     }
-                    Blend::Translucent | Blend::Additive => p.flags |= world_flags::TRANSLUCENT,
+                    Blend::Translucent => p.flags |= world_flags::TRANSLUCENT,
+                    Blend::Additive => p.flags |= world_flags::TRANSLUCENT | world_flags::ADDITIVE,
                     Blend::Opaque => {}
                 }
                 if surface.unlit {
                     p.flags |= world_flags::UNLIT;
                 }
                 if vmt.shader == "water" {
-                    // Stand-in until the water shader exists: murky fog colour, dimmed
-                    // to roughly the brightness of the surrounding lightmaps.
-                    let fog = vmt.get_vec3("$fogcolor").unwrap_or(Vec3::new(0.2, 0.25, 0.2));
-                    p.color = (fog * 0.12).extend(0.95);
-                    p.flags |= world_flags::TRANSLUCENT | world_flags::UNLIT;
-                    m.base = None;
-                    m.alpha_mode = AlphaMode::Blend;
+                    water_material(vmt, &mut m, ctx, self.default_cubemap.clone());
                 }
                 if vmt.get_bool("$nocull") {
                     m.cull = None;
@@ -272,7 +331,7 @@ impl MaterialCache {
                     m.alpha_mode = alpha_mode(surface.blend, vmt);
                 }
                 if vmt.get_bool("$decal") {
-                    m.depth_bias = 2;
+                    m.depth_bias = DECAL_DEPTH_BIAS;
                 }
             }
         }
@@ -392,7 +451,8 @@ impl MaterialCache {
                         p.flags |= model_flags::ALPHATEST;
                         p.alpha_ref = vmt.get_f32("$alphatestreference").filter(|v| *v > 0.0).unwrap_or(0.5);
                     }
-                    Blend::Translucent | Blend::Additive => p.flags |= model_flags::TRANSLUCENT,
+                    Blend::Translucent => p.flags |= model_flags::TRANSLUCENT,
+                    Blend::Additive => p.flags |= model_flags::TRANSLUCENT | model_flags::ADDITIVE,
                     Blend::Opaque => {}
                 }
                 if surface.unlit {
@@ -472,6 +532,7 @@ impl MaterialCache {
             m.alpha_mode = if has_envmap {
                 AlphaMode::Opaque
             } else if vmt.get_bool("$additive") {
+                m.params.flags |= refract_flags::ADDITIVE;
                 AlphaMode::Add
             } else if translucent_normal || vmt.get_bool("$vertexalpha") || vmt.get_f32("$alpha").is_some_and(|a| a < 1.0) {
                 AlphaMode::Blend

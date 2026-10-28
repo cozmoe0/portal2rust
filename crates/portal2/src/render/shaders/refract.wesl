@@ -33,6 +33,7 @@ const FLAG_NORMALMAP: u32 = 2u;
 const FLAG_ENVMAP: u32 = 4u;
 const FLAG_BLUR: u32 = 8u;
 const FLAG_TINT_TEXTURE: u32 = 16u;
+const FLAG_ADDITIVE: u32 = 32u;
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> material: RefractParams;
 @group(constants::MATERIAL_BIND_GROUP) @binding(1) var base_tex: texture_2d<f32>;
@@ -98,6 +99,10 @@ fn apply_source_fog(color: vec3<f32>, world_position: vec3<f32>) -> vec3<f32> {
 
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
+    // Refracting surfaces stay out of projected-texture shadow maps.
+    if fog.mode == 2u {
+        discard;
+    }
     var uv = vec2<f32>(0.0);
     @if(VERTEX_UVS_A) {
         uv = in.uv;
@@ -160,5 +165,9 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     let color = refracted * tint + spec;
+    if has(FLAG_ADDITIVE) {
+        // `$additive`: premultiplied blending, added in full.
+        return vec4<f32>(apply_source_fog(color, p) * normal.a, 0.0);
+    }
     return vec4<f32>(apply_source_fog(color, p), normal.a);
 }

@@ -63,6 +63,19 @@ pub struct Videos {
 impl Videos {
     /// Opens `path` (`media/foo.bik`); returns `None` when it cannot be read.
     pub fn open(&mut self, fs: &GameFs, surface: &mut Surface, path: &str, looping: bool) -> Option<VideoId> {
+        self.open_with(fs, surface, path, looping, true)
+    }
+
+    /// Like `open`; without `sound` the movie's audio track is not played
+    /// (in-world screens).
+    pub fn open_with(
+        &mut self,
+        fs: &GameFs,
+        surface: &mut Surface,
+        path: &str,
+        looping: bool,
+        sound: bool,
+    ) -> Option<VideoId> {
         let data = fs.read(path)?;
         let bink = match bink::Bink::open(data) {
             Ok(b) => b,
@@ -72,7 +85,7 @@ impl Videos {
             }
         };
         let (w, h, fps, frames) = (bink.width(), bink.height(), bink.fps(), bink.frame_count());
-        let audio = bink.audio_tracks().first().cloned().and_then(|track| {
+        let audio = bink.audio_tracks().first().cloned().filter(|_| sound).and_then(|track| {
             let mut dec = bink::AudioDecoder::new(&track).ok()?;
             let mut samples = Vec::new();
             for f in 0..frames {

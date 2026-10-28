@@ -49,7 +49,7 @@ Useful options:
 | `<map>` / `--map <map>` | Map to load, e.g. `sp_a1_intro3` (none: start at the main menu) |
 | `-novid` / `-nomenuvid` | Skip the intro video / show the menu background still instead of the movie |
 | `--pos x,y,z` / `--ang p,y,r` | Override the start view (Source units / degrees) |
-| `--exposure <scale>` | Fixed exposure multiplier |
+| `--exposure <scale>` | Fixed exposure instead of the dynamic tone map |
 | `--fullbright` | Ignore lighting (debugging) |
 | `--screenshot <file> --frames <n>` | Capture a screenshot after `n` frames and exit |
 | `--noclip` | Start in free flight (toggle in game with `V`) |
@@ -75,6 +75,21 @@ The interface is drawn like the game's: its schemes, layout files, fonts
 blended the way the game blends it. The HUD shows the portal crosshair,
 close captions (`closecaption 1`) and chapter titles; `cl_drawhud 0` hides
 it.
+
+## Rendering
+
+The world is drawn from the map's own data with the game's materials:
+lightmapped brushes and displacements (including the blend-modulated
+WorldVertexTransition floors), static and dynamic models, overlays,
+the 2D sky and the 3D sky box (seen through the `sky_camera` with its own
+fog), ropes and cables settled with the game's rope simulation, sprites and
+glows, spotlight beams, flowing goo and water, refracting glass, and the
+elevator movie screens playing the game's Bink videos. `env_projectedtexture`
+lights (the main light of most chambers) project their cookie with shadows
+using the engine's flashlight falloff and brightness. The exposure follows
+the game's dynamic tone mapping and the maps' `env_tonemap_controller`
+settings (`--exposure <scale>` or `mat_force_tonemap_scale` fix it). See
+`docs/re/world_visuals.md` for the details and what is approximated.
 
 ## Console and scripts
 
@@ -153,7 +168,11 @@ python -I re/tools/imgdiff.py re/out/ref re/out/ours re/out/diff
 
 A shot line may end with console commands to run at that view, for example
 `r_drawviewmodel 1` to include the first-person weapon (see
-`re/shots/models.txt`, which checks model shading).
+`re/shots/models.txt`, which checks model shading). `re/shots/m8.txt`
+covers the world visuals; capture it with `--map-settle 45` so the opening
+fall of `sp_a3_01` is over. Both sides adjust their exposure to the scene
+over a few seconds, so a shot taken soon after a jump can differ in
+brightness while the scale settles.
 
 Campaign checks: `--smoke sp` loads every single-player map and reports
 script errors and inputs nothing handles; `--chain sp_a1_intro1` rides each

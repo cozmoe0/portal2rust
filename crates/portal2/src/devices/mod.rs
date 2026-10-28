@@ -55,7 +55,8 @@ impl EffectMaterial {
     /// Additive glow (lasers, tracers).
     pub fn glow(color: Vec3, scroll: f32, density: f32) -> Self {
         Self {
-            effect: EffectParams { color: color.extend(1.0), params: Vec4::new(0.0, scroll, density, 0.6) },
+            // Zero alpha: Bevy's additive mode is premultiplied blending.
+            effect: EffectParams { color: color.extend(0.0), params: Vec4::new(0.0, scroll, density, 0.6) },
             alpha_mode: AlphaMode::Add,
         }
     }

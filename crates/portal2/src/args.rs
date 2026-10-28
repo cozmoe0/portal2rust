@@ -25,6 +25,8 @@ pub struct Args {
     pub height: u32,
     /// Linear exposure multiplier applied to the HDR scene.
     pub exposure: f32,
+    /// `--exposure` was given: keep it instead of the game's dynamic tone map.
+    pub fixed_exposure: bool,
     /// Ignore lightmaps and draw every material unlit (debugging).
     pub fullbright: bool,
     /// No audio output (`--nosound`, also implied by the batch modes).
@@ -90,6 +92,7 @@ impl Default for Args {
             width: 1600,
             height: 900,
             exposure: 3.0,
+            fixed_exposure: false,
             fullbright: false,
             nosound: false,
             snd_record: None,
@@ -176,7 +179,10 @@ impl Args {
                 "--strip-flags" => args.strip_flags = it.next().and_then(|s| s.parse().ok()).unwrap_or(0),
                 "--width" => args.width = it.next().and_then(|s| s.parse().ok()).unwrap_or(args.width),
                 "--height" => args.height = it.next().and_then(|s| s.parse().ok()).unwrap_or(args.height),
-                "--exposure" => args.exposure = it.next().and_then(|s| s.parse().ok()).unwrap_or(args.exposure),
+                "--exposure" => {
+                    args.exposure = it.next().and_then(|s| s.parse().ok()).unwrap_or(args.exposure);
+                    args.fixed_exposure = true;
+                }
                 other if other.starts_with('+') => args.commands.push(other[1..].to_owned()),
                 other if is_value(other) && !args.commands.is_empty() => {
                     let last = args.commands.last_mut().expect("checked non-empty");

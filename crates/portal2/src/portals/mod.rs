@@ -282,7 +282,7 @@ fn apply_placements(
                 Msaa::Off,
                 bevy::pbr::ScreenSpaceTransmission::default(),
                 Projection::custom(PortalProjection::new(base)),
-                RenderLayers::layer(0),
+                RenderLayers::from_layers(&[0, crate::world::sky::SKY2D_LAYER]),
                 Transform::default(),
             ))
             .id();
