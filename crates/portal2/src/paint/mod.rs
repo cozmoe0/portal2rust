@@ -9,6 +9,7 @@
 pub mod blobs;
 pub mod bomb;
 pub mod power;
+pub mod props;
 mod upload;
 
 use std::collections::HashMap;
@@ -31,7 +32,7 @@ pub struct PaintPlugin;
 
 impl Plugin for PaintPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((upload::PaintUploadPlugin, blobs::BlobPlugin, bomb::PaintBombPlugin))
+        app.add_plugins((upload::PaintUploadPlugin, blobs::BlobPlugin, bomb::PaintBombPlugin, props::PaintedPropsPlugin))
             .add_systems(PostUpdate, queue_uploads);
     }
 }

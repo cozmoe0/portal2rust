@@ -31,7 +31,7 @@ pub fn register(app: &mut App) {
     }
 }
 
-const TRIGGER_CLASSES: [&str; 8] = [
+const TRIGGER_CLASSES: [&str; 9] = [
     "trigger_autosave",
     "trigger_once",
     "trigger_multiple",
@@ -40,6 +40,7 @@ const TRIGGER_CLASSES: [&str; 8] = [
     "trigger_push",
     "trigger_look",
     "trigger_portal_cleanser",
+    "trigger_paint_cleanser",
 ];
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -51,6 +52,8 @@ pub enum TriggerKind {
     Push { dir: Vec3, speed: f32 },
     /// Emancipation field: removes the player's portals when crossed.
     Cleanser,
+    /// Washes paint off props passing through (see paint/props.rs).
+    PaintCleanser,
     /// Autosaves when the player enters, then goes away; a dangerous
     /// timer makes it a dangerous autosave.
     Autosave { dangerous: f32, min_health: f32 },
@@ -83,6 +86,7 @@ fn spawn_trigger(world: &mut World, e: Entity) {
             landmark: me.get("landmark").filter(|s| !s.is_empty()).map(|s| s.to_ascii_lowercase()),
         },
         "trigger_portal_cleanser" => TriggerKind::Cleanser,
+        "trigger_paint_cleanser" => TriggerKind::PaintCleanser,
         "trigger_autosave" => TriggerKind::Autosave {
             dangerous: me.get_f32("dangeroustimer").unwrap_or(0.0),
             min_health: me.get_f32("minimumhitpoints").unwrap_or(0.0),

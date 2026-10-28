@@ -374,7 +374,7 @@ fn move_blobs(
     console: Res<Console>,
     current: Option<Res<CurrentMap>>,
     brushes: Query<(&MapEntity, &GlobalTransform)>,
-    mut sounds: MessageWriter<SoundRequest>,
+    (mut sounds, mut painted): (MessageWriter<SoundRequest>, MessageWriter<super::props::PaintEntity>),
 ) {
     let Some(mut map) = map else {
         blobs.list.clear();
@@ -430,8 +430,16 @@ fn move_blobs(
             return true;
         }
         let n = tr.normal;
+        // Brushes and the world take paint on their faces; anything else
+        // (props) is painted as a whole.
+        let on_entity = tr.entity.filter(|&e| brushes.get(e).map(|(me, _)| me.brush_model().is_none()).unwrap_or(true));
         if !b.draw_only {
-            paint_impact(&mut map, &brushes, bsp, tr.end, n, b.paint, &settings, radius, coat);
+            match on_entity {
+                Some(entity) => {
+                    painted.write(super::props::PaintEntity { entity, paint: b.paint });
+                }
+                None => paint_impact(&mut map, &brushes, bsp, tr.end, n, b.paint, &settings, radius, coat),
+            }
         }
         if !b.silent && noise_budget >= 1.0 {
             noise_budget -= 1.0;

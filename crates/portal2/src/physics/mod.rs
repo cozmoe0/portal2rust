@@ -3,6 +3,7 @@
 //! portals.
 
 pub mod carry;
+pub mod inputs;
 pub mod portal_travel;
 
 use std::sync::Arc;
@@ -45,6 +46,7 @@ impl Plugin for GamePhysicsPlugin {
         )
         .add_systems(Update, (attach_bodies, attach_player_body, sync_portal_slabs))
         .add_plugins((carry::CarryPlugin, portal_travel::PortalTravelPlugin));
+        inputs::register(app);
     }
 }
 
