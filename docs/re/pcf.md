@@ -204,9 +204,10 @@ oscillate`, `operator strength random scale min` / `max`, `operator strength
 scale seed`, `operator time offset min` / `max` / `seed`, `operator time scale
 min` / `max` / `seed` and `operator time strength random scale max`.
 
-Absent parameters take the operator's own defaults. Those live in
-per-operator tables in client.dll and have not been extracted yet; the
-particle runtime will need them.
+Absent parameters take the operator's own defaults, from per-operator
+tables in client.dll; `re/tools/particle_defaults.py` lists them and
+[particles.md](particles.md) describes how they are found and how the
+operators behave.
 
 ## Particle field indices
 

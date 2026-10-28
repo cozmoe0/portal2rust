@@ -7,7 +7,10 @@
 //! being the player's feet as with `setpos`; `#` starts a comment. The player
 //! is put in noclip at each view, with the viewmodel and HUD hidden; anything
 //! after the angles is run as console commands at that view (for example
-//! `r_drawviewmodel 1` to show the first-person weapon).
+//! `r_drawviewmodel 1` to show the first-person weapon). Each view waits
+//! `--shot-settle` frames, or `--shot-settle-time` seconds, before its
+//! screenshot; `--shot-map-settle` waits that many seconds after each map
+//! load first (as `capture.py --map-settle` does in the game).
 
 use std::path::PathBuf;
 
@@ -71,6 +74,12 @@ struct ShotRunner {
     index: usize,
     phase: Phase,
     settle: u32,
+    settle_time: Option<f32>,
+    /// When the current view started settling.
+    settle_started: Option<std::time::Instant>,
+    map_settle: f32,
+    /// When the current map finished loading.
+    loaded_at: Option<std::time::Instant>,
     out_dir: PathBuf,
     map_identity: usize,
 }
@@ -86,6 +95,10 @@ fn setup(mut commands: Commands, args: Res<Args>) {
         index: 0,
         phase: Phase::Next,
         settle: args.shot_settle,
+        settle_time: args.shot_settle_time,
+        settle_started: None,
+        map_settle: args.shot_map_settle,
+        loaded_at: None,
         out_dir,
         map_identity: 0,
     });
@@ -122,13 +135,20 @@ fn run_shots(world: &mut World) {
     let next_phase = match phase {
         Phase::Next => {
             let loaded = world.get_resource::<CurrentMap>().is_some_and(|m| m.name == shot.map);
-            if loaded {
+            let runner = world.resource::<ShotRunner>();
+            let settled = runner.loaded_at.is_none_or(|t| t.elapsed().as_secs_f32() >= runner.map_settle);
+            if loaded && !settled {
+                hold_view(world, &shot);
+                Phase::Next
+            } else if loaded {
                 crate::console::execute_now(world, "sv_cheats 1; r_drawviewmodel 0; cl_drawhud 0; crosshair 0");
                 if !shot.commands.is_empty() {
                     crate::console::execute_now(world, &shot.commands);
                 }
                 hold_view(world, &shot);
-                Phase::Settling(world.resource::<ShotRunner>().settle)
+                let mut runner = world.resource_mut::<ShotRunner>();
+                runner.settle_started = Some(std::time::Instant::now());
+                Phase::Settling(if runner.settle_time.is_some() { u32::MAX } else { runner.settle })
             } else {
                 world.write_message(LoadMap::new(shot.map.clone(), MapLoadType::NewGame));
                 world.resource_mut::<ShotRunner>().map_identity = identity;
@@ -138,6 +158,7 @@ fn run_shots(world: &mut World) {
         Phase::Loading => {
             let old = world.resource::<ShotRunner>().map_identity;
             if identity != 0 && identity != old && world.resource::<EntityRegistry>().player.is_some() {
+                world.resource_mut::<ShotRunner>().loaded_at = Some(std::time::Instant::now());
                 Phase::Next
             } else {
                 Phase::Loading
@@ -151,7 +172,12 @@ fn run_shots(world: &mut World) {
         }
         Phase::Settling(n) => {
             hold_view(world, &shot);
-            Phase::Settling(n - 1)
+            let runner = world.resource::<ShotRunner>();
+            match (runner.settle_time, runner.settle_started) {
+                (Some(t), Some(start)) if start.elapsed().as_secs_f32() >= t => Phase::Settling(0),
+                (Some(_), _) => Phase::Settling(n),
+                _ => Phase::Settling(n - 1),
+            }
         }
         Phase::Saving(0) => {
             world.resource_mut::<ShotRunner>().index += 1;

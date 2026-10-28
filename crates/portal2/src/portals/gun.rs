@@ -189,10 +189,13 @@ fn fire_gun(
     entities: Query<(Entity, &MapEntity, &GlobalTransform)>,
     portals: Res<super::Portals>,
     portal_query: Query<&super::Portal>,
-    mut place: MessageWriter<PlacePortal>,
+    (mut place, mut sounds, mut fx): (
+        MessageWriter<PlacePortal>,
+        MessageWriter<crate::audio::SoundRequest>,
+        MessageWriter<super::PortalFx>,
+    ),
     mut animators: Query<&mut StudioAnimator>,
     mut auto: ResMut<crate::player::autopilot::AutoFire>,
-    mut sounds: MessageWriter<crate::audio::SoundRequest>,
 ) {
     let slot = if let Some(slot) = auto.0.take() {
         slot
@@ -262,15 +265,26 @@ fn fire_gun(
     let dir = angles_forward(input.input.angles);
     let result = ctx.place(eye, dir, dir);
     cache.by_surface = known.into_inner();
+    // The shot leaves from about where the viewmodel's muzzle is.
+    let (right, up) = {
+        let r = dir.cross(Vec3::Z).normalize_or(Vec3::Y);
+        (r, r.cross(dir))
+    };
+    let muzzle = eye + dir * 20.0 + right * 7.0 - up * 6.0;
     match result {
         Ok(frame) => {
             info!("portal {slot} placed at {:.0?} facing {:.2?}", frame.center, frame.forward);
             place.write(PlacePortal { slot, frame });
+            fx.write(super::PortalFx::Shot { slot, start: muzzle, end: frame.center, aim: dir });
         }
         Err(e) => {
             info!("portal {slot} shot failed: {e:?}");
             let tr = physics.trace(eye, eye + dir * 56756.0, Vec3::ZERO, Vec3::ZERO, crate::collision::mask::SOLID_ALL, &[pe]);
             sounds.write(crate::audio::SoundRequest::at("Portal.fizzle_invalid_surface", tr.end));
+            fx.write(super::PortalFx::Shot { slot, start: muzzle, end: tr.end, aim: dir });
+            if tr.fraction < 1.0 {
+                fx.write(super::PortalFx::BadSurface { slot, at: tr.end, normal: tr.normal });
+            }
         }
     }
 }

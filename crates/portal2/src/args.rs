@@ -59,10 +59,14 @@ pub struct Args {
     /// console's `stuffcmds` once the first map has loaded.
     pub commands: Vec<String>,
     /// Batch screenshots of listed views (`--shots <file>`), written to
-    /// `shots_out`, waiting `shot_settle` frames at each view.
+    /// `shots_out`, waiting `shot_settle` frames at each view (or
+    /// `shot_settle_time` seconds when set).
     pub shots: Option<String>,
     pub shots_out: String,
     pub shot_settle: u32,
+    pub shot_settle_time: Option<f32>,
+    /// Seconds to wait after a map loads before its first view.
+    pub shot_map_settle: f32,
     /// `--smoke <maps>`: run each map briefly and report problems.
     pub smoke: Option<String>,
     /// `--save-test <maps>`: save/load round trip of each map (see `save::roundtrip`).
@@ -111,6 +115,8 @@ impl Default for Args {
             shots: None,
             shots_out: "re/out/ours".to_owned(),
             shot_settle: 120,
+            shot_settle_time: None,
+            shot_map_settle: 0.0,
             smoke: None,
             save_test: None,
             save_info: None,
@@ -174,6 +180,8 @@ impl Args {
                 "--chain-speed" => args.chain_speed = it.next().and_then(|s| s.parse().ok()).unwrap_or(args.chain_speed),
                 "--shots-out" => args.shots_out = it.next().unwrap_or(args.shots_out),
                 "--shot-settle" => args.shot_settle = it.next().and_then(|s| s.parse().ok()).unwrap_or(args.shot_settle),
+                "--shot-settle-time" => args.shot_settle_time = it.next().and_then(|s| s.parse().ok()),
+                "--shot-map-settle" => args.shot_map_settle = it.next().and_then(|s| s.parse().ok()).unwrap_or(0.0),
                 "--spawn" => args.spawn.extend(it.next()),
                 "--fire" => args.fire.extend(it.next()),
                 "--strip-flags" => args.strip_flags = it.next().and_then(|s| s.parse().ok()).unwrap_or(0),

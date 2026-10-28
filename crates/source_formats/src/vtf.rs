@@ -131,6 +131,74 @@ impl VtfFormat {
     }
 }
 
+/// Particle sheet (VTF resource `0x10`): animation sequences of rectangles
+/// inside the texture, used by `SpriteCard` particle materials.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Sheet {
+    pub sequences: Vec<SheetSequence>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SheetSequence {
+    /// Sequence number particles select it by (not necessarily its index).
+    pub number: u32,
+    /// Bit 0: hold the last frame instead of looping. Bits 1 and 2 mark a
+    /// sequence packed for colour only or alpha only.
+    pub flags: u32,
+    /// Sum of the frame display times.
+    pub total_time: f32,
+    pub frames: Vec<SheetFrame>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SheetFrame {
+    pub display_time: f32,
+    /// `u0, v0, u1, v1` of up to four images (version 0 sheets have one).
+    pub rects: Vec<[f32; 4]>,
+}
+
+impl SheetSequence {
+    pub const CLAMP: u32 = 1;
+
+    pub fn clamps(&self) -> bool {
+        self.flags & Self::CLAMP != 0
+    }
+}
+
+impl Sheet {
+    /// Parses the resource body: version, sequence count, then per sequence
+    /// its number, flags, frame count and total time, and per frame its
+    /// display time and one (version 0) or four (version 1) rectangles.
+    pub fn parse(data: &[u8]) -> Result<Self> {
+        let mut r = Reader::new(data);
+        let version = r.u32()?;
+        let count = r.u32()?;
+        let images = if version == 0 { 1 } else { 4 };
+        let mut sequences = Vec::with_capacity(count.min(1024) as usize);
+        for _ in 0..count {
+            let number = r.u32()?;
+            let flags = r.u32()?;
+            let frame_count = r.u32()?;
+            let total_time = r.f32()?;
+            let mut frames = Vec::with_capacity(frame_count.min(4096) as usize);
+            for _ in 0..frame_count {
+                let display_time = r.f32()?;
+                let mut rects = Vec::with_capacity(images);
+                for _ in 0..images {
+                    rects.push([r.f32()?, r.f32()?, r.f32()?, r.f32()?]);
+                }
+                frames.push(SheetFrame { display_time, rects });
+            }
+            sequences.push(SheetSequence { number, flags, total_time, frames });
+        }
+        Ok(Self { sequences })
+    }
+
+    pub fn sequence(&self, number: u32) -> Option<&SheetSequence> {
+        self.sequences.iter().find(|s| s.number == number)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Vtf {
     pub version: (u32, u32),
@@ -145,6 +213,8 @@ pub struct Vtf {
     pub format: VtfFormat,
     pub mip_count: u32,
     pub faces: u32,
+    /// Particle sheet, when the file has one.
+    pub sheet: Option<Sheet>,
     /// High resolution image data, VTF order (smallest mip first).
     data: Vec<u8>,
     /// Offset into `data` of each mip level (index 0 = largest).
@@ -190,16 +260,25 @@ impl Vtf {
             if lowres_format == VtfFormat::None || lowres_w == 0 { 0 } else { lowres_format.mip_size(lowres_w, lowres_h, 1) };
 
         let mut hires_offset = header_size + lowres_size;
+        let mut sheet = None;
         if minor >= 3 {
             let mut rr = Reader::at(bytes, 68);
             let num_resources = rr.u32()?;
             rr.skip(8)?;
             for _ in 0..num_resources {
                 let tag = rr.bytes(3)?;
-                let _rflags = rr.u8()?;
+                let rflags = rr.u8()?;
                 let offset = rr.u32()? as usize;
                 if tag == [0x30, 0, 0] {
                     hires_offset = offset;
+                } else if tag == [0x10, 0, 0] && rflags & 2 == 0 {
+                    // The offset points at the size of the block, then its data.
+                    let mut sr = Reader::at(bytes, offset);
+                    let size = sr.u32()? as usize;
+                    let body = bytes
+                        .get(offset + 4..offset + 4 + size)
+                        .ok_or_else(|| Error::Invalid("vtf: sheet truncated".into()))?;
+                    sheet = Some(Sheet::parse(body)?);
                 }
             }
         }
@@ -241,6 +320,7 @@ impl Vtf {
             format,
             mip_count,
             faces,
+            sheet,
             data: bytes[hires_offset..end].to_vec(),
             mip_offsets,
         })
@@ -531,4 +611,42 @@ pub fn decode_to_rgba8(format: VtfFormat, src: &[u8], w: u32, h: u32) -> Vec<u8>
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn push_f32(out: &mut Vec<u8>, v: f32) {
+        out.extend_from_slice(&v.to_le_bytes());
+    }
+
+    #[test]
+    fn parses_sheet_sequences() {
+        let mut b = Vec::new();
+        // Version 1 (four rectangles per frame), one sequence.
+        b.extend_from_slice(&1u32.to_le_bytes());
+        b.extend_from_slice(&1u32.to_le_bytes());
+        b.extend_from_slice(&7u32.to_le_bytes()); // number
+        b.extend_from_slice(&1u32.to_le_bytes()); // clamp
+        b.extend_from_slice(&2u32.to_le_bytes()); // frames
+        push_f32(&mut b, 3.0);
+        for (time, u) in [(1.0, 0.0), (2.0, 0.5)] {
+            push_f32(&mut b, time);
+            for _ in 0..4 {
+                for v in [u, 0.0, u + 0.5, 1.0] {
+                    push_f32(&mut b, v);
+                }
+            }
+        }
+        let sheet = Sheet::parse(&b).unwrap();
+        let s = sheet.sequence(7).unwrap();
+        assert!(s.clamps());
+        assert_eq!(s.total_time, 3.0);
+        assert_eq!(s.frames.len(), 2);
+        assert_eq!(s.frames[1].display_time, 2.0);
+        assert_eq!(s.frames[1].rects[0], [0.5, 0.0, 1.0, 1.0]);
+        assert_eq!(s.frames[1].rects.len(), 4);
+        assert!(Sheet::parse(&b[..b.len() - 4]).is_err());
+    }
 }

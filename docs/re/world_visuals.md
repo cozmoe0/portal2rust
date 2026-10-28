@@ -123,6 +123,18 @@ descriptions are our own; the code in `crates/portal2` is written from them.
   marks the floating scum) and the map's cube map as the reflection; the
   real-time reflection and refraction are not drawn.
 
+## Emancipation fields (`SolidEnergy` with `$flowmap`)
+
+- Fizzler brushes use `effects/fizzler*`: `SolidEnergy` with a flow map,
+  `$flow_color` [0.025 0.08 0.1], `$outputintensity` 2.3 on sRGB-correct
+  PCs, `$flowbounds` masking the edges and `$basetexture`
+  `fizzler_ripples_dim`, whose green channel holds the ripples and whose
+  alpha a dim copy. Drawing the texture itself shows them green; we add
+  the alpha ripples (scrolled along the flow map in two phases like the
+  goo) × the flow colour × the intensity, which matches the game's
+  brightness at the same exposure. The `FizzlerVortex` swirl around
+  objects is not drawn.
+
 ## Movie screens (`vgui_movie_display`)
 
 - A screen's rectangle has its lower left corner at the origin and runs

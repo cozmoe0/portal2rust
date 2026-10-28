@@ -163,6 +163,38 @@ impl MaterialContext<'_> {
     }
 }
 
+/// `SolidEnergy` flow materials (the emancipation field): the ripples in the
+/// base texture's alpha scroll along `$flowmap` in two phases half
+/// a cycle apart (`$flow_timeintervalinseconds`, `$flow_uvscrolldistance`),
+/// tinted `$flow_color` × `$outputintensity`, masked by `$flowbounds` and
+/// added to the scene. How the shader combines its textures was not
+/// traced; the alpha (a dim copy of the green ripples) matches the game's
+/// brightness at the same exposure.
+fn solid_energy_material(vmt: &Vmt, m: &mut WorldMaterial, ctx: &mut MaterialContext) {
+    let p = &mut m.params;
+    let tint = vmt.get_vec3("$flow_color").unwrap_or(Vec3::new(0.025, 0.08, 0.1));
+    let intensity = vmt.get_f32("$outputintensity").unwrap_or(1.0);
+    p.color = (tint * intensity).extend(1.0);
+    p.flags &= !(world_flags::LIGHTMAPPED | world_flags::BUMP | world_flags::SSBUMP | world_flags::ENVMAP);
+    p.flags |= world_flags::SOLID_ENERGY | world_flags::UNLIT | world_flags::TRANSLUCENT | world_flags::ADDITIVE;
+    m.base = ctx.tex(vmt, "$basetexture", false).map(|t| t.handle);
+    if let Some(flow) = ctx.tex(vmt, "$flowmap", false) {
+        m.base2 = Some(flow.handle);
+        p.flags |= world_flags::BASE2;
+    }
+    m.detail = ctx.tex(vmt, "$flowbounds", false).map(|t| t.handle);
+    if m.detail.is_some() {
+        p.flags |= world_flags::DETAIL;
+    }
+    p.detail = Vec4::new(
+        vmt.get_f32("$flow_timeintervalinseconds").filter(|v| *v > 0.0).unwrap_or(1.2),
+        vmt.get_f32("$flow_uvscrolldistance").unwrap_or(0.25),
+        vmt.get_f32("$flow_worlduvscale").filter(|v| *v > 0.0).unwrap_or(0.008),
+        0.0,
+    );
+    m.alpha_mode = AlphaMode::Add;
+}
+
 /// The parts of Portal 2's `Water` shader we draw: the water's fog colour,
 /// lit by the lightmap (`$lightmapwaterfog`) since the bottom is out of
 /// sight a fog length below the surface; for goo the `$basetexture` on top,
@@ -324,11 +356,15 @@ impl MaterialCache {
                 if vmt.shader == "water" {
                     water_material(vmt, &mut m, ctx, self.default_cubemap.clone());
                 }
+                let solid_energy = vmt.shader == "solidenergy" && vmt.get("$flowmap").is_some();
                 if vmt.get_bool("$nocull") {
                     m.cull = None;
                 }
                 if vmt.shader != "water" {
                     m.alpha_mode = alpha_mode(surface.blend, vmt);
+                }
+                if solid_energy {
+                    solid_energy_material(vmt, &mut m, ctx);
                 }
                 if vmt.get_bool("$decal") {
                     m.depth_bias = DECAL_DEPTH_BIAS;

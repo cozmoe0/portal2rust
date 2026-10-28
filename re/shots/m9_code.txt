@@ -1,0 +1,4 @@
+# Effects started by code: capture with --map-settle 15 --settle 2.5; ours
+# with --shot-settle-time 2.5 --shot-map-settle 15.
+fizzler_intro_field sp_a2_fizzler_intro 128.0 -250.0 0.0 0.0 -90.0 0
+laser_glow_fizzler_intro sp_a2_fizzler_intro 440.0 -870.0 0.0 13.5 -25.8 0

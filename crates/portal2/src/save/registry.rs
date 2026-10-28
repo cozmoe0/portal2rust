@@ -120,6 +120,7 @@ pub fn register_all(r: &mut SaveRegistry) {
     crate::render::fog::register_save(r);
     crate::render::projected::register_save(r);
     crate::render::sprites::register_save(r);
+    crate::particles::register_save(r);
     crate::render::spotlights::register_save(r);
     crate::render::movies::register_save(r);
     crate::render::tonemap::register_save(r);

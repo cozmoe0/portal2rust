@@ -43,6 +43,7 @@ const FLAG_BLEND_MODULATE: u32 = 32768u;
 const FLAG_ADDITIVE: u32 = 65536u;
 const FLAG_WATER: u32 = 131072u;
 const FLAG_WATER_BASE: u32 = 262144u;
+const FLAG_SOLID_ENERGY: u32 = 524288u;
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> material: WorldParams;
 @group(constants::MATERIAL_BIND_GROUP) @binding(1) var base_tex: texture_2d<f32>;
@@ -133,11 +134,37 @@ fn water(in: VertexOutput, uv: vec2<f32>, n: vec3<f32>) -> vec4<f32> {
     return vec4<f32>(apply_source_fog(color * view.exposure, in.world_position.xyz), 1.0);
 }
 
+// Emancipation fields (see `solid_energy_material` in render/materials.rs).
+fn solid_energy(in: VertexOutput, uv: vec2<f32>) -> vec4<f32> {
+    var flow = vec2<f32>(0.0);
+    if has(FLAG_BASE2) {
+        flow = textureSample(base2_tex, base2_samp, uv).rg * 2.0 - 1.0;
+    }
+    let t = globals.time / material.detail.x;
+    let p0 = fract(t);
+    let p1 = fract(t + 0.5);
+    let r0 = textureSample(base_tex, base_samp, uv + flow * (p0 * material.detail.y)).a;
+    let r1 = textureSample(base_tex, base_samp, uv + flow * (p1 * material.detail.y) + vec2<f32>(0.5)).a;
+    var mask = mix(r0, r1, abs(p0 * 2.0 - 1.0));
+    if has(FLAG_DETAIL) {
+        mask = mask * textureSample(detail_tex, detail_samp, uv).r;
+    }
+    let c = material.color.rgb * mask * view.exposure;
+    // Additive: fog toward black, premultiplied with zero alpha.
+    return vec4<f32>(fade_with_fog(c, in.world_position.xyz), 0.0);
+}
+
 @fragment
 fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @location(0) vec4<f32> {
     var uv = vec2<f32>(0.0);
     @if(VERTEX_UVS_A) {
         uv = in.uv;
+    }
+    if has(FLAG_SOLID_ENERGY) {
+        if is_shadow_view() {
+            discard;
+        }
+        return solid_energy(in, uv);
     }
     if has(FLAG_WATER) {
         if is_shadow_view() {

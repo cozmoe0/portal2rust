@@ -1,6 +1,7 @@
 //! Prints the header of textures from the installed game: size, format,
 //! flags, frames, mip count and reflectivity, plus with `--stats` the mean
-//! and maximum of each channel of the first mip. Pixel data is never echoed.
+//! and maximum of each channel of the first mip, and any particle sheet.
+//! Pixel data is never echoed.
 //! Usage: `vtfinfo [--stats] <material-relative name> [...]`, e.g.
 //! `vtfinfo glass/refract_light_normal`.
 use source_formats::fs::GameFileSystem;
@@ -51,6 +52,14 @@ fn main() {
                 );
                 if with_stats {
                     println!("  {}", stats(&v));
+                }
+                if let Some(sheet) = &v.sheet {
+                    let seqs: Vec<String> = sheet
+                        .sequences
+                        .iter()
+                        .map(|s| format!("{}:{}f/{}t/flags{}", s.number, s.frames.len(), s.total_time, s.flags))
+                        .collect();
+                    println!("  sheet: {}", seqs.join(" "));
                 }
             }
             Err(e) => println!("{path}: {e}"),

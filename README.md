@@ -91,6 +91,13 @@ the game's dynamic tone mapping and the maps' `env_tonemap_controller`
 settings (`--exposure <scale>` or `mat_force_tonemap_scale` fix it). See
 `docs/re/world_visuals.md` for the details and what is approximated.
 
+Particle effects are the game's own `.pcf` systems, simulated with the
+behaviour and defaults of the game's particle operators and drawn with their
+SpriteCard materials and texture sheets: `info_particle_system` entities,
+and the effects code starts (portal shots and portals opening, failing or
+closing, laser emitter glows, powered catchers and relays, emancipation
+field scan lines). `docs/re/particles.md` has the details.
+
 ## Console and scripts
 
 The engine has the original's console: console variables with the game's
@@ -153,7 +160,9 @@ saving again gives the same save.
   password-protected local network console; your settings files are backed up
   and restored), `capture_ui.py` (the same for the menus and HUD, driving the
   menus with keys posted to the game window), `imgdiff.py` (side-by-side
-  comparison with ours),
+  comparison with ours), `imgcrop.py` (the same region of both, enlarged),
+  `particle_defaults.py` (every particle operator's attributes and defaults
+  from `client.dll`),
   `vscript_oracle.py` (runs Squirrel snippets in the game's VM and ours).
 - `re/shots/` – shot lists for parity checks.
 - `docs/` – notes on formats and engine behaviour, written in our own words.
@@ -173,6 +182,12 @@ covers the world visuals; capture it with `--map-settle 45` so the opening
 fall of `sp_a3_01` is over. Both sides adjust their exposure to the scene
 over a few seconds, so a shot taken soon after a jump can differ in
 brightness while the scale settles.
+
+Particle shots (`re/shots/m9*.txt`) start effects with `ent_fire` and are
+taken a set time later; give our side the same timing with
+`--shot-settle-time <seconds>` (wait at each view) and `--shot-map-settle
+<seconds>` (wait after each map load), matching `capture.py --settle` and
+`--map-settle`.
 
 Campaign checks: `--smoke sp` loads every single-player map and reports
 script errors and inputs nothing handles; `--chain sp_a1_intro1` rides each

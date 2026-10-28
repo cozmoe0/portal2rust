@@ -39,6 +39,7 @@ impl Plugin for PortalsPlugin {
             .init_resource::<PortalColors>()
             .add_message::<PlacePortal>()
             .add_message::<FizzlePortals>()
+            .add_message::<PortalFx>()
             .add_systems(
                 Update,
                 (apply_placements, fizzle_portals, clear_on_map_load, animate_portals, update_holes).chain(),
@@ -122,6 +123,19 @@ pub struct PlacePortal {
 #[derive(Message, Clone, Copy, Debug)]
 pub struct FizzlePortals {
     pub slot: Option<usize>,
+}
+
+/// Particle effects of portal shots and portals (drawn by `crate::particles`).
+#[derive(Message, Clone, Copy, Debug)]
+pub enum PortalFx {
+    /// A shot left the gun at `start` aimed along `aim` and lands at `end`.
+    Shot { slot: usize, start: Vec3, end: Vec3, aim: Vec3 },
+    /// A portal opened.
+    Opened { slot: usize, frame: PortalFrame },
+    /// A shot hit a surface that takes no portals.
+    BadSurface { slot: usize, at: Vec3, normal: Vec3 },
+    /// A portal closed (fizzled or moved away).
+    Closed { slot: usize, frame: PortalFrame },
 }
 
 /// Openings that let movement pass through the wall a linked portal is on.
@@ -238,15 +252,18 @@ fn apply_placements(
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<PortalMaterial>>,
     mut sounds: MessageWriter<crate::audio::SoundRequest>,
+    mut fx: MessageWriter<PortalFx>,
 ) {
     for req in requests.read() {
         let rotation = req.frame.rotation();
+        fx.write(PortalFx::Opened { slot: req.slot, frame: req.frame });
         let open = if req.slot == 0 { "Portal.open_blue" } else { "Portal.open_red" };
         sounds.write(crate::audio::SoundRequest::at(open, req.frame.center));
         if let Some(e) = portals.entities[req.slot]
             && let Ok(mut p) = existing.get_mut(e)
         {
             sounds.write(crate::audio::SoundRequest::at("Portal.fizzle_moved", p.frame.center));
+            fx.write(PortalFx::Closed { slot: req.slot, frame: p.frame });
             p.frame = req.frame;
             p.opened_at = time.elapsed_secs_f64();
             if let Ok(mut t) = transforms.get_mut(e) {
@@ -323,6 +340,7 @@ fn fizzle_portals(
     mut portals: ResMut<Portals>,
     query: Query<&Portal>,
     mut sounds: MessageWriter<crate::audio::SoundRequest>,
+    mut fx: MessageWriter<PortalFx>,
 ) {
     for req in requests.read() {
         for slot in 0..2 {
@@ -334,6 +352,7 @@ fn fizzle_portals(
                     commands.entity(p.camera).despawn();
                     let close = if slot == 0 { "Portal.close_blue" } else { "Portal.close_red" };
                     sounds.write(crate::audio::SoundRequest::at(close, p.frame.center));
+                    fx.write(PortalFx::Closed { slot, frame: p.frame });
                 }
                 commands.entity(e).despawn();
             }

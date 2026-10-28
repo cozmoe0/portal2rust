@@ -40,6 +40,10 @@ pub mod world_flags {
     pub const WATER: u32 = 131072;
     /// The water has a `$basetexture` (goo); `base2` holds its flow map.
     pub const WATER_BASE: u32 = 262144;
+    /// `SolidEnergy` with a `$flowmap` (emancipation fields): the base
+    /// texture's alpha, scrolled along the flow map in two phases, times
+    /// `$flow_color` and masked by `$flowbounds` (`detail`).
+    pub const SOLID_ENERGY: u32 = 524288;
 }
 
 pub mod model_flags {

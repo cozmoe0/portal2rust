@@ -1,0 +1,5 @@
+# Particle views for M9 that run on their own: name map x y z pitch yaw roll
+# (feet origin, as setpos). Capture with --map-settle 15 --settle 2.5; ours
+# with --shot-settle-time 2.5 --shot-map-settle 15.
+drips_intro5 sp_a1_intro5 -104.0 -300.0 236.0 0.0 -90.0 0
+mist_intro5 sp_a1_intro5 277.0 180.0 60.0 30.0 -90.0 0

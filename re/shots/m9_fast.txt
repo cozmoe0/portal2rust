@@ -1,0 +1,4 @@
+# Short-lived particle effects, shot 0.5 s after they start: capture with
+# --map-settle 15 --settle 0.5; ours with --shot-settle-time 0.5.
+arcs_intro3 sp_a1_intro3 25.0 1830.0 -440.0 -25.0 90.0 0 ent_fire particle_gun_charge start
+sparks_wall_button sp_a4_tb_wall_button -1408.0 350.0 86.0 0.0 90.0 0 ent_fire spark_beamscrape start
