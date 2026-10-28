@@ -20,6 +20,8 @@ pub mod mask {
     use source_formats::bsp::contents::*;
     pub const PLAYER_SOLID: u32 = SOLID | MOVEABLE | PLAYERCLIP | WINDOW | MONSTER | GRATE;
     pub const SOLID_ALL: u32 = SOLID | MOVEABLE | WINDOW | MONSTER | GRATE;
+    /// World and brush geometry, not models or characters.
+    pub const SOLID_BRUSH_ONLY: u32 = SOLID | MOVEABLE | WINDOW | GRATE;
     pub const ALL: u32 = u32::MAX;
 }
 

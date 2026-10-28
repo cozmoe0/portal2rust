@@ -43,3 +43,12 @@ Damage and death (health, sparks, `NPC_SecurityCamera.Alert`), falling off
 the wall when a portal opens on its mount or on `Ragdoll`
 (`SecurityCamera.Detachment`), the movement sound, co-op pings and teams,
 and the outputs.
+
+## Knocked off by portals
+
+While mounted, the camera tests the line from its origin out to its
+radius in front of it and back to its radius behind it against the
+portals (with a 1 unit tolerance). When that line meets an open portal
+whose partner is open too, the camera detaches: `SecurityCamera.Detachment`
+plays, it stops tracking for good and its physics object is set moving,
+so it falls and can be carried.

@@ -154,6 +154,24 @@ impl PlacementContext<'_, '_, '_> {
         Some(if dy < dz { Vec2::new(-l.y.signum() * dy, 0.0) } else { Vec2::new(0.0, -l.z.signum() * dz) })
     }
 
+    /// A wall portal whose bottom edge ends within 1.5 units above a floor
+    /// drops down to rest exactly on it.
+    fn settle_on_floor(&self, frame: &mut PortalFrame) {
+        if frame.up.z <= 0.7 {
+            return;
+        }
+        let start = frame.center + frame.forward * 0.05;
+        let mask = contents::SOLID | contents::MOVEABLE | contents::WINDOW | contents::GRATE;
+        let far = self.physics.trace(start, start - frame.up * (HALF_HEIGHT + 1.5), Vec3::ZERO, Vec3::ZERO, mask, self.ignore);
+        if far.fraction >= 1.0 {
+            return;
+        }
+        let near = self.physics.trace(start, start - frame.up * (HALF_HEIGHT - 0.1), Vec3::ZERO, Vec3::ZERO, mask, self.ignore);
+        if near.fraction >= 1.0 {
+            frame.center = far.end + frame.up * HALF_HEIGHT - frame.forward * 0.05;
+        }
+    }
+
     fn crosses_cleanser(&self, start: Vec3, end: Vec3) -> bool {
         let len = start.distance(end);
         let steps = (len / 8.0).ceil().max(1.0) as usize;
@@ -211,10 +229,19 @@ impl PlacementContext<'_, '_, '_> {
             }
         }
 
+        let shot_at = frame.center;
         for _ in 0..24 {
             let fails = self.failures(&frame);
             let overlap = self.overlap_push(&frame);
             if fails.is_empty() && overlap.is_none() {
+                // The game gives up when fitting moved the portal further
+                // than about the opening's half diagonal from where the
+                // shot landed.
+                let limit2 = ((HALF_HEIGHT * 2.0).powi(2) + (HALF_WIDTH * 2.0).powi(2)) * 0.5;
+                if frame.center.distance_squared(shot_at) > limit2 {
+                    return Err(PlacementFail::NoFit);
+                }
+                self.settle_on_floor(&mut frame);
                 return Ok(frame);
             }
             let mut push = Vec2::ZERO;

@@ -43,7 +43,7 @@ pub struct SecurityCameraPlugin;
 
 impl Plugin for SecurityCameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, think.in_set(ThinkSet)).add_systems(Update, show_aim);
+        app.add_systems(FixedUpdate, (think.in_set(ThinkSet), knock_off)).add_systems(Update, show_aim);
         let world = app.world_mut();
         world.resource_mut::<SpawnHandlers>().register("npc_security_camera", spawn_camera);
         world.resource_mut::<InputHandlers>().register("npc_security_camera", camera_input);
@@ -74,6 +74,13 @@ pub struct SecurityCamera {
     lost_at: f64,
     jitter: Vec3,
     jitter_thinks: i32,
+    /// Still fixed to its wall (a portal opening there knocks it off).
+    #[serde(default = "mounted_default")]
+    mounted: bool,
+}
+
+fn mounted_default() -> bool {
+    true
 }
 
 fn spawn_camera(world: &mut World, e: Entity) {
@@ -102,12 +109,61 @@ fn spawn_camera(world: &mut World, e: Entity) {
         lost_at: 0.0,
         jitter: Vec3::ZERO,
         jitter_thinks: 0,
+        mounted: true,
     });
+}
+
+/// A mounted camera falls off once a linked portal's opening crosses the
+/// line through its mount point along its facing (out to its radius both
+/// ways), and becomes a prop that can be carried.
+#[allow(clippy::type_complexity)]
+fn knock_off(
+    portals: Res<crate::portals::Portals>,
+    portal_query: Query<&crate::portals::Portal>,
+    fs: Res<crate::vfs::GameFs>,
+    mut cameras: Query<(Entity, &mut SecurityCamera, &GlobalTransform, &crate::collision::Collider, &MapEntity)>,
+    mut sounds: MessageWriter<crate::audio::SoundRequest>,
+    mut commands: Commands,
+) {
+    let Some(frames) = crate::portals::linked_frames(&portals, &portal_query) else { return };
+    for (e, mut c, gt, col, me) in &mut cameras {
+        if !c.mounted {
+            continue;
+        }
+        let t = gt.compute_transform();
+        let forward = t.rotation * Vec3::X;
+        let radius = ((col.shape.maxs - col.shape.mins) * 0.5).length();
+        let (a, b) = (t.translation + forward * radius, t.translation - forward * radius);
+        let hit = frames.iter().any(|f| {
+            let (la, lb) = (f.to_local(a), f.to_local(b));
+            if (la.x > 1.0 && lb.x > 1.0) || (la.x < -1.0 && lb.x < -1.0) {
+                return false;
+            }
+            let s = if (la.x - lb.x).abs() > 1e-4 { (la.x / (la.x - lb.x)).clamp(0.0, 1.0) } else { 0.5 };
+            f.in_opening(la.lerp(lb, s), 0.0)
+        });
+        if !hit {
+            continue;
+        }
+        c.mounted = false;
+        c.mode = Mode::Idle;
+        sounds.write(crate::audio::SoundRequest::at("SecurityCamera.Detachment", t.translation));
+        if let Some(collider) = crate::physics::collider_for(&col.shape) {
+            let mass = me.studio_model().and_then(|p| crate::physics::model_mass(&fs, &p)).unwrap_or(10.0);
+            commands.entity(e).insert(crate::entities::props::PhysicsProp);
+            crate::physics::make_dynamic(&mut commands, e, collider, mass);
+        }
+        info!("security camera {e} knocked off by a portal");
+    }
 }
 
 fn camera_input(world: &mut World, call: &InputCall) -> bool {
     let now = world.resource::<GameClock>().curtime;
     let Some(mut c) = world.get_mut::<SecurityCamera>(call.target) else { return false };
+    // A camera knocked off its wall stays dead.
+    if !c.mounted {
+        return matches!(call.input.as_str(), "enable" | "disable" | "toggle");
+    }
     let start = |c: &mut SecurityCamera| {
         c.mode = Mode::Searching;
         c.next_think = now + THINK_INTERVAL;
@@ -275,6 +331,7 @@ mod tests {
             lost_at: 0.0,
             jitter: Vec3::ZERO,
             jitter_thinks: 0,
+            mounted: true,
         };
         assert!(step_aim(&mut c));
         assert_eq!(c.aim, Vec2::new(7.0, -3.0));

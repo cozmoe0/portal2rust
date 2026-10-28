@@ -11,15 +11,13 @@ use crate::entities::io::{EventQueue, EventTarget, FireOutput};
 use crate::entities::props::PhysicsProp;
 use crate::player::{Player, PlayerInput, PlayerMoveSet};
 
-/// How far in front of the player's hull a held prop floats
-/// (`player_held_object_distance`).
-const HELD_GAP: f32 = 15.0;
-/// Held cubes ride a little below eye level (`player_held_object_offset_up_cube`).
-const HELD_OFFSET_UP: f32 = -10.0;
+/// Horizontal radius of the player's hull, part of the hold distance.
+const PLAYER_RADIUS: f32 = 22.627_417;
 /// Reach for picking up and using.
 const REACH: f32 = 80.0;
-/// A held prop this far from where it should be is dropped.
-const BREAK_DISTANCE: f32 = 128.0;
+/// Top speed of the hold controller; larger implied speeds count half
+/// toward the drop error.
+const HOLD_MAX_SPEED: f32 = 1000.0;
 
 pub struct CarryPlugin;
 
@@ -37,11 +35,22 @@ pub struct Holding {
     pub entity: Option<Entity>,
     /// Prop yaw relative to the player's view when picked up (degrees).
     pub yaw_offset: f32,
-    pub distance: f32,
+    /// The held prop's bounding radius.
+    #[serde(alias = "distance")]
+    pub radius: f32,
+    /// Weighted cubes ride lower than other props.
+    #[serde(default)]
+    pub cube: bool,
+    /// Running average of how far the prop trails its hold point.
+    #[serde(default)]
+    pub error: f32,
+    /// Height the prop is lifted to clear the floor under its hold point.
+    #[serde(default)]
+    pub lift: f32,
 }
 
 fn prop_radius(col: &TraceCollider) -> f32 {
-    ((col.shape.maxs - col.shape.mins) * 0.5).truncate().length()
+    ((col.shape.maxs - col.shape.mins) * 0.5).length()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -51,7 +60,7 @@ fn use_or_grab(
     physics: Physics,
     players: Query<(Entity, &Player)>,
     input: Res<PlayerInput>,
-    props: Query<(&TraceCollider, &GlobalTransform, &RigidBody), With<PhysicsProp>>,
+    props: Query<(&TraceCollider, &GlobalTransform, &RigidBody, &crate::entities::MapEntity), With<PhysicsProp>>,
     mut queue: ResMut<EventQueue>,
     mut out: MessageWriter<FireOutput>,
     mut commands: Commands,
@@ -79,11 +88,14 @@ fn use_or_grab(
         return;
     };
     match props.get(target) {
-        Ok((col, gt, body)) if *body == RigidBody::Dynamic => {
+        Ok((col, gt, body, me)) if *body == RigidBody::Dynamic => {
             let prop_yaw = quat_to_angles(gt.compute_transform().rotation).y;
             holding.entity = Some(target);
             holding.yaw_offset = prop_yaw - input.input.angles.y;
-            holding.distance = 16.0 + HELD_GAP + prop_radius(col);
+            holding.radius = prop_radius(col);
+            holding.cube = me.classname == "prop_weighted_cube";
+            holding.error = 0.0;
+            holding.lift = 0.0;
             commands.entity(target).insert((
                 GravityScale(0.0),
                 layers_for(layers::HELD, layers::WORLD | layers::PROP | layers::MOVER),
@@ -102,6 +114,14 @@ pub fn resume_hold(world: &mut World, prop: Entity) {
     if let Ok(mut e) = world.get_entity_mut(prop) {
         e.insert((GravityScale(0.0), layers_for(layers::HELD, layers::WORLD | layers::PROP | layers::MOVER)));
     }
+    // Saves from before the radius was kept stored a hold distance instead.
+    let radius = world.get::<TraceCollider>(prop).map(prop_radius);
+    let cube = world.get::<crate::entities::MapEntity>(prop).is_some_and(|me| me.classname == "prop_weighted_cube");
+    let mut holding = world.resource_mut::<Holding>();
+    if let Some(r) = radius {
+        holding.radius = r;
+    }
+    holding.cube = cube;
     if let Some(p) = world.resource::<crate::entities::EntityRegistry>().player {
         world.write_message(crate::audio::SoundRequest::on("Weapon_Portalgun.HoldSound", p));
     }
@@ -117,30 +137,97 @@ pub fn release(commands: &mut Commands, prop: Entity) {
     }
 }
 
-/// Steers the held prop toward a point in front of the player's view.
-#[allow(clippy::type_complexity)]
+/// Where the held prop should be (`docs/re/gameplay.md`, carrying): along
+/// the view (pitch limited to ±75°) far enough out to clear the player,
+/// in a column in front of them when `player_hold_object_in_column`,
+/// pulled in by walls and lifted off floors.
+fn hold_point(
+    physics: &Physics,
+    ignore: &[Entity],
+    console: &crate::console::Console,
+    holding: &mut Holding,
+    player: &crate::player::movement::MoveState,
+    view: Vec3,
+) -> Vec3 {
+    let eye = player.origin + Vec3::Z * player.eye_offset();
+    let mut view = view;
+    view.x = view.x.clamp(-75.0, 75.0);
+    let q = crate::coords::angles_to_quat(view);
+    let (forward, up) = (q * Vec3::X, q * Vec3::Z);
+    let gap = console.f32("player_held_object_distance");
+    let radii = holding.radius + PLAYER_RADIUS;
+    let mut distance = gap + radii;
+    if console.bool("player_hold_object_in_column") {
+        // How far along the view a vertical plane that far ahead lies.
+        let flat = forward.with_z(0.0).normalize_or_zero();
+        let along = forward.dot(flat);
+        let reach = if along > 1e-4 { distance / along } else { f32::MAX };
+        distance = reach.clamp(gap, console.f32("player_hold_column_max_size"));
+    }
+    let raise = if holding.cube { console.f32("player_held_object_offset_up_cube") * (1.0 - view.x.abs() / 75.0) } else { 0.0 };
+    let end = eye + forward * distance + up * raise;
+    let mask = mask::SOLID_BRUSH_ONLY;
+    let tr = physics.trace(eye, end, Vec3::ZERO, Vec3::ZERO, mask, ignore);
+    let dir = (end - eye).normalize_or(forward);
+    let mut target = eye + dir * (tr.fraction * distance).max(radii) + up * raise;
+    // Keep the prop above a floor under the hold point.
+    let half = radii * 0.5 + 1.0;
+    let down = physics.trace(target + Vec3::Z * half, target - Vec3::Z * half, Vec3::ZERO, Vec3::ZERO, mask, ignore);
+    if !down.start_solid {
+        holding.lift = if down.fraction >= 1.0 { 0.0 } else { (1.0 - down.fraction) * radii };
+    }
+    target.z += holding.lift;
+    // Never closer to the player's vertical axis than the two radii.
+    let (mins, maxs) = player.hull();
+    let axis = (player.origin + Vec3::Z * mins.z, player.origin + Vec3::Z * maxs.z);
+    let along = ((target - axis.0).dot(Vec3::Z) / (axis.1 - axis.0).length()).clamp(0.0, 1.0);
+    let nearest = axis.0.lerp(axis.1, along);
+    let away = target - nearest;
+    if away.length() < radii {
+        target = nearest + away.normalize_or(forward.with_z(0.0).normalize_or(Vec3::X)) * radii;
+    }
+    target
+}
+
+/// Steers the held prop toward its hold point, dropping it when it trails
+/// too far behind for too long.
+#[allow(clippy::too_many_arguments)]
 fn hold_held(
     time: Res<Time<Fixed>>,
     mut holding: ResMut<Holding>,
-    players: Query<&Player>,
+    physics: Physics,
+    console: Res<crate::console::Console>,
+    players: Query<(Entity, &Player)>,
     input: Res<PlayerInput>,
     mut props: Query<(&Position, &Rotation, &mut LinearVelocity, &mut AngularVelocity)>,
     mut commands: Commands,
 ) {
     let Some(held) = holding.entity else { return };
-    let Ok(p) = players.single() else { return };
+    let Ok((pe, p)) = players.single() else { return };
     let Ok((pos, rot, mut lin, mut ang)) = props.get_mut(held) else {
         holding.entity = None;
         return;
     };
     let dt = time.delta_secs().max(1e-4);
-    let mut view = input.input.angles;
-    // Looking far up or down holds the prop in a column in front of the player.
-    view.x = view.x.clamp(-60.0, 75.0);
     let eye = p.state.origin + Vec3::Z * p.state.eye_offset();
-    let target = eye + angles_forward(view) * holding.distance + Vec3::Z * HELD_OFFSET_UP;
+    let ignore = [pe, held];
+    let target = hold_point(&physics, &ignore, &console, &mut holding, &p.state, input.input.angles);
     let error = target - pos.0;
-    if error.length() > BREAK_DISTANCE {
+
+    // The drop error averages the trailing distance over about a second;
+    // it triples each tick the prop is out of sight behind something.
+    let t = dt.min(1.0);
+    let mut d = error.length();
+    if d / t > HOLD_MAX_SPEED {
+        d *= 0.5;
+    }
+    holding.error = (1.0 - t) * holding.error + t * d;
+    if physics.trace(eye, pos.0, Vec3::ZERO, Vec3::ZERO, mask::SOLID_BRUSH_ONLY, &ignore).fraction < 1.0 {
+        holding.error *= 3.0;
+    }
+    trace!("hold: target {target:.0?} at {:.0?} lift {:.1} error {:.1}", pos.0, holding.lift, holding.error);
+    let limit = if console.bool("player_held_object_collide_with_player") { 12.0 } else { 40.0 };
+    if holding.error > limit || p.state.ground_entity == Some(held) {
         holding.entity = None;
         release(&mut commands, held);
         return;

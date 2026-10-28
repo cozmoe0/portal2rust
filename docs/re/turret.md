@@ -1,0 +1,70 @@
+# Floor turrets (`npc_portal_turret_floor`)
+
+Facts gathered from the installed `portal2/bin/server.dll`; the
+descriptions are our own.
+
+## Thinks
+
+The portal turret keeps the base floor turret's think set (search, auto
+search, active, suppress, tipped, held, inactive, disabled, burn, break,
+die, tractor beam) and adds held and tractor-beam thinks.
+
+- Active think runs every 0.1 s. Without an enemy, or when disabled, it
+  goes back to searching with its "last seen" time 4 s ahead and its goal
+  angles reset to its own.
+- It aims at the enemy's body target from its eye. When a linked portal
+  gives a shorter (or the only) clear line to the enemy, it aims through
+  the portal instead.
+- While the enemy is visible, alive and within range, the turret fires
+  when its muzzle direction is within 10° of the direction to the enemy
+  (45° when the enemy is closer than 60 units, where only the horizontal
+  direction has to line up), and keeps turning toward it.
+- Visible but out of range (or blocked): "last seen" 2 s ahead and it
+  switches to suppression fire. Not visible at all: "last seen" 4 s ahead
+  (1.5 s with spawn flag 128) and back to searching.
+
+## Shots
+
+- One bullet per shot, 16384 units long, from the four muzzle attachments
+  in turn, with a line-and-whiz tracer every shot.
+- Ammo `PortalTurretBullet`: bullet damage 3 to players and to NPCs,
+  carry 150.
+- A turret whose up axis is more than about 25° from vertical (up z below
+  0.9) gets pushed back by 30 × the shot direction with every shot.
+- `NPC_FloorTurret.ShotSounds` plays per shot.
+
+## Settings
+
+- `sv_portal_turret_fire_cone_z_tolerance` 45: the vertical extent of the
+  firing cone in degrees.
+- `sv_portal_turret_shoot_at_death` 1, `sv_portal_turret_min_burn_time`
+  1.0 and `max_burn_time` 1.5, `sv_portal_turret_shoot_through_portals_proximity`
+  36864 (only shoot through portals at players within 192 units of the
+  portal).
+
+## Search think
+
+- Runs every 0.1 s with the idle activity. When the AI has an enemy, the
+  turret measures the distance to it (through a portal when that is
+  shorter or the only clear line), schedules its first shot
+  `(distance / range)² × 2.5` seconds ahead, deploys, switches to the
+  active think and plays `NPC_FloorTurret.Activate` (at most every 3 s).
+- Without an enemy, until its "last seen" time it scans, its goal angles
+  wobbling up to 20° around its own; after that it retires.
+
+## Voice lines
+
+The turret speaks through `NPC_FloorTurret.Talk*` sounds, one per state:
+search, auto search ("are you still there"), active, deploy, retire,
+tipped, disabled, collide, pickup, shot at, dissolved, flung, burned.
+
+- A line plays when the turret's state changes and the time for its next
+  line has come; afterwards the next line waits 1.75 s (search, auto
+  search, deploy), 3.5 s (retire), 1.15 s (tipped), 2.25 s (pickup) or
+  10 s (dissolved). Changing to retire, dissolved, pickup or flung (and to
+  tipped unless already handled) may speak at once.
+- While firing, the active line repeats every 2.5 s.
+- Gagged turrets (`EnableGagging`) stay silent.
+- Bumping into something plays the collide line and holds off the next
+  line for 1 s. A burning turret has a 1 in 4 chance of crying out when it
+  catches fire, then burns for `sv_portal_turret_min/max_burn_time`.

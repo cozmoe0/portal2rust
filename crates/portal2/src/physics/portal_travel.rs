@@ -16,8 +16,74 @@ pub struct PortalTravelPlugin;
 
 impl Plugin for PortalTravelPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, (teleport_props, fizzle_props));
+        app.add_systems(FixedUpdate, (funnel_props, teleport_props, fizzle_props, run_dissolves).chain());
     }
+}
+
+/// Props dropping slowly onto a floor portal drift over its centre; rising
+/// back out of one, sideways motion away from its centre is slowed
+/// (`sv_props_funnel_into_portals`, props with `allowfunnel`).
+fn funnel_props(
+    time: Res<Time<Fixed>>,
+    console: Res<crate::console::Console>,
+    portals: Res<Portals>,
+    portal_query: Query<&Portal>,
+    mut props: Query<(&crate::entities::MapEntity, &Position, &RigidBody, &mut LinearVelocity), With<PhysicsProp>>,
+) {
+    if !console.bool("sv_props_funnel_into_portals") {
+        return;
+    }
+    let Some(frames) = crate::portals::linked_frames(&portals, &portal_query) else { return };
+    let decelerate = console.f32("sv_props_funnel_into_portals_deceleration");
+    for (me, pos, body, mut lin) in &mut props {
+        if !body.is_dynamic() || !me.get("allowfunnel").is_none_or(|v| source_formats::kv::parse_i32_lenient(v) != 0) {
+            continue;
+        }
+        let v = lin.0;
+        let flat_speed2 = v.truncate().length_squared();
+        if v.z.abs() < 1.0 || flat_speed2 >= 64.0 * 64.0 {
+            continue;
+        }
+        let Some((portal, delta)) = floor_portal_below(&frames, pos.0) else { continue };
+        if v.z < 0.0 {
+            let slow = (1.0 - flat_speed2 / (128.0 * 128.0)).clamp(0.0, 1.0);
+            let high = ((delta.z + 128.0) / -128.0).clamp(0.0, 1.0);
+            let k = slow * high;
+            lin.0.x += (delta.x - v.x) * k;
+            lin.0.y += (delta.y - v.y) * k;
+        } else if decelerate > 0.0 {
+            let n = portal.forward;
+            let flat_v = v - n * n.dot(v);
+            let flat_d = delta - n * n.dot(delta);
+            let away = flat_d.dot(flat_v);
+            if away < 0.0 {
+                let amount = (-away / flat_d.length()).min(time.delta_secs() * decelerate);
+                lin.0 += flat_d * amount;
+            }
+        }
+    }
+}
+
+/// The closest open floor portal under `at` whose opening, grown by half,
+/// `at` lies over, with the offset from `at` to its centre.
+fn floor_portal_below(frames: &[crate::portals::placement::PortalFrame; 2], at: Vec3) -> Option<(crate::portals::placement::PortalFrame, Vec3)> {
+    use crate::portals::placement::{HALF_HEIGHT, HALF_WIDTH};
+    let mut best: Option<(f32, crate::portals::placement::PortalFrame, Vec3)> = None;
+    for p in frames {
+        let delta = p.center - at;
+        if p.forward.z <= 0.8 || delta.z < -1024.0 || delta.z >= 0.0 {
+            continue;
+        }
+        let along = |axis: Vec3| delta.truncate().dot(axis.truncate().normalize_or_zero()).abs();
+        if along(p.left()) > HALF_WIDTH * 1.5 || along(p.up) > HALF_HEIGHT * 1.5 {
+            continue;
+        }
+        let d2 = delta.length_squared();
+        if best.as_ref().is_none_or(|(b, _, _)| d2 < *b) {
+            best = Some((d2, *p, delta));
+        }
+    }
+    best.map(|(_, p, d)| (p, d))
 }
 
 /// Centre of the prop on the previous tick, for detecting portal crossings.
@@ -82,32 +148,82 @@ fn teleport_props(
     }
 }
 
-/// Props touching an active fizzler field dissolve.
+/// Seconds a fizzled prop takes to dissolve, and when its model vanishes.
+const DISSOLVE_TIME: f64 = 2.0;
+const DISSOLVE_MODEL_GONE: f64 = 1.95;
+
+/// A fizzled prop: no longer a prop the map can address or the player can
+/// touch, drifting without gravity until it has dissolved.
+#[derive(Component)]
+pub struct Dissolving {
+    pub since: f64,
+}
+
+/// Props touching an active fizzler field dissolve: the game swaps them for
+/// a non-solid copy that keeps half their velocity (half the player's,
+/// plus a little forward and down, when carried), spins 20°/s more about
+/// the vertical, ignores gravity and is gone after 2 seconds.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn fizzle_props(
+    clock: Res<crate::clock::GameClock>,
     physics: Physics,
     cleansers: Query<(Entity, &Trigger)>,
-    props: Query<(Entity, &TraceCollider, &GlobalTransform), With<PhysicsProp>>,
+    mut props: Query<(Entity, &TraceCollider, &GlobalTransform, &mut LinearVelocity, &mut AngularVelocity), With<PhysicsProp>>,
+    players: Query<&crate::player::Player>,
+    input: Res<crate::player::PlayerInput>,
     mut holding: ResMut<Holding>,
+    mut registry: ResMut<crate::entities::EntityRegistry>,
     mut out: MessageWriter<FireOutput>,
+    mut sounds: MessageWriter<crate::audio::SoundRequest>,
     mut commands: Commands,
 ) {
     for (te, trig) in &cleansers {
         if !trig.enabled || !matches!(trig.kind, TriggerKind::Cleanser) {
             continue;
         }
-        for (pe, col, gt) in &props {
+        for (pe, col, gt, mut lin, mut ang) in &mut props {
             let t = gt.compute_transform();
             let (mins, maxs) = super::world_bounds(&col.shape, t.translation, t.rotation);
             let center = (mins + maxs) * 0.5;
             let half = (maxs - mins) * 0.5;
-            if physics.touches(te, center, -half, half) {
-                if holding.entity == Some(pe) {
-                    holding.entity = None;
-                }
-                out.write(FireOutput::new(pe, "OnFizzled"));
-                out.write(FireOutput::new(te, "OnDissolve").with_activator(Some(pe)));
-                commands.entity(pe).despawn();
+            if !physics.touches(te, center, -half, half) {
+                continue;
             }
+            let mut drift = lin.0;
+            if holding.entity == Some(pe) {
+                holding.entity = None;
+                if let Ok(p) = players.single() {
+                    let forward = crate::coords::angles_forward(input.input.angles);
+                    drift = p.state.velocity + forward * 4.0 - Vec3::Z * 32.0;
+                }
+            }
+            out.write(FireOutput::new(pe, "OnFizzled"));
+            out.write(FireOutput::new(te, "OnDissolve").with_activator(Some(pe)));
+            sounds.write(crate::audio::SoundRequest::at("Prop.Fizzled", center));
+            lin.0 = drift * 0.5;
+            ang.0 += Vec3::Z * 20f32.to_radians();
+            registry.remove(pe);
+            commands
+                .entity(pe)
+                .remove::<PhysicsProp>()
+                .insert((Dissolving { since: clock.curtime }, GravityScale(0.0), CollisionLayers::NONE))
+                // The copy is not solid to traces either.
+                .queue(|mut e: EntityWorldMut| {
+                    if let Some(mut c) = e.get_mut::<TraceCollider>() {
+                        c.solid = false;
+                    }
+                });
+        }
+    }
+}
+
+fn run_dissolves(clock: Res<crate::clock::GameClock>, mut dissolving: Query<(Entity, &Dissolving, &mut Visibility)>, mut commands: Commands) {
+    for (e, d, mut vis) in &mut dissolving {
+        let age = clock.curtime - d.since;
+        if age >= DISSOLVE_TIME {
+            commands.entity(e).despawn();
+        } else if age >= DISSOLVE_MODEL_GONE && *vis != Visibility::Hidden {
+            *vis = Visibility::Hidden;
         }
     }
 }

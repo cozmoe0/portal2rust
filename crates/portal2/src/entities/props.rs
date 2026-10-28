@@ -130,6 +130,12 @@ pub fn spawn_generic_prop(world: &mut World, e: Entity) {
 
 /// `Dissolve`: the prop fizzles away (dropped first when carried).
 fn physics_prop_input(world: &mut World, call: &InputCall) -> bool {
+    if matches!(call.input.as_str(), "enableportalfunnel" | "disableportalfunnel") {
+        if let Some(mut me) = world.get_mut::<MapEntity>(call.target) {
+            me.set("allowfunnel", if call.input == "enableportalfunnel" { "1" } else { "0" });
+        }
+        return true;
+    }
     if call.input != "dissolve" {
         return false;
     }

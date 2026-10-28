@@ -392,7 +392,8 @@ fn animate_portals(
     }
 }
 
-fn linked_frames(portals: &Portals, query: &Query<&Portal>) -> Option<[PortalFrame; 2]> {
+/// Both portals' placements while both are open.
+pub fn linked_frames(portals: &Portals, query: &Query<&Portal>) -> Option<[PortalFrame; 2]> {
     let a = query.get(portals.entities[0]?).ok()?;
     let b = query.get(portals.entities[1]?).ok()?;
     Some([a.frame, b.frame])
@@ -455,6 +456,7 @@ fn teleport_player(
     mut input: ResMut<PlayerInput>,
     mut cooldown: Local<u32>,
     mut sounds: MessageWriter<crate::audio::SoundRequest>,
+    console: Res<crate::console::Console>,
 ) {
     let Some(frames) = linked_frames(&portals, &query) else { return };
     let Ok((pe, mut p)) = players.single_mut() else { return };
@@ -499,6 +501,15 @@ fn teleport_player(
         sounds.write(crate::audio::SoundRequest::on("PortalPlayer.ExitPortal", pe));
         p.previous_origin = p.state.origin;
         p.state.velocity = m.transform_vector3(p.state.velocity);
+        // Falling or flying nearly straight through a floor or ceiling
+        // portal leaves it exactly straight.
+        let v = p.state.velocity;
+        if console.bool("sv_player_funnel_into_portals")
+            && 1.0 - to.forward.z.abs() < 0.001
+            && (v.z / (v.length() + 1.192_092_9e-7)).abs() > console.f32("sv_player_funnel_gimme_dot")
+        {
+            p.state.velocity = Vec3::new(0.0, 0.0, v.z);
+        }
         p.state.on_ground = false;
         p.state.ground_entity = None;
         p.ground_ref = None;

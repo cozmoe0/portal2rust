@@ -70,7 +70,6 @@ pub fn register(app: &mut App) {
     // Classes whose effects are not simulated yet; their inputs are accepted
     // so I/O chains continue.
     for class in [
-        "env_shake",
         "logic_achievement",
         "light",
         "light_spot",

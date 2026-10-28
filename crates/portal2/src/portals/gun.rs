@@ -2,6 +2,7 @@
 //! portals placed by maps (`prop_portal`).
 
 use std::collections::HashMap;
+use std::f32::consts::PI;
 
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::{Camera3dDepthLoadOp, Exposure, Hdr};
@@ -387,10 +388,39 @@ fn show_viewmodel(console: Res<crate::console::Console>, mut cams: Query<&mut Ca
     }
 }
 
+/// The weapon's walking sway: a time base advanced by the share of the
+/// player's maximum speed they move at, read as a 0.45 s vertical and a
+/// 0.9 s sideways cycle (`docs/re/gameplay.md`).
+#[derive(Default)]
+struct WeaponBob {
+    time: f32,
+    last: f32,
+}
+
+impl WeaponBob {
+    /// Vertical and sideways bob for a player moving at `speed`.
+    fn update(&mut self, now: f32, speed: f32, max_speed: f32) -> (f32, f32) {
+        let speed = speed.clamp(-max_speed, max_speed);
+        let share = if max_speed == 0.0 { if speed >= 0.0 { 1.0 } else { 0.0 } } else { speed / max_speed };
+        self.time += (now - self.last) * share;
+        self.last = now;
+        let wave = |period: f32| {
+            let c = (self.time - (self.time / period).trunc() * period) / period;
+            let c = if c < 0.5 { PI * c / 0.5 } else { PI + PI * (c - 0.5) / 0.5 };
+            let b = speed * 0.005;
+            (b * 0.3 + b * 0.7 * c.sin()).clamp(-7.0, 4.0)
+        };
+        (wave(0.45), wave(0.9))
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn place_viewmodel(
     time: Res<Time>,
     input: Res<PlayerInput>,
     map: Option<Res<CurrentMap>>,
+    players: Query<&Player>,
+    mut bob: Local<WeaponBob>,
     main: Query<(&Transform, &Exposure), (With<MainCamera>, Without<ViewmodelCamera>, Without<Viewmodel>)>,
     mut cam: Query<(&mut Transform, &mut Exposure), (With<ViewmodelCamera>, Without<Viewmodel>)>,
     mut vm: Query<(&mut Transform, &mut Viewmodel, &Children), Without<MainCamera>>,
@@ -402,9 +432,18 @@ fn place_viewmodel(
         *t = *main_t;
         *e = *exposure;
     }
+    let speed = players.single().map(|p| p.state.velocity.length()).unwrap_or(0.0);
+    let (vertical, lateral) = bob.update(time.elapsed_secs(), speed, crate::player::movement::MAX_SPEED);
+    let mut angles = input.input.angles;
+    let q = angles_to_quat(angles);
+    let (forward, right) = (q * Vec3::X, -(q * Vec3::Y));
+    let origin = main_t.translation + forward * (vertical * 0.1) + Vec3::Z * (vertical * 0.1) + right * (lateral * 0.8);
+    angles.z += vertical * 0.5;
+    angles.x -= vertical * 0.4;
+    angles.y -= lateral * 0.3;
     for (mut t, mut v, children) in &mut vm {
-        t.translation = main_t.translation;
-        t.rotation = angles_to_quat(input.input.angles);
+        t.translation = origin;
+        t.rotation = angles_to_quat(angles);
         // Refresh lighting a few times a second as the player moves.
         v.light_timer -= time.delta_secs();
         if v.light_timer <= 0.0

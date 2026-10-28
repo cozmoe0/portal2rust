@@ -8,9 +8,11 @@ use crate::entities::triggers::PlayerDied;
 use crate::world::PlayerStart;
 
 pub const MAX_HEALTH: f32 = 100.0;
-/// Seconds without damage before health starts coming back.
+/// Seconds without damage before health starts coming back
+/// (`sv_regeneration_wait_time`).
 const REGEN_DELAY: f64 = 1.0;
-const REGEN_RATE: f32 = 25.0;
+/// One point of health per 60 Hz tick after that.
+const REGEN_RATE: f32 = 60.0;
 
 pub struct HealthPlugin;
 

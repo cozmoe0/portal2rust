@@ -1,6 +1,8 @@
 //! Player movement in the style of Source/Quake: ground friction and
 //! acceleration, air control capped to a small wish speed, gravity, sliding
-//! along multiple surfaces, stair stepping and ground snapping.
+//! along multiple surfaces, stair stepping and ground snapping, plus Portal
+//! 2's air steering rules and its pull toward floor portals
+//! (`docs/re/gameplay.md`).
 //!
 //! Tuning values are the game's console-variable defaults; the hull and eye
 //! dimensions are the standard documented Source player sizes.
@@ -8,6 +10,7 @@
 use bevy::prelude::*;
 
 use crate::collision::{Physics, Trace, mask};
+use crate::portals::placement::{HALF_HEIGHT, HALF_WIDTH, PortalFrame};
 
 pub const GRAVITY: f32 = 600.0;
 pub const FRICTION: f32 = 4.0;
@@ -20,7 +23,11 @@ pub const MAX_VELOCITY: f32 = 3500.0;
 /// Peak height of a standing jump (tunable).
 pub const JUMP_HEIGHT: f32 = 45.0;
 /// Air acceleration only builds speed up to this along the wish direction.
-pub const AIR_WISH_CAP: f32 = 30.0;
+pub const AIR_WISH_CAP: f32 = 60.0;
+/// Above this horizontal speed the player cannot steer against an axis
+/// they move along faster than `AIR_BRAKE_SPEED`.
+const AIR_STEER_SPEED: f32 = 300.0;
+const AIR_BRAKE_SPEED: f32 = 150.0;
 pub const DUCK_SPEED_SCALE: f32 = 1.0 / 3.0;
 /// Surfaces steeper than this are not standable.
 pub const MIN_WALKABLE_NORMAL: f32 = 0.7;
@@ -46,6 +53,106 @@ pub struct MoveInput {
     pub duck: bool,
     /// View angles (pitch, yaw, roll) in degrees.
     pub angles: Vec3,
+    /// Air steering is off (after a faith plate launch).
+    pub steer_suppressed: bool,
+}
+
+/// Open portals the player is pulled toward while falling onto a floor
+/// portal or rising into a ceiling one, with the `sv_player_funnel_*`
+/// settings.
+#[derive(Clone, Debug, Default)]
+pub struct Funnel {
+    pub portals: Vec<PortalFrame>,
+    pub height_adjust: f32,
+    pub snap_threshold: f32,
+    pub speed_bonus: f32,
+}
+
+impl Funnel {
+    /// The closest portal the player is lined up with, as the offset from
+    /// the player's centre to the portal's.
+    fn target(&self, center: Vec3, velocity: Vec3, eye_forward: Vec3, wish: Vec3) -> Option<Vec3> {
+        let rising = velocity.z > 165.0;
+        // Steering by hand, or falling without looking down, turns it off.
+        if wish.x.abs() > 64.0 || wish.y.abs() > 64.0 {
+            return None;
+        }
+        if !rising && (eye_forward.z >= -0.7 || velocity.z >= -165.0) {
+            return None;
+        }
+        let mut best: Option<(f32, Vec3)> = None;
+        for p in &self.portals {
+            let delta = p.center - center;
+            let reachable = if rising {
+                p.forward.z < -0.7 && delta.z > 0.0 && delta.z <= 1024.0 && delta.z <= velocity.z * velocity.z / (2.0 * GRAVITY)
+            } else {
+                p.forward.z > 0.7 && delta.z < 0.0 && delta.z >= -1024.0
+            };
+            if !reachable {
+                continue;
+            }
+            // The catch area grows from 1.5 to 3 times the opening between
+            // 256 and 1024 units away.
+            let scale = 1.5 + 1.5 * ((delta.z.abs() - 256.0) / 768.0).clamp(0.0, 1.0);
+            let along = |axis: Vec3| delta.dot((axis - p.forward * axis.dot(p.forward)).normalize_or_zero()).abs();
+            if along(p.left()) > HALF_WIDTH * scale || along(p.up) > HALF_HEIGHT * scale {
+                continue;
+            }
+            let d2 = delta.length_squared();
+            if best.is_none_or(|(b, _)| d2 < b) {
+                best = Some((d2, delta));
+            }
+        }
+        best.map(|(_, d)| d)
+    }
+
+    /// Extra wish velocity toward the portal's centre. Where the player
+    /// would pass the centre (or moves away from it) before reaching the
+    /// portal, that axis of `velocity` is damped instead.
+    pub fn correct(&self, velocity: &mut Vec3, center: Vec3, eye_forward: Vec3, wish: Vec3, dt: f32) -> Vec3 {
+        let Some(delta) = self.target(center, *velocity, eye_forward, wish) else { return Vec3::ZERO };
+        let push = 1.0 + (self.speed_bonus - 1.0) * (velocity.z / 1065.0).clamp(0.0, 1.0);
+        // Time until the player's centre is `height_adjust` above the portal.
+        let height = -delta.z - self.height_adjust;
+        let Some(t) = arrival_time(-GRAVITY, 2.0 * velocity.z, 2.0 * height) else { return Vec3::ZERO };
+        let half_life = 0.01 + 0.14 * ((delta.z.abs() - 128.0) / 896.0).clamp(0.0, 1.0);
+        let damp = (-std::f32::consts::LN_2 / half_life * dt).exp();
+        let mut out = Vec3::ZERO;
+        for axis in 0..2 {
+            let v = velocity[axis];
+            if v == 0.0 || t <= delta[axis] / v {
+                out[axis] = delta[axis] * push * 6.0 - v;
+            } else if v.abs() <= self.snap_threshold {
+                velocity[axis] = 0.0;
+            } else {
+                velocity[axis] *= damp;
+            }
+        }
+        out
+    }
+}
+
+/// A root of `a t² + b t + c = 0`: the positive one of the pair, or the
+/// smaller when both are positive.
+fn arrival_time(a: f32, b: f32, c: f32) -> Option<f32> {
+    let (r1, r2) = if a == 0.0 {
+        if b == 0.0 {
+            return (c == 0.0).then_some(0.0);
+        }
+        (-c / b, -c / b)
+    } else {
+        let disc = b * b - 4.0 * a * c;
+        if disc < 0.0 {
+            return None;
+        }
+        let s = disc.sqrt();
+        ((s - b) / (2.0 * a), (-b - s) / (2.0 * a))
+    };
+    let mut t = if r1 > 0.0 { r1 } else { r2 };
+    if r1 > r2 && r2 >= 0.0 && r1 >= 0.0 {
+        t = r2;
+    }
+    Some(t)
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -90,6 +197,7 @@ impl MoveState {
 pub struct Mover<'a, 'w, 's> {
     pub physics: &'a Physics<'w, 's>,
     pub ignore: &'a [Entity],
+    pub funnel: Option<&'a Funnel>,
 }
 
 impl Mover<'_, '_, '_> {
@@ -130,13 +238,53 @@ impl Mover<'_, '_, '_> {
         } else {
             // Gravity is split around the move for a symmetric arc.
             s.velocity.z -= GRAVITY * dt * 0.5;
-            air_accelerate(&mut s.velocity, wish_dir, wish_speed, AIR_ACCELERATE, dt);
+            let wish = self.air_wish(s, input, dt);
+            air_accelerate(&mut s.velocity, wish.normalize_or_zero(), wish.length().min(MAX_SPEED), AIR_ACCELERATE, dt);
             clamp_velocity(&mut s.velocity);
             self.slide_move(s, dt);
             s.velocity.z -= GRAVITY * dt * 0.5;
         }
         self.categorize_position(s);
         clamp_velocity(&mut s.velocity);
+    }
+
+    /// The wish velocity in the air. The view's forward axis is flattened
+    /// but only rescaled to full length when looking less than 30° up or
+    /// down, so steering weakens when looking steeply.
+    fn air_wish(&self, s: &mut MoveState, input: &MoveInput, dt: f32) -> Vec3 {
+        let q = crate::coords::angles_to_quat(input.angles);
+        let eye_forward = q * Vec3::X;
+        let mut forward = Vec3::new(eye_forward.x, eye_forward.y, 0.0);
+        if eye_forward.z.abs() < 0.5 {
+            forward = forward.normalize_or_zero();
+        }
+        let yaw = input.angles.y.to_radians();
+        let right = Vec3::new(yaw.sin(), -yaw.cos(), 0.0);
+        let mut moves = Vec2::new(input.forward, input.right) * MAX_SPEED;
+        if moves.length() > MAX_SPEED {
+            moves = moves.normalize() * MAX_SPEED;
+        }
+        let mut wish = forward * moves.x + right * moves.y;
+
+        let mut correction = Vec3::ZERO;
+        if s.velocity.truncate().length_squared() <= AIR_STEER_SPEED * AIR_STEER_SPEED {
+            if let Some(funnel) = self.funnel {
+                let (mins, maxs) = s.hull();
+                let center = s.origin + (mins + maxs) * 0.5;
+                correction = funnel.correct(&mut s.velocity, center, eye_forward, wish, dt);
+            }
+        } else {
+            for axis in 0..2 {
+                let (v, w) = (s.velocity[axis], wish[axis]);
+                if (v > AIR_BRAKE_SPEED && w < 0.0) || (v < -AIR_BRAKE_SPEED && w > 0.0) {
+                    wish[axis] = 0.0;
+                }
+            }
+        }
+        if input.steer_suppressed {
+            wish = Vec3::ZERO;
+        }
+        wish + correction
     }
 
     fn update_duck(&self, s: &mut MoveState, input: &MoveInput, dt: f32) {
@@ -410,6 +558,39 @@ mod tests {
         }
         // Friction and acceleration settle a little under the cap.
         assert!(s.velocity.x > 0.8 * MAX_SPEED && s.velocity.x <= MAX_SPEED + 1e-3, "{}", s.velocity.x);
+    }
+
+    fn floor_funnel() -> Funnel {
+        let floor = PortalFrame { center: Vec3::ZERO, forward: Vec3::Z, up: Vec3::X };
+        Funnel { portals: vec![floor], height_adjust: 128.0, snap_threshold: 10.0, speed_bonus: 2.0 }
+    }
+
+    #[test]
+    fn funnel_pulls_falling_player_toward_floor_portal() {
+        let f = floor_funnel();
+        let down = Vec3::new(0.0, 0.0, -1.0);
+        // Falling, looking down, 40 units off centre: pulled back toward it.
+        let mut v = Vec3::new(0.0, 0.0, -400.0);
+        let push = f.correct(&mut v, Vec3::new(40.0, 0.0, 400.0), down, Vec3::ZERO, 1.0 / 60.0);
+        assert!(push.x < 0.0 && push.y == 0.0, "{push}");
+        // Drifting past the centre too fast: that axis is damped instead.
+        let mut v = Vec3::new(-300.0, 0.0, -400.0);
+        let push = f.correct(&mut v, Vec3::new(40.0, 0.0, 400.0), down, Vec3::ZERO, 1.0 / 60.0);
+        assert_eq!(push.x, 0.0);
+        assert!(v.x > -300.0 && v.x < 0.0, "{v}");
+        // Not looking down, steering by hand, or outside the catch area: no pull.
+        let mut v = Vec3::new(0.0, 0.0, -400.0);
+        assert_eq!(f.correct(&mut v, Vec3::new(40.0, 0.0, 400.0), Vec3::X, Vec3::ZERO, 1.0 / 60.0), Vec3::ZERO);
+        assert_eq!(f.correct(&mut v, Vec3::new(40.0, 0.0, 400.0), down, Vec3::new(100.0, 0.0, 0.0), 1.0 / 60.0), Vec3::ZERO);
+        assert_eq!(f.correct(&mut v, Vec3::new(400.0, 0.0, 400.0), down, Vec3::ZERO, 1.0 / 60.0), Vec3::ZERO);
+    }
+
+    #[test]
+    fn arrival_time_prefers_the_future_root() {
+        // 2h + 2vz t - g t² = 0 with h = 300, vz = 0: t = sqrt(2h/g) = 1 s.
+        let t = arrival_time(-GRAVITY, 0.0, 600.0).unwrap();
+        assert!((t - 1.0).abs() < 1e-4, "{t}");
+        assert!(arrival_time(-GRAVITY, 0.0, -600.0).is_none());
     }
 
     #[test]

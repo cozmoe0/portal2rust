@@ -3,6 +3,7 @@
 pub mod autopilot;
 pub mod health;
 pub mod movement;
+pub mod shake;
 
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
@@ -21,7 +22,7 @@ pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((autopilot::AutopilotPlugin, health::HealthPlugin))
+        app.add_plugins((autopilot::AutopilotPlugin, health::HealthPlugin, shake::ShakePlugin))
             .init_resource::<PlayerInput>()
             // Placed during level load, before the new map's first tick.
             .add_systems(PreUpdate, spawn_or_reset_player.in_set(PlayerSpawnSet).after(crate::entities::EntitySpawnSet))
@@ -168,6 +169,9 @@ fn player_tick(
     pull: Option<Res<crate::devices::funnel::PlayerPull>>,
     mut air: Option<ResMut<crate::devices::catapult::AirControl>>,
     speed_mod: Option<Res<crate::entities::detectors::SpeedMod>>,
+    console: Res<Console>,
+    portals: Option<Res<crate::portals::Portals>>,
+    portal_query: Query<&crate::portals::Portal>,
     mut players: Query<(Entity, &mut Player, &mut Transform)>,
 ) {
     let speed_scale = speed_mod.map(|s| s.0).unwrap_or(1.0);
@@ -175,6 +179,13 @@ fn player_tick(
     let now = time.elapsed_secs_f64();
     let held = holding.and_then(|h| h.entity);
     let pull = pull.and_then(|p| p.0);
+    let frames = portals.and_then(|p| crate::portals::linked_frames(&p, &portal_query));
+    let funnel = frames.filter(|_| console.bool("sv_player_funnel_into_portals")).map(|frames| movement::Funnel {
+        portals: frames.to_vec(),
+        height_adjust: console.f32("sv_player_funnel_height_adjust"),
+        snap_threshold: console.f32("sv_player_funnel_snap_threshold"),
+        speed_bonus: console.f32("sv_player_funnel_speed_bonus"),
+    });
     for (e, mut p, mut t) in &mut players {
         p.previous_origin = p.state.origin;
         // Ride along with whatever the player stands on.
@@ -189,7 +200,7 @@ fn player_tick(
         }
         // The carried prop never blocks its carrier.
         let ignore: Vec<Entity> = std::iter::once(e).chain(held).collect();
-        let mover = Mover { physics: &physics, ignore: &ignore };
+        let mover = Mover { physics: &physics, ignore: &ignore, funnel: funnel.as_ref() };
         let mut state = p.state;
         let mut move_input = input.input;
         // player_speedmod slows walking.
@@ -200,8 +211,7 @@ fn player_tick(
             if state.on_ground {
                 air.suppressed_until = 0.0;
             } else if now < air.suppressed_until {
-                move_input.forward = 0.0;
-                move_input.right = 0.0;
+                move_input.steer_suppressed = true;
             }
         }
         if p.noclip {
@@ -210,7 +220,8 @@ fn player_tick(
             let (mins, maxs) = state.hull();
             let center = state.origin + (mins + maxs) * 0.5;
             let q = crate::coords::angles_to_quat(move_input.angles);
-            let wish = q * Vec3::X * move_input.forward - q * Vec3::Y * move_input.right;
+            let steer = if move_input.steer_suppressed { 0.0 } else { 1.0 };
+            let wish = (q * Vec3::X * move_input.forward - q * Vec3::Y * move_input.right) * steer;
             let flow = crate::devices::funnel::player_flow(&pull, center, wish);
             mover.funnel_move(&mut state, &move_input, flow, dt);
         } else {
@@ -225,6 +236,7 @@ fn player_tick(
 fn place_camera(
     fixed: Res<Time<Fixed>>,
     input: Res<PlayerInput>,
+    shakes: Res<shake::Shakes>,
     players: Query<&Player>,
     mut cams: Query<&mut ViewAngles, With<MainCamera>>,
 ) {
@@ -232,7 +244,7 @@ fn place_camera(
     let alpha = fixed.overstep_fraction();
     let origin = p.previous_origin.lerp(p.state.origin, alpha);
     for mut view in &mut cams {
-        view.origin = origin + Vec3::Z * p.state.eye_offset();
-        view.angles = input.input.angles;
+        view.origin = origin + Vec3::Z * p.state.eye_offset() + shakes.offset;
+        view.angles = input.input.angles + Vec3::Z * shakes.roll;
     }
 }

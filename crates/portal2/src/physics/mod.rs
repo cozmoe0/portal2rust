@@ -168,19 +168,7 @@ fn attach_bodies(
                 .filter(|s| *s > 0.0)
                 .unwrap_or(1.0)
                 * me.studio_model().and_then(|p| model_mass(&fs, &p)).unwrap_or(40.0);
-            commands.entity(e).insert((
-                RigidBody::Dynamic,
-                collider,
-                Mass(mass),
-                Friction::new(0.8),
-                Restitution::new(0.05),
-                LinearDamping(0.05),
-                AngularDamping(0.2),
-                SweptCcd::default(),
-                layers_for(layers::PROP, layers::WORLD | layers::PROP | layers::PLAYER | layers::MOVER | layers::HELD),
-                ActiveCollisionHooks::MODIFY_CONTACTS,
-                portal_travel::PortalTraveler::default(),
-            ));
+            make_dynamic(&mut commands, e, collider, mass);
         } else {
             // Spawnflag 8 on physics props: start motion disabled.
             commands.entity(e).insert((
@@ -190,6 +178,28 @@ fn attach_bodies(
             ));
         }
     }
+}
+
+/// Simulates `e` as a free physics prop from now on.
+pub fn make_dynamic(commands: &mut Commands, e: Entity, collider: Collider, mass: f32) {
+    commands.entity(e).insert((
+        RigidBody::Dynamic,
+        collider,
+        Mass(mass),
+        Friction::new(0.8),
+        Restitution::new(0.05),
+        LinearDamping(0.05),
+        AngularDamping(0.2),
+        SweptCcd::default(),
+        layers_for(layers::PROP, layers::WORLD | layers::PROP | layers::PLAYER | layers::MOVER | layers::HELD),
+        ActiveCollisionHooks::MODIFY_CONTACTS,
+        portal_travel::PortalTraveler::default(),
+    ));
+}
+
+/// Collider for one of our collision shapes, if it has any volume.
+pub fn collider_for(shape: &Shape) -> Option<Collider> {
+    shape_collider(shape)
 }
 
 /// The player pushes props through a kinematic box that follows them.
