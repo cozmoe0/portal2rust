@@ -1,0 +1,9 @@
+# Portal openings for M10: the sp_a1_intro2 portal pair, first the orange
+# one alone (unlinked), then both. name map x y z pitch yaw roll (feet
+# origin, as setpos) [console commands]. Capture with --map-settle 10
+# --settle 3; ours with --shot-settle-time 3 --shot-map-settle 10.
+portal_unlinked_near sp_a1_intro2 -319.8 -120.0 -8.0 26.0 270.0 0 ent_fire portal_red_1 SetActivatedState 1
+portal_linked_near sp_a1_intro2 -319.8 -120.0 -8.0 26.0 270.0 0 ent_fire portal_blue_1 SetActivatedState 1
+portal_linked_close sp_a1_intro2 -319.8 -180.0 -8.0 40.0 270.0 0
+portal_linked_far sp_a1_intro2 -319.8 60.0 -8.0 12.0 270.0 0
+portal_blue_near sp_a1_intro2 -576.0 96.0 0.0 26.0 180.0 0

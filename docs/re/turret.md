@@ -68,3 +68,11 @@ tipped, disabled, collide, pickup, shot at, dissolved, flung, burned.
 - Bumping into something plays the collide line and holds off the next
   line for 1 s. A burning turret has a 1 in 4 chance of crying out when it
   catches fire, then burns for `sv_portal_turret_min/max_burn_time`.
+
+## Head and laser (client and server)
+
+- The head turns through the `aim_yaw` (±60°) and `aim_pitch` (±15°)
+  pose parameters toward the goal angles, at most `MaxYawSpeed` (360) ×
+  0.05° per think, applied at two thirds.
+- The client draws the laser sight as a beam with `effects/redlaser1.vmt`,
+  colour (255, 32, 32) at full brightness, from the turret along its aim.
