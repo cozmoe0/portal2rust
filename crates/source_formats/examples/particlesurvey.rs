@@ -56,9 +56,9 @@ fn main() {
         return;
     }
     let find = |name: &str| {
-        files.iter().find_map(|(path, pcf)| {
-            pcf.systems.iter().position(|s| s.name.eq_ignore_ascii_case(name)).map(|i| (path.as_str(), pcf, i))
-        })
+        files
+            .iter()
+            .find_map(|(path, pcf)| pcf.systems.iter().position(|s| s.name.eq_ignore_ascii_case(name)).map(|i| (path.as_str(), pcf, i)))
     };
 
     let mut used: BTreeMap<String, usize> = BTreeMap::new();

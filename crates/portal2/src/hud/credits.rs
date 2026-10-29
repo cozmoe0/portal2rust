@@ -107,7 +107,9 @@ fn load(fs: &GameFs) -> Option<Run> {
     let text = String::from_utf8_lossy(&fs.read("scripts/credits.txt")?).into_owned();
     let root = source_formats::kv::parse(&text)?;
     let p = root.get("CreditsParams");
-    let f = |key: &str, default: f32| p.and_then(|p| p.get(key)).and_then(|v| v.as_str()).map(source_formats::kv::parse_f32_lenient).unwrap_or(default);
+    let f = |key: &str, default: f32| {
+        p.and_then(|p| p.get(key)).and_then(|v| v.as_str()).map(source_formats::kv::parse_f32_lenient).unwrap_or(default)
+    };
     let params = Params {
         scroll_time: f("scrolltime", 57.0),
         separation: f("separation", 5.0),
@@ -301,7 +303,8 @@ fn paint(
             if y < top || y > h - margin_y {
                 continue;
             }
-            let text = if j == c && t < n.end { typed(&n.text, (t - n.start) / (n.end - n.start).max(1e-3), blink, true) } else { n.text.clone() };
+            let text =
+                if j == c && t < n.end { typed(&n.text, (t - n.start) / (n.end - n.start).max(1e-3), blink, true) } else { n.text.clone() };
             let x = w - margin_x - surface.text_width(font, &text);
             surface.draw_text(font, x, y, &text, run.params.names);
         }
@@ -323,12 +326,15 @@ mod tests {
     use super::*;
 
     fn entries(keys: &[&str]) -> Vec<KeyValues> {
-        keys.iter().map(|k| KeyValues { key: (*k).to_owned(), value: source_formats::kv::KvValue::Str("CreditsOutroText".into()) }).collect()
+        keys.iter()
+            .map(|k| KeyValues { key: (*k).to_owned(), value: source_formats::kv::KvValue::Str("CreditsOutroText".into()) })
+            .collect()
     }
 
     #[test]
     fn lyric_lines_continue_break_and_clear() {
-        let l = parse_lyrics(&entries(&["[2.0]Forms", "[1.0]^", "[1.5]*Under the", "[1.0] circumstances", "[0.5] ", "[0.3]&", "[1.0]Again"]));
+        let l =
+            parse_lyrics(&entries(&["[2.0]Forms", "[1.0]^", "[1.5]*Under the", "[1.0] circumstances", "[0.5] ", "[0.3]&", "[1.0]Again"]));
         assert_eq!(l[0].row, 0);
         assert_eq!(l[1].row, 1);
         // `*` keeps the next piece on its line, after it.

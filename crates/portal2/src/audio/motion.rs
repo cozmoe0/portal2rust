@@ -45,7 +45,8 @@ pub fn motion_sounds(world: &mut World) {
                 if let Some(s) = key(&me, "startsound") {
                     super::emit(world, &s, Emit { entity: Some(e), ..default() });
                 }
-                let id = key(&me, "movesound").and_then(|s| super::emit(world, &s, Emit { entity: Some(e), pitch: Some(pitch), ..default() }));
+                let id =
+                    key(&me, "movesound").and_then(|s| super::emit(world, &s, Emit { entity: Some(e), pitch: Some(pitch), ..default() }));
                 set_channel(world, e, id);
             }
             (true, true) => {

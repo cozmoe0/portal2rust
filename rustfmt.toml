@@ -1,0 +1,4 @@
+# Long lines and compact one-line layouts, the closest match to the style
+# the code was written in (measured: the least reformatting).
+max_width = 140
+use_small_heuristics = "Max"

@@ -128,7 +128,12 @@ pub fn register(vm: &mut Vm, vector: ObjRef) -> ScriptClasses {
             ("IsSequenceFinished", true_fn, 1),
         ],
     );
-    let flex = new_class(vm, "CBaseFlex", Some(animating), &[("GetCurrentScene", get_current_scene, 1), ("GetSceneByIndex", get_scene_by_index, 2)]);
+    let flex = new_class(
+        vm,
+        "CBaseFlex",
+        Some(animating),
+        &[("GetCurrentScene", get_current_scene, 1), ("GetSceneByIndex", get_scene_by_index, 2)],
+    );
     let player = new_class(vm, "CBasePlayer", Some(animating), &[("IsNoclipping", is_noclipping, 1)]);
     let portal_player = new_class(
         vm,
@@ -455,7 +460,9 @@ fn get_max_health(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
 
 fn handle_or_null(vm: &mut Vm, world: &mut World, e: Option<Entity>) -> Value {
     match e {
-        Some(e) if world.get::<MapEntity>(e).is_some() || world.resource::<EntityRegistry>().player == Some(e) => super::handle_in(world, vm, e),
+        Some(e) if world.get::<MapEntity>(e).is_some() || world.resource::<EntityRegistry>().player == Some(e) => {
+            super::handle_in(world, vm, e)
+        }
         _ => Value::Null,
     }
 }
@@ -565,7 +572,12 @@ fn connect_output(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
     let e = this_entity(vm, world, args)?;
     if let Some(mut outs) = world.get_mut::<Outputs>(e) {
         let exists = outs.connections.iter().any(|c| {
-            c.output == output && c.target == "!self" && c.input == "callscriptfunction" && c.param == func && c.delay == 0.0 && c.times == -1
+            c.output == output
+                && c.target == "!self"
+                && c.input == "callscriptfunction"
+                && c.param == func
+                && c.delay == 0.0
+                && c.times == -1
         });
         if !exists {
             outs.connections.push(Connection {
@@ -817,7 +829,9 @@ fn find_by_model(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
 
 fn find_by_target(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
     let target = arg_string(ctx, args, 2)?.to_ascii_lowercase();
-    find_next(ctx, args, 1, move |w, e| w.get::<MapEntity>(e).and_then(|m| m.get("target")).is_some_and(|t| t.eq_ignore_ascii_case(&target)))
+    find_next(ctx, args, 1, move |w, e| {
+        w.get::<MapEntity>(e).and_then(|m| m.get("target")).is_some_and(|t| t.eq_ignore_ascii_case(&target))
+    })
 }
 
 fn find_in_sphere(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {

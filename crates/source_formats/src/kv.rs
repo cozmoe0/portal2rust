@@ -366,8 +366,7 @@ pub fn parse_document_with(text: &str, symbols: &dyn Fn(&str) -> bool) -> Docume
             Tok::Str(key, quoted) => {
                 if !quoted && (key.eq_ignore_ascii_case("#include") || key.eq_ignore_ascii_case("#base")) {
                     if let Some(Tok::Str(file, _)) = next(&mut lx, &mut peeked) {
-                        let kind =
-                            if key.eq_ignore_ascii_case("#base") { IncludeKind::Base } else { IncludeKind::Include };
+                        let kind = if key.eq_ignore_ascii_case("#base") { IncludeKind::Base } else { IncludeKind::Include };
                         doc.includes.push((kind, file));
                     }
                     continue;

@@ -12,9 +12,7 @@ pub struct ShakePlugin;
 
 impl Plugin for ShakePlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Shakes>()
-            .add_systems(Startup, register_inputs)
-            .add_systems(PostUpdate, calc_shake.before(PlayerCameraSet));
+        app.init_resource::<Shakes>().add_systems(Startup, register_inputs).add_systems(PostUpdate, calc_shake.before(PlayerCameraSet));
     }
 }
 
@@ -75,15 +73,9 @@ impl Shakes {
     /// The client side of a shake message.
     fn receive(&mut self, now: f32, command: ShakeCommand, amplitude: f32, frequency: f32, duration: f32) {
         match command {
-            ShakeCommand::Start if self.list.len() < MAX_SHAKES => self.list.push(Shake {
-                end: now + duration,
-                duration,
-                amplitude,
-                frequency,
-                next: 0.0,
-                offset: Vec3::ZERO,
-                angle: 0.0,
-            }),
+            ShakeCommand::Start if self.list.len() < MAX_SHAKES => {
+                self.list.push(Shake { end: now + duration, duration, amplitude, frequency, next: 0.0, offset: Vec3::ZERO, angle: 0.0 })
+            }
             ShakeCommand::Start => {}
             ShakeCommand::Stop => self.list.clear(),
             ShakeCommand::Amplitude => {
@@ -140,7 +132,16 @@ impl Shakes {
 /// The server side: how strongly the player shakes for a shake at
 /// `center` (none when outside `radius`, or airborne unless `air`).
 #[allow(clippy::too_many_arguments)]
-pub fn screen_shake(world: &mut World, center: Vec3, amplitude: f32, frequency: f32, duration: f32, radius: f32, command: ShakeCommand, air: bool) {
+pub fn screen_shake(
+    world: &mut World,
+    center: Vec3,
+    amplitude: f32,
+    frequency: f32,
+    duration: f32,
+    radius: f32,
+    command: ShakeCommand,
+    air: bool,
+) {
     let amplitude = amplitude.min(MAX_AMPLITUDE);
     let Some(state) = world.query::<&Player>().iter(world).next().map(|p| p.state) else { return };
     if command == ShakeCommand::Start && !air && !state.on_ground {

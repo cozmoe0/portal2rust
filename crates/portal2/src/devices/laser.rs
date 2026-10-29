@@ -28,9 +28,7 @@ pub struct LaserPlugin;
 
 impl Plugin for LaserPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<LaserHitTurret>()
-            .add_systems(FixedUpdate, update_lasers.after(PlayerMoveSet))
-            .add_systems(Update, draw_beams);
+        app.add_message::<LaserHitTurret>().add_systems(FixedUpdate, update_lasers.after(PlayerMoveSet)).add_systems(Update, draw_beams);
         let world = app.world_mut();
         {
             let mut s = world.resource_mut::<SpawnHandlers>();
@@ -90,13 +88,7 @@ fn spawn_emitter(world: &mut World, e: Entity) {
         .unwrap_or((Vec3::X * 16.0, Vec3::X));
     let on = me.get_i32("startstate").unwrap_or(0) == 0;
     debug!("laser emitter {e}: on {on}, muzzle {muzzle:?} dir {muzzle_dir:?}");
-    world.entity_mut(e).insert(LaserEmitter {
-        on,
-        muzzle,
-        muzzle_dir,
-        lethal: me.get_bool("lethaldamage"),
-        ..default()
-    });
+    world.entity_mut(e).insert(LaserEmitter { on, muzzle, muzzle_dir, lethal: me.get_bool("lethaldamage"), ..default() });
 }
 
 fn spawn_receiver(world: &mut World, e: Entity) {
@@ -204,8 +196,8 @@ fn update_lasers(
                 }
             }
         }
-        let moved = segments.len() != laser.segments.len()
-            || segments.iter().zip(&laser.segments).any(|(a, b)| a.end.distance(b.end) > 1.0);
+        let moved =
+            segments.len() != laser.segments.len() || segments.iter().zip(&laser.segments).any(|(a, b)| a.end.distance(b.end) > 1.0);
         if moved {
             let first = physics.trace(start, start + dir * 4.0, Vec3::ZERO, Vec3::ZERO, LASER_MASK, &ignore);
             debug!(
@@ -215,7 +207,10 @@ fn update_lasers(
                 first.start_solid,
                 first.contents,
                 first.entity.and_then(|h| {
-                    cubes.get(h).ok().map(|(m, t, _)| (h, m.classname.clone(), t.translation().round(), parents.get(h).ok().map(|p| p.parent())))
+                    cubes
+                        .get(h)
+                        .ok()
+                        .map(|(m, t, _)| (h, m.classname.clone(), t.translation().round(), parents.get(h).ok().map(|p| p.parent())))
                 }),
                 first.surface,
                 segments.iter().map(|s| (s.end.round(), s.hit_entity, s.through_portal)).collect::<Vec<_>>()
@@ -252,15 +247,11 @@ fn draw_beams(
     mut shared: Local<Option<(Handle<Mesh>, Handle<EffectMaterial>)>>,
 ) {
     let (mesh, material) = shared
-        .get_or_insert_with(|| {
-            (meshes.add(tube_mesh(8)), materials.add(EffectMaterial::glow(Vec3::new(1.0, 0.08, 0.04) * 4.0, 2.0, 0.01)))
-        })
+        .get_or_insert_with(|| (meshes.add(tube_mesh(8)), materials.add(EffectMaterial::glow(Vec3::new(1.0, 0.08, 0.04) * 4.0, 2.0, 0.01))))
         .clone();
     for mut laser in &mut emitters {
         while laser.beams.len() < laser.segments.len() {
-            let e = commands
-                .spawn((Mesh3d(mesh.clone()), MeshMaterial3d(material.clone()), Transform::default(), MapObject))
-                .id();
+            let e = commands.spawn((Mesh3d(mesh.clone()), MeshMaterial3d(material.clone()), Transform::default(), MapObject)).id();
             laser.beams.push(e);
         }
         while laser.beams.len() > laser.segments.len() {

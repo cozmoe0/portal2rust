@@ -49,10 +49,25 @@ pub enum Op {
     Delete,
     DeleteEnv(u32),
     /// [obj, key] -> [result] with `+= delta`; `post` keeps the old value.
-    Inc { delta: i8, post: bool },
-    IncLocal { slot: u16, delta: i8, post: bool },
-    IncOuter { slot: u16, delta: i8, post: bool },
-    IncEnv { name: u32, delta: i8, post: bool },
+    Inc {
+        delta: i8,
+        post: bool,
+    },
+    IncLocal {
+        slot: u16,
+        delta: i8,
+        post: bool,
+    },
+    IncOuter {
+        slot: u16,
+        delta: i8,
+        post: bool,
+    },
+    IncEnv {
+        name: u32,
+        delta: i8,
+        post: bool,
+    },
     Pop,
     Dup,
     /// [a, b] -> [a, b, a, b]
@@ -79,14 +94,28 @@ pub enum Op {
     /// [table, key, value] -> [table]
     TableSlot,
     /// Pops `defaults` default parameter values, pushes a closure.
-    Closure { proto: u32, defaults: u16 },
+    Closure {
+        proto: u32,
+        defaults: u16,
+    },
     /// [base?, attrs?] -> [class]
-    NewClass { base: bool, attrs: bool },
+    NewClass {
+        base: bool,
+        attrs: bool,
+    },
     /// [class, key, value, attrs?] -> [class]
-    ClassMember { is_static: bool, attrs: bool },
+    ClassMember {
+        is_static: bool,
+        attrs: bool,
+    },
     /// Container in `base`, iteration state in `base + 1`.
     ForeachInit(u16),
-    ForeachNext { base: u16, key: u16, value: u16, exit: u32 },
+    ForeachNext {
+        base: u16,
+        key: u16,
+        value: u16,
+        exit: u32,
+    },
     PushTrap(u32),
     PopTrap(u16),
     Throw,
@@ -261,12 +290,7 @@ enum Resolved {
     Env,
 }
 
-pub fn compile(
-    stmts: &[Stmt],
-    source_name: &str,
-    consts: &mut ConstTable,
-    builder: &mut dyn ConstBuilder,
-) -> Result<Arc<Proto>> {
+pub fn compile(stmts: &[Stmt], source_name: &str, consts: &mut ConstTable, builder: &mut dyn ConstBuilder) -> Result<Arc<Proto>> {
     let source = SqStr::from(source_name);
     let mut c = Compiler { funcs: vec![FuncState::new(SqStr::from("main"))], source, consts, builder };
     // Scripts accept any arguments.

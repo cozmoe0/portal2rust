@@ -305,14 +305,8 @@ impl CoefSink for DctSink<'_> {
 /// Reads the AC coefficients of a DCT block (raster order, DC already set)
 /// and returns the quantiser index that follows them.
 fn read_dct(bits: &mut Bits, coefs: &mut [i16; 64]) -> usize {
-    let mut list = WorkList::new(&[
-        Group::Twenty(4),
-        Group::Twenty(24),
-        Group::Twenty(44),
-        Group::Single(1),
-        Group::Single(2),
-        Group::Single(3),
-    ]);
+    let mut list =
+        WorkList::new(&[Group::Twenty(4), Group::Twenty(24), Group::Twenty(44), Group::Single(1), Group::Single(2), Group::Single(3)]);
     let planes = bits.read(4);
     for plane in (0..planes).rev() {
         coefficient_pass(bits, &mut list, &mut DctSink { coefs, plane });
@@ -389,16 +383,7 @@ fn idct8(s: [W; 8]) -> [W; 8] {
     let b2 = scale(-5352, o1) + b1 - b0;
     let b3 = scale(2896, o2 - o0) - b2;
     let b4 = scale(2217, o3) + b3 - b1;
-    [
-        e0 + e2 + b0,
-        e1 + e3 + b2,
-        e1 - e3 + b3,
-        e0 - e2 - b4,
-        e0 - e2 + b4,
-        e1 - e3 - b3,
-        e1 + e3 - b2,
-        e0 + e2 - b0,
-    ]
+    [e0 + e2 + b0, e1 + e3 + b2, e1 - e3 + b3, e0 - e2 - b4, e0 - e2 + b4, e1 - e3 - b3, e1 + e3 - b2, e0 + e2 - b0]
 }
 
 /// Dequantises (raster order) and inverse transforms a block. The results
@@ -731,8 +716,7 @@ impl PlaneDecoder {
 
     /// Decodes one plane from `data` into `cur`, predicting from `prev`.
     /// Returns the number of bytes used (planes end on 32-bit boundaries).
-    pub fn decode(&mut self, data: &[u8], cur: &mut Plane, prev: &Plane, signed_colors: bool)
-    -> DecodeResult<usize> {
+    pub fn decode(&mut self, data: &[u8], cur: &mut Plane, prev: &Plane, signed_colors: bool) -> DecodeResult<usize> {
         let mut bits = Bits::new(data);
         self.signed_colors = signed_colors;
         self.start_plane(&mut bits, cur.width);
@@ -836,9 +820,7 @@ impl VideoDecoder {
     pub fn decode(&mut self, packet: &[u8], cur: &mut Frame, prev: &Frame) -> DecodeResult<()> {
         let signed_colors = self.revision < b'i';
         // Section sizes count from the start of their 4-byte size field.
-        let size_at = |pos: usize| {
-            packet.get(pos..pos + 4).map_or(usize::MAX, |b| u32::from_le_bytes(b.try_into().unwrap()) as usize)
-        };
+        let size_at = |pos: usize| packet.get(pos..pos + 4).map_or(usize::MAX, |b| u32::from_le_bytes(b.try_into().unwrap()) as usize);
         let mut pos = 0;
         // The alpha plane is always preceded by its size.
         if let (true, Some(a), Some(pa)) = (self.alpha, cur.alpha.as_mut(), prev.alpha.as_ref()) {
@@ -860,11 +842,8 @@ impl VideoDecoder {
             return Ok(());
         }
         // The first chroma plane is Cr from revision `h` on, Cb before.
-        let (first, second, prev_first, prev_second) = if self.revision >= b'h' {
-            (&mut cur.v, &mut cur.u, &prev.v, &prev.u)
-        } else {
-            (&mut cur.u, &mut cur.v, &prev.u, &prev.v)
-        };
+        let (first, second, prev_first, prev_second) =
+            if self.revision >= b'h' { (&mut cur.v, &mut cur.u, &prev.v, &prev.u) } else { (&mut cur.u, &mut cur.v, &prev.u, &prev.v) };
         let Some(rest) = packet.get(next..).filter(|r| !r.is_empty()) else { return Ok(()) };
         let used = self.planes.decode(rest, first, prev_first, signed_colors)?;
         let Some(rest) = rest.get(used..).filter(|r| !r.is_empty()) else { return Ok(()) };

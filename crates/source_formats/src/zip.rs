@@ -63,10 +63,7 @@ impl ZipArchive {
             let local_header_offset = r.u32()?;
             let name = String::from_utf8_lossy(r.bytes(name_len)?).into_owned();
             r.skip(extra_len + comment_len)?;
-            entries.insert(
-                normalize_path(&name),
-                ZipEntry { method, compressed_size, uncompressed_size, local_header_offset },
-            );
+            entries.insert(normalize_path(&name), ZipEntry { method, compressed_size, uncompressed_size, local_header_offset });
         }
         Ok(Self { data, entries })
     }
@@ -119,8 +116,7 @@ fn decode_valve_lzma(body: &[u8], size: usize) -> Result<Vec<u8>> {
     stream.extend_from_slice(&(size as u64).to_le_bytes());
     stream.extend_from_slice(&body[9..]);
     let mut out = Vec::with_capacity(size);
-    lzma_rs::lzma_decompress(&mut std::io::Cursor::new(stream), &mut out)
-        .map_err(|e| Error::Invalid(format!("lzma: {e:?}")))?;
+    lzma_rs::lzma_decompress(&mut std::io::Cursor::new(stream), &mut out).map_err(|e| Error::Invalid(format!("lzma: {e:?}")))?;
     Ok(out)
 }
 
@@ -140,7 +136,6 @@ pub fn decode_valve_lzma_header(data: &[u8]) -> Result<Vec<u8>> {
     stream.extend_from_slice(&(actual_size as u64).to_le_bytes());
     stream.extend_from_slice(r.bytes(r.remaining())?);
     let mut out = Vec::with_capacity(actual_size);
-    lzma_rs::lzma_decompress(&mut std::io::Cursor::new(stream), &mut out)
-        .map_err(|e| Error::Invalid(format!("lzma: {e:?}")))?;
+    lzma_rs::lzma_decompress(&mut std::io::Cursor::new(stream), &mut out).map_err(|e| Error::Invalid(format!("lzma: {e:?}")))?;
     Ok(out)
 }

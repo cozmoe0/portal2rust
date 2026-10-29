@@ -297,9 +297,7 @@ fn repeat(
     caps: &Caps,
     k: &dyn Fn(usize) -> bool,
 ) -> bool {
-    if max.is_none_or(|mx| count < mx)
-        && m(inner, s, pos, caps, &|p| p != pos && repeat(inner, min, max, count + 1, s, p, caps, k))
-    {
+    if max.is_none_or(|mx| count < mx) && m(inner, s, pos, caps, &|p| p != pos && repeat(inner, min, max, count + 1, s, p, caps, k)) {
         return true;
     }
     count >= min && k(pos)

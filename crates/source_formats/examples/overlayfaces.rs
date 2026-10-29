@@ -20,10 +20,7 @@ fn main() {
         let face = &bsp.faces[fi as usize];
         let plane = &bsp.planes[face.plane as usize];
         let verts = bsp.face_vertices(face);
-        println!(
-            "face {fi}: disp {} plane {:?} {} side {} verts {:?}",
-            face.dispinfo, plane.normal, plane.dist, face.side, verts
-        );
+        println!("face {fi}: disp {} plane {:?} {} side {} verts {:?}", face.dispinfo, plane.normal, plane.dist, face.side, verts);
         if face.dispinfo >= 0 {
             let d = &bsp.disp_infos[face.dispinfo as usize];
             let n = d.side_verts();

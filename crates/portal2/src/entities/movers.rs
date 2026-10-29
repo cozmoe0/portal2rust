@@ -93,10 +93,7 @@ impl Mover {
 
 fn model_size(world: &World, me: &MapEntity) -> Vec3 {
     let Some(map) = world.get_resource::<CurrentMap>() else { return Vec3::splat(64.0) };
-    me.brush_model()
-        .and_then(|m| map.bsp.models.get(m))
-        .map(|m| (m.maxs - m.mins).abs())
-        .unwrap_or(Vec3::splat(64.0))
+    me.brush_model().and_then(|m| map.bsp.models.get(m)).map(|m| (m.maxs - m.mins).abs()).unwrap_or(Vec3::splat(64.0))
 }
 
 fn spawn_door(world: &mut World, e: Entity) {
@@ -230,11 +227,7 @@ fn door_input(world: &mut World, call: &InputCall) -> bool {
     true
 }
 
-fn move_doors(
-    clock: Res<GameClock>,
-    mut movers: Query<(Entity, &mut Mover, &mut Transform)>,
-    mut out: MessageWriter<FireOutput>,
-) {
+fn move_doors(clock: Res<GameClock>, mut movers: Query<(Entity, &mut Mover, &mut Transform)>, mut out: MessageWriter<FireOutput>) {
     let dt = clock.frametime();
     let now = clock.curtime;
     for (e, mut m, mut t) in &mut movers {
@@ -333,13 +326,7 @@ fn spawn_rotating(world: &mut World, e: Entity) {
     } else {
         Vec3::Z
     };
-    let r = Rotating {
-        axis,
-        max_speed: me.get_f32("maxspeed").unwrap_or(100.0),
-        speed: 0.0,
-        on: me.has_flag(1),
-        reversed: me.has_flag(2),
-    };
+    let r = Rotating { axis, max_speed: me.get_f32("maxspeed").unwrap_or(100.0), speed: 0.0, on: me.has_flag(1), reversed: me.has_flag(2) };
     world.entity_mut(e).insert(r);
 }
 

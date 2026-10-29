@@ -1,8 +1,8 @@
 //! Structural entity statistics across maps (counts only): which classes
 //! carry a `model` keyvalue, and how I/O proxy connections are shaped.
-use std::collections::BTreeMap;
 use source_formats::bsp::Bsp;
 use source_formats::fs::GameFileSystem;
+use std::collections::BTreeMap;
 
 fn main() {
     let fs = GameFileSystem::portal2(GameFileSystem::find_install().unwrap()).unwrap();
@@ -13,7 +13,12 @@ fn main() {
     let mut sep: BTreeMap<&str, u32> = BTreeMap::new();
     for m in &maps {
         let Ok(bsp) = Bsp::parse(&fs.read(m).unwrap()) else { continue };
-        let proxies: std::collections::HashSet<String> = bsp.entities.iter().filter(|e| e.classname() == "func_instance_io_proxy").filter_map(|e| e.targetname().map(|s| s.to_lowercase())).collect();
+        let proxies: std::collections::HashSet<String> = bsp
+            .entities
+            .iter()
+            .filter(|e| e.classname() == "func_instance_io_proxy")
+            .filter_map(|e| e.targetname().map(|s| s.to_lowercase()))
+            .collect();
         for e in &bsp.entities {
             let c = e.classname();
             if c.starts_with("prop_") || c.starts_with("npc_") || c.starts_with("env_portal") || c.contains("laser") {
@@ -22,18 +27,32 @@ fn main() {
             }
             for (k, v) in &e.pairs {
                 let has_esc = v.contains('\x1b');
-                if has_esc { *sep.entry("esc").or_default() += 1 } else if v.matches(',').count() == 4 && k.starts_with("On") { *sep.entry("comma").or_default() += 1 }
-                if !has_esc { continue; }
+                if has_esc {
+                    *sep.entry("esc").or_default() += 1
+                } else if v.matches(',').count() == 4 && k.starts_with("On") {
+                    *sep.entry("comma").or_default() += 1
+                }
+                if !has_esc {
+                    continue;
+                }
                 let parts: Vec<&str> = v.split('\x1b').collect();
-                if parts.len() < 2 { continue; }
-                if proxies.contains(&parts[0].to_lowercase()) { *proxy_inputs.entry(parts[1].to_owned()).or_default() += 1; }
-                if c == "func_instance_io_proxy" { *proxy_outputs.entry(k.chars().filter(|c| !c.is_ascii_digit()).collect()).or_default() += 1; }
+                if parts.len() < 2 {
+                    continue;
+                }
+                if proxies.contains(&parts[0].to_lowercase()) {
+                    *proxy_inputs.entry(parts[1].to_owned()).or_default() += 1;
+                }
+                if c == "func_instance_io_proxy" {
+                    *proxy_outputs.entry(k.chars().filter(|c| !c.is_ascii_digit()).collect()).or_default() += 1;
+                }
             }
         }
     }
     println!("{} sp maps; output separators {sep:?}", maps.len());
     println!("model keyvalue present/absent by class:");
-    for (c, (y, n)) in &model_key { println!("  {c}: {y}/{n}"); }
+    for (c, (y, n)) in &model_key {
+        println!("  {c}: {y}/{n}");
+    }
     println!("inputs sent to proxies: {proxy_inputs:?}");
     println!("proxy output names (digits stripped): {proxy_outputs:?}");
 }

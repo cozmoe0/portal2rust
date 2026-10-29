@@ -268,7 +268,8 @@ fn load_map_system(
             _ => info.handle.clone(),
         };
         let mesh = meshes.add(batch_to_mesh(batch));
-        let mut overlay = commands.spawn((Name::new("overlay"), Mesh3d(mesh), MeshMaterial3d(material), Transform::IDENTITY, sky::SkyChecked));
+        let mut overlay =
+            commands.spawn((Name::new("overlay"), Mesh3d(mesh), MeshMaterial3d(material), Transform::IDENTITY, sky::SkyChecked));
         if in_skybox {
             overlay.insert(bevy::camera::visibility::RenderLayers::layer(sky::SKYBOX_LAYER));
         }

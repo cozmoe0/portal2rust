@@ -291,8 +291,7 @@ fn parse_body(toks: &[Tok], class: &mut FgdClass) {
             _ => String::new(),
         };
         i = type_end;
-        while matches!(toks.get(i), Some(Tok::Ident(w)) if w.eq_ignore_ascii_case("readonly") || w.eq_ignore_ascii_case("report"))
-        {
+        while matches!(toks.get(i), Some(Tok::Ident(w)) if w.eq_ignore_ascii_case("readonly") || w.eq_ignore_ascii_case("report")) {
             i += 1;
         }
         let mut fields: Vec<Option<String>> = Vec::new();

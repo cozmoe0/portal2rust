@@ -271,7 +271,15 @@ fn stuck(world: &mut World, _args: &CommandArgs) {
         cw.statics
             .iter()
             .filter(|v| v.contents & crate::collision::mask::PLAYER_SOLID != 0 && v.overlaps_box(state.origin, mins, maxs))
-            .map(|v| format!("static volume {:?}..{:?} contents {:#x} surface {:?}", v.mins, v.maxs, v.contents, v.planes.first().map(|p| p.surface)))
+            .map(|v| {
+                format!(
+                    "static volume {:?}..{:?} contents {:#x} surface {:?}",
+                    v.mins,
+                    v.maxs,
+                    v.contents,
+                    v.planes.first().map(|p| p.surface)
+                )
+            })
             .collect()
     };
     print(world, format!("player hull at {:?}: {} static volumes overlap", state.origin, lines.len()));
@@ -342,10 +350,7 @@ fn screenshot(world: &mut World, args: &CommandArgs) {
     let _ = std::fs::create_dir_all(dir);
     let named = Some(args.arg(1)).filter(|n| !n.is_empty()).map(|n| dir.join(format!("{n}.png")));
     let path = named.unwrap_or_else(|| {
-        (0..10000)
-            .map(|i| dir.join(format!("{map}{i:04}.png")))
-            .find(|p| !p.exists())
-            .unwrap_or_else(|| dir.join(format!("{map}.png")))
+        (0..10000).map(|i| dir.join(format!("{map}{i:04}.png"))).find(|p| !p.exists()).unwrap_or_else(|| dir.join(format!("{map}.png")))
     });
     print(world, format!("Wrote {}", path.display()));
     world.spawn(Screenshot::primary_window()).observe(save_to_disk(path));

@@ -375,7 +375,20 @@ fn run_turrets(
                 let to = (center - eye).normalize_or_zero();
                 let cos = if dist < CLOSE_RANGE { CLOSE_FIRE_COS } else { FIRE_COS };
                 if now > t.shot_time && muzzle_dir.dot(to) >= cos {
-                    fire(&mut t, e, eye, to, Some((pe, center)), &physics, &mut fx, &mut commands, &mut damage, &mut meshes, &mut materials, &mut shared);
+                    fire(
+                        &mut t,
+                        e,
+                        eye,
+                        to,
+                        Some((pe, center)),
+                        &physics,
+                        &mut fx,
+                        &mut commands,
+                        &mut damage,
+                        &mut meshes,
+                        &mut materials,
+                        &mut shared,
+                    );
                     if now > t.next_active_talk {
                         t.next_active_talk = now + 2.5;
                         if !t.gagged {
@@ -461,7 +474,9 @@ fn fire(
     }
     fx.sounds.push(SoundRequest::on("NPC_FloorTurret.ShotSounds", e));
     let (mesh, material) = shared
-        .get_or_insert_with(|| (meshes.add(super::tube_mesh(4)), materials.add(EffectMaterial::glow(Vec3::new(1.0, 0.8, 0.4) * 3.0, 6.0, 0.02))))
+        .get_or_insert_with(|| {
+            (meshes.add(super::tube_mesh(4)), materials.add(EffectMaterial::glow(Vec3::new(1.0, 0.8, 0.4) * 3.0, 6.0, 0.02)))
+        })
         .clone();
     commands.spawn((
         Tracer { until: fx.now + 0.05 },
@@ -520,7 +535,9 @@ fn draw_lasers(
             }
             None if on => {
                 let (mesh, material) = shared
-                    .get_or_insert_with(|| (meshes.add(super::tube_mesh(4)), materials.add(EffectMaterial::glow(Vec3::new(1.0, 0.125, 0.125) * 2.0, 0.0, 0.0))))
+                    .get_or_insert_with(|| {
+                        (meshes.add(super::tube_mesh(4)), materials.add(EffectMaterial::glow(Vec3::new(1.0, 0.125, 0.125) * 2.0, 0.0, 0.0)))
+                    })
                     .clone();
                 let beam = commands.spawn((MapObject, Mesh3d(mesh), MeshMaterial3d(material), place, Visibility::Visible)).id();
                 commands.entity(e).insert(LaserSight(beam));

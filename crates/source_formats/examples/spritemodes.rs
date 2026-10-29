@@ -17,7 +17,8 @@ fn main() {
         let Ok(bsp) = Bsp::parse(&bytes) else { continue };
         for e in &bsp.entities {
             let class = e.classname();
-            if !matches!(class, "env_sprite" | "env_glow" | "env_sprite_oriented" | "env_lightglow" | "point_spotlight" | "beam_spotlight") {
+            if !matches!(class, "env_sprite" | "env_glow" | "env_sprite_oriented" | "env_lightglow" | "point_spotlight" | "beam_spotlight")
+            {
                 continue;
             }
             let key = format!(

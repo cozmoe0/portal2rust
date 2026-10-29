@@ -22,8 +22,7 @@ fn root_name(mut e: Entity, parents: &Query<&ChildOf>, names: &Query<&Name>) -> 
     while let Ok(p) = parents.get(e) {
         e = p.parent();
     }
-    names.get(e).map(|n| n.as_str().split(' ').next().unwrap_or("").to_owned()).unwrap_or_default()
-        + &format!(" #{}", e.index())
+    names.get(e).map(|n| n.as_str().split(' ').next().unwrap_or("").to_owned()).unwrap_or_default() + &format!(" #{}", e.index())
 }
 
 fn probe(

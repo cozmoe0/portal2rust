@@ -148,8 +148,8 @@ fn gather_input(
     if grabbed && !focus.is_some_and(|f| f.0) {
         let sens = console.f32("sensitivity");
         i.angles.y -= motion.delta.x * sens * console.f32("m_yaw");
-        i.angles.x = (i.angles.x + motion.delta.y * sens * console.f32("m_pitch"))
-            .clamp(-console.f32("cl_pitchup"), console.f32("cl_pitchdown"));
+        i.angles.x =
+            (i.angles.x + motion.delta.y * sens * console.f32("m_pitch")).clamp(-console.f32("cl_pitchup"), console.f32("cl_pitchdown"));
         i.angles.y = i.angles.y.rem_euclid(360.0);
     }
     let axis = |pos: &str, neg: &str| (buttons.held(pos) as i32 - buttons.held(neg) as i32) as f32;

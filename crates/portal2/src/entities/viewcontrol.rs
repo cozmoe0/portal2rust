@@ -23,10 +23,7 @@ pub fn register(app: &mut App) {
         .add_systems(PostUpdate, track_proxy_motion.before(TransformSystems::Propagate))
         .add_systems(
             PostUpdate,
-            apply_view
-                .in_set(PlayerCameraSet)
-                .after(crate::player::place_camera)
-                .before(crate::camera::sync_camera_transform),
+            apply_view.in_set(PlayerCameraSet).after(crate::player::place_camera).before(crate::camera::sync_camera_transform),
         );
     let world = app.world_mut();
     {

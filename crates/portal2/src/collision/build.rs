@@ -63,11 +63,7 @@ pub fn displacement_triangles(bsp: &Bsp) -> Vec<[Vec3; 3]> {
             continue;
         }
         let start = (0..4)
-            .min_by(|&a, &b| {
-                corners[a]
-                    .distance_squared(disp.start_position)
-                    .total_cmp(&corners[b].distance_squared(disp.start_position))
-            })
+            .min_by(|&a, &b| corners[a].distance_squared(disp.start_position).total_cmp(&corners[b].distance_squared(disp.start_position)))
             .unwrap_or(0);
         let c = [corners[start], corners[(start + 1) % 4], corners[(start + 2) % 4], corners[(start + 3) % 4]];
         let n = disp.side_verts();
@@ -105,10 +101,7 @@ pub fn displacement_triangles(bsp: &Bsp) -> Vec<[Vec3; 3]> {
 /// One volume per displacement triangle (world space). Terrain never takes
 /// portals, so its surface index is -2.
 pub fn displacement_volumes(bsp: &Bsp) -> Vec<ConvexVolume> {
-    displacement_triangles(bsp)
-        .into_iter()
-        .filter_map(|t| ConvexVolume::from_triangle(t, contents::SOLID, -2))
-        .collect()
+    displacement_triangles(bsp).into_iter().filter_map(|t| ConvexVolume::from_triangle(t, contents::SOLID, -2)).collect()
 }
 
 /// `solid` keyvalue: collide with the model's hull box.

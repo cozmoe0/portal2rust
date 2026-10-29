@@ -1,9 +1,9 @@
 //! Main view camera and the free-fly (noclip) controller used before the
 //! player controller takes over, and for debugging.
 
+use bevy::camera::Hdr;
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
-use bevy::camera::Hdr;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use crate::args::Args;
@@ -45,12 +45,7 @@ fn spawn_camera(mut commands: Commands, args: Res<Args>) {
         MainCamera,
         Camera3d::default(),
         Hdr,
-        Projection::Perspective(PerspectiveProjection {
-            fov: vertical_fov(75.0),
-            near: 4.0,
-            far: 30000.0,
-            ..default()
-        }),
+        Projection::Perspective(PerspectiveProjection { fov: vertical_fov(75.0), near: 4.0, far: 30000.0, ..default() }),
         bevy::camera::Exposure { ev100 },
         bevy::render::view::Tonemapping::None,
         bevy::render::view::DebandDither::Disabled,
@@ -79,11 +74,7 @@ fn apply_fov(console: Res<crate::console::Console>, mut q: Query<&mut Projection
     }
 }
 
-fn place_at_start(
-    start: Option<Res<PlayerStart>>,
-    args: Res<Args>,
-    mut q: Query<&mut ViewAngles, With<MainCamera>>,
-) {
+fn place_at_start(start: Option<Res<PlayerStart>>, args: Res<Args>, mut q: Query<&mut ViewAngles, With<MainCamera>>) {
     let Some(start) = start else { return };
     if !start.is_changed() {
         return;

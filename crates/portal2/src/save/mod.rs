@@ -33,8 +33,8 @@ use crate::models::StudioAnimator;
 use crate::player::Player;
 use crate::world::{CurrentMap, LoadMap, MapLoadType};
 pub use autosave::AutosaveRequest;
-pub use registry::{Restore, SaveRegistry};
 use ids::{PLAYER_ID, SaveId};
+pub use registry::{Restore, SaveRegistry};
 
 const VERSION: u32 = 1;
 
@@ -221,11 +221,8 @@ pub fn save_named(world: &mut World, name: &str, history: bool) {
     if world.get_resource::<PendingRestore>().is_some() {
         return;
     }
-    let dead = world
-        .resource::<EntityRegistry>()
-        .player
-        .and_then(|p| world.get::<crate::player::health::Health>(p))
-        .is_some_and(|h| h.dead);
+    let dead =
+        world.resource::<EntityRegistry>().player.and_then(|p| world.get::<crate::player::health::Health>(p)).is_some_and(|h| h.dead);
     if dead {
         print(world, "Can't savegame with a dead player");
         return;
@@ -536,7 +533,14 @@ fn save_info(world: &mut World) {
     let Some(name) = world.resource::<crate::args::Args>().save_info.clone() else { return };
     match read_file(&name) {
         Ok(f) => {
-            println!("{name}: {} at tick {} ({:.2} s), {} entities, scripts {} bytes", f.map, f.tick, f.curtime, f.entities.len(), f.scripts.as_ref().map_or(0, |s| s.len()));
+            println!(
+                "{name}: {} at tick {} ({:.2} s), {} entities, scripts {} bytes",
+                f.map,
+                f.tick,
+                f.curtime,
+                f.entities.len(),
+                f.scripts.as_ref().map_or(0, |s| s.len())
+            );
             for e in &f.entities {
                 for (c, bytes) in &e.components {
                     if c == "choreo_scene"

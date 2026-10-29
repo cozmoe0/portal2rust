@@ -618,10 +618,7 @@ mod tests {
         assert_eq!(s.len(), 3);
         assert_eq!(s.missing_files, vec!["scripts/missing.txt".to_owned()]);
         let one = s.get("TEST.ONE").unwrap();
-        assert_eq!(
-            (one.channel, one.volume, one.waves[0].path.as_str()),
-            (Channel::Item, Interval { start: 0.5, end: 0.7 }, "a/one.wav")
-        );
+        assert_eq!((one.channel, one.volume, one.waves[0].path.as_str()), (Channel::Item, Interval { start: 0.5, end: 0.7 }, "a/one.wav"));
         assert_eq!(s.duplicates, vec![("test.one".to_owned(), "scripts/b.txt".to_owned())]);
         let two = s.get("test.two").unwrap();
         assert_eq!(two.waves.len(), 2);

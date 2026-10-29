@@ -199,11 +199,7 @@ fn touch_buttons(world: &mut World) {
     }
 }
 
-fn move_buttons(
-    clock: Res<GameClock>,
-    mut buttons: Query<(Entity, &mut BrushButton, &mut Transform)>,
-    mut out: MessageWriter<FireOutput>,
-) {
+fn move_buttons(clock: Res<GameClock>, mut buttons: Query<(Entity, &mut BrushButton, &mut Transform)>, mut out: MessageWriter<FireOutput>) {
     let dt = clock.frametime();
     for (e, mut b, mut t) in &mut buttons {
         if b.phase == Phase::In

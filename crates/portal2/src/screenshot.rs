@@ -14,12 +14,7 @@ impl Plugin for ScreenshotPlugin {
     }
 }
 
-fn auto_screenshot(
-    mut commands: Commands,
-    args: Res<Args>,
-    mut frame: Local<u32>,
-    mut exit: MessageWriter<AppExit>,
-) {
+fn auto_screenshot(mut commands: Commands, args: Res<Args>, mut frame: Local<u32>, mut exit: MessageWriter<AppExit>) {
     let Some(path) = &args.screenshot else { return };
     *frame += 1;
     if *frame == args.frames {

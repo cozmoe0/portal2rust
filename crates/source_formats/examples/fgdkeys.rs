@@ -11,7 +11,8 @@ fn main() {
     for class in std::env::args().skip(1) {
         match fgd.resolve(&class) {
             Some(c) => {
-                let mut keys: Vec<_> = c.defaults.iter().filter(|(k, _)| !matches!(k.as_str(), "targetname" | "parentname" | "angles" | "origin")).collect();
+                let mut keys: Vec<_> =
+                    c.defaults.iter().filter(|(k, _)| !matches!(k.as_str(), "targetname" | "parentname" | "angles" | "origin")).collect();
                 keys.sort();
                 let list: Vec<String> = keys.iter().map(|(k, v)| format!("{k}={v}")).collect();
                 println!("{class}: model {} | {}", c.studio_model.is_some(), list.join(" "));

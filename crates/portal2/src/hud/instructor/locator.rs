@@ -64,7 +64,10 @@ fn load_textures(fs: &GameFs) -> HashMap<String, HudTexture> {
             for t in data.children().iter().filter(|c| c.is_block()) {
                 let n = |k: &str| t.get_i32(k).unwrap_or(0).max(0) as u32;
                 let Some(sheet) = t.get_str("file") else { continue };
-                out.insert(t.key.to_ascii_lowercase(), HudTexture { file: sheet.to_owned(), rect: [n("x"), n("y"), n("width"), n("height")] });
+                out.insert(
+                    t.key.to_ascii_lowercase(),
+                    HudTexture { file: sheet.to_owned(), rect: [n("x"), n("y"), n("width"), n("height")] },
+                );
             }
         }
     }
@@ -264,14 +267,17 @@ fn paint(
         }
 
         // A lesson on something in the world.
-        let (Some((cam, cam_t)), Some(eye), Some(target)) = (camera, eye, v.icon_target.and_then(|t| transforms.get(t).ok())) else { continue };
+        let (Some((cam, cam_t)), Some(eye), Some(target)) = (camera, eye, v.icon_target.and_then(|t| transforms.get(t).ok())) else {
+            continue;
+        };
         let pos = target.translation() + cam_t.up() * v.icon_offset;
         let distance = pos.distance(eye);
         let target_state = state.targets.entry(l.id).or_default();
         if now >= target_state.next_trace {
             target_state.next_trace = now + 0.25;
             let ignore: Vec<Entity> = registry.player.into_iter().chain(v.icon_target).collect();
-            target_state.occluded = physics.trace(eye, pos, Vec3::ZERO, Vec3::ZERO, contents::SOLID | contents::MOVEABLE, &ignore).fraction < 1.0;
+            target_state.occluded =
+                physics.trace(eye, pos, Vec3::ZERO, Vec3::ZERO, contents::SOLID | contents::MOVEABLE, &ignore).fraction < 1.0;
         }
         if target_state.occluded && !v.force_caption {
             continue;

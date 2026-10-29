@@ -1,6 +1,6 @@
 //! Histogram of MDL / VVD / VTX header versions across the install.
-use std::collections::BTreeMap;
 use source_formats::fs::GameFileSystem;
+use std::collections::BTreeMap;
 
 fn main() {
     let fs = GameFileSystem::portal2(GameFileSystem::find_install().unwrap()).unwrap();

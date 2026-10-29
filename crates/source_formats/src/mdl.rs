@@ -255,8 +255,7 @@ fn mat3x4(r: &mut Reader) -> Result<Mat4> {
         }
     }
     Ok(Mat4::from_cols_array(&[
-        m[0][0], m[1][0], m[2][0], 0.0, m[0][1], m[1][1], m[2][1], 0.0, m[0][2], m[1][2], m[2][2], 0.0, m[0][3],
-        m[1][3], m[2][3], 1.0,
+        m[0][0], m[1][0], m[2][0], 0.0, m[0][1], m[1][1], m[2][1], 0.0, m[0][2], m[1][2], m[2][2], 0.0, m[0][3], m[1][3], m[2][3], 1.0,
     ]))
 }
 
@@ -572,13 +571,7 @@ impl Mdl {
                     let center = me.vec3()?;
                     meshes.push(Mesh { material, num_vertices: nv, vertex_offset: vo, center });
                 }
-                models.push(Model {
-                    name: mname,
-                    bounding_radius,
-                    num_vertices,
-                    vertex_index: vertex_index / 48,
-                    meshes,
-                });
+                models.push(Model { name: mname, bounding_radius, num_vertices, vertex_index: vertex_index / 48, meshes });
             }
             body_parts.push(BodyPart { name: bp_name, base, models });
         }
@@ -599,13 +592,7 @@ impl Mdl {
             let base = pose_param_index as usize + i * 20;
             let mut p = Reader::at(d, base);
             let pname = cstr_at(d, base + p.i32()? as usize);
-            pose_parameters.push(PoseParameter {
-                name: pname,
-                flags: p.i32()?,
-                start: p.f32()?,
-                end: p.f32()?,
-                loop_range: p.f32()?,
-            });
+            pose_parameters.push(PoseParameter { name: pname, flags: p.i32()?, start: p.f32()?, end: p.f32()?, loop_range: p.f32()? });
         }
 
         let mut include_models = Vec::new();
@@ -623,11 +610,9 @@ impl Mdl {
 
         let surface_prop = cstr_at(d, surface_prop_index as usize);
         let keyvalues = if keyvalue_size > 0 {
-            String::from_utf8_lossy(
-                d.get(keyvalue_index as usize..(keyvalue_index + keyvalue_size) as usize).unwrap_or(&[]),
-            )
-            .trim_end_matches('\0')
-            .to_owned()
+            String::from_utf8_lossy(d.get(keyvalue_index as usize..(keyvalue_index + keyvalue_size) as usize).unwrap_or(&[]))
+                .trim_end_matches('\0')
+                .to_owned()
         } else {
             String::new()
         };
@@ -773,13 +758,7 @@ impl Mdl {
     /// Samples local bone transforms (position, rotation) of an animation at a
     /// frame (fractional frames are interpolated). `block_data` provides the
     /// contents of external animation blocks (`.ani`) when needed.
-    pub fn sample_anim(
-        &self,
-        anim: usize,
-        frame: f32,
-        block_data: Option<&[u8]>,
-        out: &mut [(Vec3, Quat)],
-    ) -> bool {
+    pub fn sample_anim(&self, anim: usize, frame: f32, block_data: Option<&[u8]>, out: &mut [(Vec3, Quat)]) -> bool {
         let Some(desc) = self.anims.get(anim) else { return false };
         let max_frame = (desc.num_frames - 1).max(0);
         let f0 = (frame.floor() as i32).clamp(0, max_frame);
@@ -801,11 +780,8 @@ impl Mdl {
 
     fn sample_frame(&self, desc: &AnimDesc, frame: i32, block_data: Option<&[u8]>) -> Vec<(Vec3, Quat)> {
         let delta = desc.flags & seq_flags::DELTA != 0;
-        let mut out: Vec<(Vec3, Quat)> = self
-            .bones
-            .iter()
-            .map(|b| if delta { (Vec3::ZERO, Quat::IDENTITY) } else { (b.pos, b.quat) })
-            .collect();
+        let mut out: Vec<(Vec3, Quat)> =
+            self.bones.iter().map(|b| if delta { (Vec3::ZERO, Quat::IDENTITY) } else { (b.pos, b.quat) }).collect();
 
         let (mut block, mut index, mut local_frame) = (desc.anim_block, desc.anim_index, frame);
         if desc.section_frames > 0 && !desc.sections.is_empty() {

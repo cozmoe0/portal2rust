@@ -57,10 +57,7 @@ impl Console {
     pub fn register_cvar(&mut self, name: &str, default: &str, flags: u32) {
         let name = name.to_ascii_lowercase();
         let value = self.cvars.get(&name).map(|c| c.value.clone()).unwrap_or_else(|| default.to_owned());
-        self.cvars.insert(
-            name.clone(),
-            Cvar { name, value, default: default.to_owned(), flags, known: true },
-        );
+        self.cvars.insert(name.clone(), Cvar { name, value, default: default.to_owned(), flags, known: true });
     }
 
     pub fn cvar(&self, name: &str) -> Option<&Cvar> {

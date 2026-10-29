@@ -120,12 +120,8 @@ fn rstrip(_ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
 fn split(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
     let s = arg_str(args, 1)?;
     let seps = arg_str(args, 2)?;
-    let items: Vec<Value> = s
-        .bytes()
-        .split(|c| seps.bytes().contains(c))
-        .filter(|p| !p.is_empty())
-        .map(|p| Value::Str(SqStr::new(p)))
-        .collect();
+    let items: Vec<Value> =
+        s.bytes().split(|c| seps.bytes().contains(c)).filter(|p| !p.is_empty()).map(|p| Value::Str(SqStr::new(p))).collect();
     Ok(ctx.vm.new_array(items))
 }
 

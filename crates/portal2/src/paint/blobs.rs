@@ -199,7 +199,10 @@ fn clear_on_map_load(mut loaded: MessageReader<crate::world::MapLoaded>, mut blo
 
 fn spawn_sprayer(world: &mut World, e: Entity) {
     let Some(me) = world.get::<MapEntity>(e).cloned() else { return };
-    let ambient = world.get_resource::<CurrentMap>().map(|m| crate::models::lighting::compute(&m.bsp, me.origin()).ambient).unwrap_or([Vec3::splat(0.2); 6]);
+    let ambient = world
+        .get_resource::<CurrentMap>()
+        .map(|m| crate::models::lighting::compute(&m.bsp, me.origin()).ambient)
+        .unwrap_or([Vec3::splat(0.2); 6]);
     world.entity_mut(e).insert(PaintSprayer {
         active: me.get_bool("start_active"),
         paint: PaintType::from_index(me.get_i32("painttype").unwrap_or(0)).unwrap_or(PaintType::Bounce),
@@ -253,10 +256,8 @@ fn paint_sphere_input(world: &mut World, call: &InputCall) -> bool {
     let paint = PaintType::from_index(me.get_i32("paint_type").unwrap_or(0)).unwrap_or(PaintType::Bounce);
     let settings = SplatSettings::from_console(world.resource::<Console>());
     let mut brushes = world.query::<(&MapEntity, &GlobalTransform)>();
-    let models: Vec<(usize, Affine3A)> = brushes
-        .iter(world)
-        .filter_map(|(me, gt)| me.brush_model().filter(|&m| m > 0).map(|m| (m, gt.affine())))
-        .collect();
+    let models: Vec<(usize, Affine3A)> =
+        brushes.iter(world).filter_map(|(me, gt)| me.brush_model().filter(|&m| m > 0).map(|m| (m, gt.affine()))).collect();
     let bsp = world.get_resource::<CurrentMap>().map(|m| m.bsp.clone());
     let Some(mut map) = world.get_resource_mut::<PaintMap>() else { return true };
     map.paint_sphere(0, center, radius, coat, paint, &settings);
@@ -673,7 +674,9 @@ fn draw_blobs(
         let ambient = s.ambient;
         let mut slot = DrawSlot { entity: s.draw, drawn: s.drawn };
         let env = envmap.clone();
-        targets.show(&mut slot, &spheres, &mut commands, &handles, |m| m.add(PaintBlobMaterial { params: ambient_params(ambient), envmap: env }));
+        targets.show(&mut slot, &spheres, &mut commands, &handles, |m| {
+            m.add(PaintBlobMaterial { params: ambient_params(ambient), envmap: env })
+        });
         s.draw = slot.entity;
         s.drawn = slot.drawn;
     }

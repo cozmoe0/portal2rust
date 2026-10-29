@@ -125,7 +125,6 @@ impl PaintFace {
     fn luxel_pos(&self, p: Vec3) -> Vec2 {
         Vec2::new(p.dot(self.lm_s.truncate()) + self.lm_s.w, p.dot(self.lm_t.truncate()) + self.lm_t.w) - self.lm_mins
     }
-
 }
 
 /// Paintable faces of one brush model, in the model's space.
@@ -480,11 +479,7 @@ impl PaintMap {
 
     /// Every face that holds paint, for saves.
     pub fn snapshot(&self) -> Vec<(usize, Vec<u8>)> {
-        self.faces
-            .iter()
-            .filter(|f| f.luxels.iter().any(|b| b & AMOUNT_MASK != 0))
-            .map(|f| (f.face, f.luxels.clone()))
-            .collect()
+        self.faces.iter().filter(|f| f.luxels.iter().any(|b| b & AMOUNT_MASK != 0)).map(|f| (f.face, f.luxels.clone())).collect()
     }
 
     /// Replaces all paint with a snapshot.
@@ -570,9 +565,9 @@ pub fn build_paint_map(bsp: &Bsp, geometry: &WorldGeometry, fs: &GameFs, images:
                 continue;
             }
             let td = &bsp.texdata[ti.texdata as usize];
-            let see_through = *translucent.entry(ti.texdata).or_insert_with(|| {
-                bsp.texdata_strings.get(td.name_index as usize).is_some_and(|n| material_is_translucent(fs, n))
-            });
+            let see_through = *translucent
+                .entry(ti.texdata)
+                .or_insert_with(|| bsp.texdata_strings.get(td.name_index as usize).is_some_and(|n| material_is_translucent(fs, n)));
             if see_through {
                 continue;
             }

@@ -129,7 +129,14 @@ fn drive(
         Step::Wait(d) | Step::Forward(d) | Step::Back(d) | Step::Left(d) | Step::Right(d) | Step::Duck(d) => d,
         Step::Jump => 2.0 / 60.0,
         Step::Until(t) if clock.curtime < t => return,
-        Step::Turn(_) | Step::Pitch(_) | Step::Fire(_) | Step::LookAt(_) | Step::Use | Step::Until(_) | Step::Command(_) | Step::Hold(_) => 0.0,
+        Step::Turn(_)
+        | Step::Pitch(_)
+        | Step::Fire(_)
+        | Step::LookAt(_)
+        | Step::Use
+        | Step::Until(_)
+        | Step::Command(_)
+        | Step::Hold(_) => 0.0,
     };
     match step {
         Step::Forward(_) => i.forward = 1.0,

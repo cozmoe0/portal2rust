@@ -87,7 +87,14 @@ fn projector_input(world: &mut World, call: &InputCall) -> bool {
 }
 
 /// Casts the bridge path, carrying its "up" through portals.
-fn cast(physics: &Physics, frames: Option<[crate::portals::placement::PortalFrame; 2]>, start: Vec3, dir: Vec3, up: Vec3, ignore: &[Entity]) -> Vec<BridgePiece> {
+fn cast(
+    physics: &Physics,
+    frames: Option<[crate::portals::placement::PortalFrame; 2]>,
+    start: Vec3,
+    dir: Vec3,
+    up: Vec3,
+    ignore: &[Entity],
+) -> Vec<BridgePiece> {
     let mut out = Vec::new();
     let (mut start, mut dir, mut up) = (start, dir.normalize_or(Vec3::X), up.normalize_or(Vec3::Z));
     for _ in 0..8 {
@@ -150,9 +157,10 @@ fn update_bridges(
             Vec::new()
         };
         let same = pieces.len() == bridge.pieces.len()
-            && pieces.iter().zip(&bridge.pieces).all(|(a, b)| {
-                a.start.distance(b.start) < 0.5 && a.end.distance(b.end) < 0.5 && a.up.dot(b.up) > 0.999
-            });
+            && pieces
+                .iter()
+                .zip(&bridge.pieces)
+                .all(|(a, b)| a.start.distance(b.start) < 0.5 && a.end.distance(b.end) < 0.5 && a.up.dot(b.up) > 0.999);
         if same {
             continue;
         }

@@ -422,10 +422,7 @@ mod tests {
                 .collect();
             let texts: Vec<String> = tokens.iter().filter_map(|t| captions.lookup(t)).collect();
             let labelled = texts.iter().filter(|t| plain_text(t).trim_start().starts_with(label)).count();
-            let coloured = texts
-                .iter()
-                .filter(|t| parse_tags(t).iter().any(|s| matches!(s, Span::Tag(Tag::Color(Some(_))))))
-                .count();
+            let coloured = texts.iter().filter(|t| parse_tags(t).iter().any(|s| matches!(s, Span::Tag(Tag::Color(Some(_)))))).count();
             println!(
                 "{prefix}*: {} playable entries, {} captioned, {labelled} labelled {label:?}, {coloured} coloured",
                 tokens.len(),
@@ -445,15 +442,12 @@ mod tests {
         }
 
         let image = fs.read("scenes/scenes.image").expect("scenes/scenes.image");
-        let mut scene_tokens: Vec<String> =
-            scene_strings(&image).into_iter().filter(|s| scripts.get(s).is_some()).collect();
+        let mut scene_tokens: Vec<String> = scene_strings(&image).into_iter().filter(|s| scripts.get(s).is_some()).collect();
         scene_tokens.sort_by_key(|s| s.to_ascii_lowercase());
         scene_tokens.dedup_by_key(|s| s.to_ascii_lowercase());
         let voiced: Vec<&String> = scene_tokens
             .iter()
-            .filter(|t| {
-                scripts.get(t).is_some_and(|e| e.waves.iter().any(|w| w.path.to_ascii_lowercase().starts_with("vo/")))
-            })
+            .filter(|t| scripts.get(t).is_some_and(|e| e.waves.iter().any(|w| w.path.to_ascii_lowercase().starts_with("vo/"))))
             .collect();
         let uncaptioned: Vec<&&String> = voiced.iter().filter(|t| !captions.contains(t)).collect();
         println!(

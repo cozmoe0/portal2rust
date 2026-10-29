@@ -24,13 +24,25 @@ fn main() {
         }
         let Some(cube) = bsp.ambient_cube(prop.origin + glam::Vec3::Z * 8.0) else { continue };
         let amb: f64 = cube.iter().map(|c| (c.x * 0.2125 + c.y * 0.7154 + c.z * 0.0721) as f64).sum::<f64>() / 6.0;
-        if amb < 1e-4 { continue; }
-        for k in 0..3 { ratios[k].push(sums[k] / n as f64 / amb); }
+        if amb < 1e-4 {
+            continue;
+        }
+        for k in 0..3 {
+            ratios[k].push(sums[k] / n as f64 / amb);
+        }
     }
     for (k, name) in ["linear c/255", "gamma (2c/255)^2.2", "gamma (c/255)^2.2"].iter().enumerate() {
         let r = &mut ratios[k];
         r.sort_by(|a, b| a.total_cmp(b));
-        if r.is_empty() { continue; }
-        println!("{name}: n={} median ratio to ambient {:.2} p25 {:.2} p75 {:.2}", r.len(), r[r.len() / 2], r[r.len() / 4], r[r.len() * 3 / 4]);
+        if r.is_empty() {
+            continue;
+        }
+        println!(
+            "{name}: n={} median ratio to ambient {:.2} p25 {:.2} p75 {:.2}",
+            r.len(),
+            r[r.len() / 2],
+            r[r.len() / 4],
+            r[r.len() * 3 / 4]
+        );
     }
 }

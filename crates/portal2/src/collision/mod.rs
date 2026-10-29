@@ -90,7 +90,12 @@ pub struct Collider {
     pub solid: bool,
 }
 
-pub fn rebuild_on_map_load(mut loaded: MessageReader<MapLoaded>, map: Option<Res<CurrentMap>>, fs: Res<GameFs>, mut cw: ResMut<CollisionWorld>) {
+pub fn rebuild_on_map_load(
+    mut loaded: MessageReader<MapLoaded>,
+    map: Option<Res<CurrentMap>>,
+    fs: Res<GameFs>,
+    mut cw: ResMut<CollisionWorld>,
+) {
     if loaded.read().last().is_none() {
         return;
     }
@@ -110,10 +115,7 @@ pub fn rebuild_on_map_load(mut loaded: MessageReader<MapLoaded>, map: Option<Res
     let brush_models = (0..bsp.models.len())
         .map(|m| if m == 0 { Arc::new(Shape::default()) } else { Arc::new(Shape::new(build::model_volumes(bsp, m))) })
         .collect();
-    info!(
-        "collision: {brushes} brushes, {disp_count} displacement triangles, {prop_count} prop hulls in {:?}",
-        started.elapsed()
-    );
+    info!("collision: {brushes} brushes, {disp_count} displacement triangles, {prop_count} prop hulls in {:?}", started.elapsed());
     *cw = CollisionWorld { statics, bvh, brush_models };
 }
 
@@ -131,16 +133,7 @@ pub struct Trace {
 
 impl Trace {
     fn empty(end: Vec3) -> Self {
-        Self {
-            fraction: 1.0,
-            end,
-            normal: Vec3::ZERO,
-            start_solid: false,
-            all_solid: false,
-            contents: 0,
-            entity: None,
-            surface: -1,
-        }
+        Self { fraction: 1.0, end, normal: Vec3::ZERO, start_solid: false, all_solid: false, contents: 0, entity: None, surface: -1 }
     }
 
     pub fn hit(&self) -> bool {
@@ -186,11 +179,9 @@ impl Physics<'_, '_> {
         // A box inside a linked portal's opening passes through the wall the
         // portal is on, but is held in the tunnel by the opening's frame.
         let in_holes: Vec<&crate::portals::PortalHole> = match &self.holes {
-            Some(h) if mins != maxs => h
-                .holes
-                .iter()
-                .filter(|hole| hole.contains_box(start, mins, maxs) || hole.contains_box(end, mins, maxs))
-                .collect(),
+            Some(h) if mins != maxs => {
+                h.holes.iter().filter(|hole| hole.contains_box(start, mins, maxs) || hole.contains_box(end, mins, maxs)).collect()
+            }
             _ => Vec::new(),
         };
         self.world.bvh.query_sweep(start, end, mins, maxs, |i| {

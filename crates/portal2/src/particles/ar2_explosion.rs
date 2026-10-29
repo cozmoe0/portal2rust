@@ -193,11 +193,18 @@ fn draw(
             commands.entity(e).insert(MeshMaterial3d(look.material.clone()));
         }
         let origin = gt.translation();
-        let mut order: Vec<(f32, &Puff)> = cloud.puffs.iter().filter(|p| p.age >= 0.0).map(|p| ((p.position - eye).dot(forward), p)).collect();
+        let mut order: Vec<(f32, &Puff)> =
+            cloud.puffs.iter().filter(|p| p.age >= 0.0).map(|p| ((p.position - eye).dot(forward), p)).collect();
         order.sort_by(|a, b| b.0.total_cmp(&a.0));
         let mut batch = Batch::default();
         for (depth, p) in order {
-            let near = if depth > 150.0 { 1.0 } else if depth > 50.0 { (depth - 50.0) * 0.01 } else { 0.0 };
+            let near = if depth > 150.0 {
+                1.0
+            } else if depth > 50.0 {
+                (depth - 50.0) * 0.01
+            } else {
+                0.0
+            };
             let t = (p.age - FADE_IN) / p.life;
             let fade = if p.age >= FADE_IN { (1.0 - t) * ALPHA } else { p.age / FADE_IN * ALPHA };
             let colour = COLOR_START * (1.0 - t) + COLOR_END * t;

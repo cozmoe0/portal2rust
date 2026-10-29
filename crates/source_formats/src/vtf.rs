@@ -79,10 +79,45 @@ impl VtfFormat {
     pub fn from_i32(v: i32) -> Self {
         use VtfFormat::*;
         const TABLE: [VtfFormat; 39] = [
-            Rgba8888, Abgr8888, Rgb888, Bgr888, Rgb565, I8, Ia88, P8, A8, Rgb888Bluescreen, Bgr888Bluescreen,
-            Argb8888, Bgra8888, Dxt1, Dxt3, Dxt5, Bgrx8888, Bgr565, Bgrx5551, Bgra4444, Dxt1OneBitAlpha,
-            Bgra5551, Uv88, Uvwq8888, Rgba16161616F, Rgba16161616, Uvlx8888, R32F, Rgb323232F, Rgba32323232F,
-            NvDst16, NvDst24, NvIntz, NvRawz, AtiDst16, AtiDst24, NvNull, Ati2n, Ati1n,
+            Rgba8888,
+            Abgr8888,
+            Rgb888,
+            Bgr888,
+            Rgb565,
+            I8,
+            Ia88,
+            P8,
+            A8,
+            Rgb888Bluescreen,
+            Bgr888Bluescreen,
+            Argb8888,
+            Bgra8888,
+            Dxt1,
+            Dxt3,
+            Dxt5,
+            Bgrx8888,
+            Bgr565,
+            Bgrx5551,
+            Bgra4444,
+            Dxt1OneBitAlpha,
+            Bgra5551,
+            Uv88,
+            Uvwq8888,
+            Rgba16161616F,
+            Rgba16161616,
+            Uvlx8888,
+            R32F,
+            Rgb323232F,
+            Rgba32323232F,
+            NvDst16,
+            NvDst24,
+            NvIntz,
+            NvRawz,
+            AtiDst16,
+            AtiDst24,
+            NvNull,
+            Ati2n,
+            Ati1n,
         ];
         if v == -1 {
             return None;
@@ -96,8 +131,8 @@ impl VtfFormat {
         match self {
             Dxt1 | Dxt1OneBitAlpha | Ati1n => (4, 8),
             Dxt3 | Dxt5 | Ati2n => (4, 16),
-            Rgba8888 | Abgr8888 | Argb8888 | Bgra8888 | Bgrx8888 | Uvwq8888 | Uvlx8888 | R32F | NvDst24
-            | NvIntz | NvRawz | AtiDst24 | NvNull => (1, 4),
+            Rgba8888 | Abgr8888 | Argb8888 | Bgra8888 | Bgrx8888 | Uvwq8888 | Uvlx8888 | R32F | NvDst24 | NvIntz | NvRawz | AtiDst24
+            | NvNull => (1, 4),
             Rgb888 | Bgr888 | Rgb888Bluescreen | Bgr888Bluescreen => (1, 3),
             Rgb565 | Bgr565 | Bgrx5551 | Bgra4444 | Bgra5551 | Ia88 | Uv88 | NvDst16 | AtiDst16 => (1, 2),
             I8 | P8 | A8 => (1, 1),
@@ -116,8 +151,20 @@ impl VtfFormat {
         use VtfFormat::*;
         matches!(
             self,
-            Rgba8888 | Abgr8888 | Argb8888 | Bgra8888 | Dxt3 | Dxt5 | Dxt1OneBitAlpha | Bgra4444 | Bgra5551
-                | Ia88 | A8 | Rgba16161616F | Rgba16161616 | Rgba32323232F
+            Rgba8888
+                | Abgr8888
+                | Argb8888
+                | Bgra8888
+                | Dxt3
+                | Dxt5
+                | Dxt1OneBitAlpha
+                | Bgra4444
+                | Bgra5551
+                | Ia88
+                | A8
+                | Rgba16161616F
+                | Rgba16161616
+                | Rgba32323232F
         )
     }
 
@@ -250,14 +297,9 @@ impl Vtf {
         let lowres_h = r.u8()? as u32;
         let depth = if minor >= 2 { r.u16()?.max(1) as u32 } else { 1 };
 
-        let faces = if flags & flags::ENVMAP != 0 {
-            if minor < 5 && first_frame != 0xFFFF { 7 } else { 6 }
-        } else {
-            1
-        };
+        let faces = if flags & flags::ENVMAP != 0 { if minor < 5 && first_frame != 0xFFFF { 7 } else { 6 } } else { 1 };
 
-        let lowres_size =
-            if lowres_format == VtfFormat::None || lowres_w == 0 { 0 } else { lowres_format.mip_size(lowres_w, lowres_h, 1) };
+        let lowres_size = if lowres_format == VtfFormat::None || lowres_w == 0 { 0 } else { lowres_format.mip_size(lowres_w, lowres_h, 1) };
 
         let mut hires_offset = header_size + lowres_size;
         let mut sheet = None;
@@ -275,9 +317,7 @@ impl Vtf {
                     // The offset points at the size of the block, then its data.
                     let mut sr = Reader::at(bytes, offset);
                     let size = sr.u32()? as usize;
-                    let body = bytes
-                        .get(offset + 4..offset + 4 + size)
-                        .ok_or_else(|| Error::Invalid("vtf: sheet truncated".into()))?;
+                    let body = bytes.get(offset + 4..offset + 4 + size).ok_or_else(|| Error::Invalid("vtf: sheet truncated".into()))?;
                     sheet = Some(Sheet::parse(body)?);
                 }
             }
@@ -566,10 +606,18 @@ pub fn decode_to_rgba8(format: VtfFormat, src: &[u8], w: u32, h: u32) -> Vec<u8>
                     Rgb888 => [p[0], p[1], p[2], 255],
                     Bgr888 => [p[2], p[1], p[0], 255],
                     Rgb888Bluescreen => {
-                        if p[0] == 0 && p[1] == 0 && p[2] == 255 { [0, 0, 0, 0] } else { [p[0], p[1], p[2], 255] }
+                        if p[0] == 0 && p[1] == 0 && p[2] == 255 {
+                            [0, 0, 0, 0]
+                        } else {
+                            [p[0], p[1], p[2], 255]
+                        }
                     }
                     Bgr888Bluescreen => {
-                        if p[0] == 255 && p[1] == 0 && p[2] == 0 { [0, 0, 0, 0] } else { [p[2], p[1], p[0], 255] }
+                        if p[0] == 255 && p[1] == 0 && p[2] == 0 {
+                            [0, 0, 0, 0]
+                        } else {
+                            [p[2], p[1], p[0], 255]
+                        }
                     }
                     Rgb565 => {
                         let c = rgb565(u16::from_le_bytes([p[0], p[1]]));

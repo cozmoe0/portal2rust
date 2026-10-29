@@ -1,10 +1,10 @@
 //! Pieces of BaseModUI dialogs: the tiled background with its title tab,
 //! the footer buttons under a dialog, and the chapter list of New Game.
 
+use crate::vgui::Surface;
 use crate::vgui::layout::Rect;
 use crate::vgui::scheme::{Scheme, proportional};
 use crate::vgui::surface::Rgba;
-use crate::vgui::Surface;
 
 /// Tile size in pixels.
 pub fn tile_size(scheme: &Scheme, tall: i32) -> (i32, i32) {

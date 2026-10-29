@@ -28,12 +28,13 @@ fn main() {
         if filter.as_ref().is_some_and(|f| !s.label.to_ascii_lowercase().contains(f)) {
             continue;
         }
-        let flags = [(seq_flags::LOOPING, "loop"), (seq_flags::DELTA, "delta"), (seq_flags::POST, "post"), (seq_flags::AUTOPLAY, "autoplay")]
-            .iter()
-            .filter(|(f, _)| s.flags & f != 0)
-            .map(|(_, n)| *n)
-            .collect::<Vec<_>>()
-            .join(",");
+        let flags =
+            [(seq_flags::LOOPING, "loop"), (seq_flags::DELTA, "delta"), (seq_flags::POST, "post"), (seq_flags::AUTOPLAY, "autoplay")]
+                .iter()
+                .filter(|(f, _)| s.flags & f != 0)
+                .map(|(_, n)| *n)
+                .collect::<Vec<_>>()
+                .join(",");
         println!(
             "seq {i}: {} [{flags}] grid {:?} params {:?} {:?}..{:?} anims {} fade {}/{}",
             s.label,

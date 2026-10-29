@@ -6,8 +6,8 @@
 //! plane, falls toward 0 with distance, and anything on the camera's side of
 //! the plane lands above 1 and is clipped.
 
-use bevy::camera::{CameraProjection, SubCameraView};
 use bevy::camera::primitives::Frustum;
+use bevy::camera::{CameraProjection, SubCameraView};
 use bevy::math::Vec3A;
 use bevy::prelude::*;
 

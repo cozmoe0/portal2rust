@@ -226,8 +226,7 @@ pub fn polytope_vertices(planes: &[Plane]) -> Vec<Vec3> {
                 if det.abs() < 1e-6 {
                     continue;
                 }
-                let p = (b.normal.cross(c.normal) * a.dist + c.normal.cross(a.normal) * b.dist + a.normal.cross(b.normal) * c.dist)
-                    / det;
+                let p = (b.normal.cross(c.normal) * a.dist + c.normal.cross(a.normal) * b.dist + a.normal.cross(b.normal) * c.dist) / det;
                 if planes.iter().all(|q| q.normal.dot(p) <= q.dist + 0.05) {
                     out.push(p);
                 }

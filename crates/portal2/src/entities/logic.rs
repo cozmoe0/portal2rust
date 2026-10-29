@@ -69,16 +69,9 @@ pub fn register(app: &mut App) {
     h.register("logic_register_activator", register_activator_input);
     // Classes whose effects are not simulated yet; their inputs are accepted
     // so I/O chains continue.
-    for class in [
-        "logic_achievement",
-        "light",
-        "light_spot",
-        "env_spark",
-        "info_overlay_accessor",
-        "vgui_screen",
-        "move_rope",
-        "keyframe_rope",
-    ] {
+    for class in
+        ["logic_achievement", "light", "light_spot", "env_spark", "info_overlay_accessor", "vgui_screen", "move_rope", "keyframe_rope"]
+    {
         h.accept_rest(class);
     }
 }
@@ -555,12 +548,7 @@ fn evaluate_listener(world: &mut World, e: Entity, force: bool, activator: Optio
 
 fn notify_branch_listeners(world: &mut World, branch: Entity, activator: Option<Entity>) {
     let Some(name) = world.get::<MapEntity>(branch).and_then(|m| m.targetname.clone()) else { return };
-    let listeners: Vec<Entity> = world
-        .resource::<EntityRegistry>()
-        .by_class
-        .get("logic_branch_listener")
-        .cloned()
-        .unwrap_or_default();
+    let listeners: Vec<Entity> = world.resource::<EntityRegistry>().by_class.get("logic_branch_listener").cloned().unwrap_or_default();
     for l in listeners {
         let watches = world.get::<BranchListener>(l).is_some_and(|bl| {
             bl.branches.iter().any(|b| match b.strip_suffix('*') {

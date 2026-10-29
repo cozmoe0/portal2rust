@@ -27,8 +27,7 @@ use crate::vfs::GameFs;
 use crate::world::{CurrentMap, MapObject};
 
 pub fn register(app: &mut App) {
-    app.add_systems(Update, (animation_done_outputs, animation_events))
-        .add_systems(FixedUpdate, button_timers.in_set(ThinkSet));
+    app.add_systems(Update, (animation_done_outputs, animation_events)).add_systems(FixedUpdate, button_timers.in_set(ThinkSet));
     let world = app.world_mut();
     {
         let mut s = world.resource_mut::<SpawnHandlers>();
@@ -117,7 +116,8 @@ fn spawn_personality_core(world: &mut World, e: Entity) {
     }
     attach_entity_model(world, e, true);
     if let Some(mut anim) = world.get_mut::<StudioAnimator>(e) {
-        let idle = anim.model.studio.find_sequence_by_activity("ACT_IDLE").or_else(|| anim.model.studio.find_sequence("sphere_idle_neutral"));
+        let idle =
+            anim.model.studio.find_sequence_by_activity("ACT_IDLE").or_else(|| anim.model.studio.find_sequence("sphere_idle_neutral"));
         if let Some(i) = idle {
             anim.set_sequence_index(i);
             anim.default_sequence = Some(i);
@@ -470,7 +470,11 @@ pub fn set_floor_button(world: &mut World, e: Entity, pressed: bool, activator: 
     if let Some(mut anim) = world.get_mut::<StudioAnimator>(e) {
         anim.set_sequence(if pressed { "down" } else { "up" });
     }
-    crate::audio::emit(world, if pressed { "Portal.button_down" } else { "Portal.button_up" }, crate::audio::Emit { entity: Some(e), ..default() });
+    crate::audio::emit(
+        world,
+        if pressed { "Portal.button_down" } else { "Portal.button_up" },
+        crate::audio::Emit { entity: Some(e), ..default() },
+    );
     fire_output(world, e, if pressed { "OnPressed" } else { "OnUnPressed" }, activator, None);
 }
 
@@ -514,10 +518,7 @@ pub fn spawn_static_props(world: &mut World) {
     for (i, prop) in props.props.iter().enumerate() {
         let Some(path) = props.models.get(prop.model as usize) else { continue };
         let Some(model) = cache.get(path, &fs, &mut meshes, &mut bindposes) else { continue };
-        let vhv = fs
-            .read(&format!("sp_hdr_{i}.vhv"))
-            .or_else(|| fs.read(&format!("sp_{i}.vhv")))
-            .and_then(|b| Vhv::parse(&b).ok());
+        let vhv = fs.read(&format!("sp_hdr_{i}.vhv")).or_else(|| fs.read(&format!("sp_{i}.vhv"))).and_then(|b| Vhv::parse(&b).ok());
         let light_origin = static_prop_lighting_origin(prop, &model.studio);
         let lighting = if vhv.is_none() {
             missing_lighting += 1;
@@ -534,15 +535,7 @@ pub fn spawn_static_props(world: &mut World) {
         spawn_model_parts(
             &mut commands,
             root,
-            SpawnModel {
-                model: &model,
-                skin: prop.skin.max(0) as usize,
-                body: 0,
-                vhv: vhv.as_ref(),
-                animated: false,
-                lighting,
-                envmap,
-            },
+            SpawnModel { model: &model, skin: prop.skin.max(0) as usize, body: 0, vhv: vhv.as_ref(), animated: false, lighting, envmap },
             &fs,
             &mut ctx,
             &mut mats,

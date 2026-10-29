@@ -99,15 +99,7 @@ impl EventQueue {
         self.events.iter().any(|ev| matches!(ev.target, EventTarget::Entity(t) if t == e) && ev.input == input)
     }
 
-    pub fn push(
-        &mut self,
-        delay: f32,
-        target: EventTarget,
-        input: &str,
-        param: &str,
-        activator: Option<Entity>,
-        caller: Option<Entity>,
-    ) {
+    pub fn push(&mut self, delay: f32, target: EventTarget, input: &str, param: &str, activator: Option<Entity>, caller: Option<Entity>) {
         self.serial += 1;
         self.events.push(QueuedEvent {
             time: self.now + delay.max(0.0) as f64,
@@ -264,12 +256,8 @@ pub fn resolve_targets(world: &World, name: &str, activator: Option<Entity>, cal
         _ => {}
     }
     if let Some(prefix) = name.strip_suffix('*') {
-        let mut out: Vec<Entity> = registry
-            .by_name
-            .iter()
-            .filter(|(k, _)| k.starts_with(prefix))
-            .flat_map(|(_, v)| v.iter().copied())
-            .collect();
+        let mut out: Vec<Entity> =
+            registry.by_name.iter().filter(|(k, _)| k.starts_with(prefix)).flat_map(|(_, v)| v.iter().copied()).collect();
         out.sort();
         return out;
     }

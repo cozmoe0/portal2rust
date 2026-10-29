@@ -35,8 +35,7 @@ pub struct BodyPlugin;
 
 impl Plugin for BodyPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, spawn_body)
-            .add_systems(PostUpdate, pose_body.after(PlayerCameraSet).before(TransformSystems::Propagate));
+        app.add_systems(Update, spawn_body).add_systems(PostUpdate, pose_body.after(PlayerCameraSet).before(TransformSystems::Propagate));
     }
 }
 
@@ -67,7 +66,8 @@ fn spawn_body(world: &mut World) {
     if world.query_filtered::<(), With<PlayerBody>>().iter(world).next().is_some() {
         return;
     }
-    let root = world.spawn((Name::new("player body"), PlayerBody { light_timer: 0.0 }, MapObject, Transform::default(), Visibility::Visible)).id();
+    let root =
+        world.spawn((Name::new("player body"), PlayerBody { light_timer: 0.0 }, MapObject, Transform::default(), Visibility::Visible)).id();
     let mut state: SystemState<BodyParams> = SystemState::new(world);
     let (mut commands, fs, map, mut cache, mut mats, mut textures, mut images, mut meshes, mut model_mats, mut refract_mats, mut bindposes) =
         state.get_mut(world).expect("render resources available");

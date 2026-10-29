@@ -357,10 +357,7 @@ mod tests {
         // Comma-split like the client: the stray "7 -63.2" part reads as 7.
         assert_eq!(big.looping[0].origin, Some(Vec3::new(672.5, 7.0, 896.0)));
         let n = &big.nested[0];
-        assert_eq!(
-            (n.name.as_str(), n.volume, n.ambient_position_override),
-            ("Room.Base", Some(Interval::fixed(0.63)), Some(2))
-        );
+        assert_eq!((n.name.as_str(), n.volume, n.ambient_position_override), ("Room.Base", Some(Interval::fixed(0.63)), Some(2)));
         assert_eq!(s.warnings.len(), 1);
         assert_eq!(s.nested("Room.Big").len(), 1);
 
@@ -397,9 +394,7 @@ mod tests {
         let mut waves = 0;
         let mut missing = Vec::new();
         for d in defs {
-            unresolved.extend(
-                d.nested.iter().filter(|n| s.get(&n.name).is_none()).map(|n| format!("{} -> {}", d.name, n.name)),
-            );
+            unresolved.extend(d.nested.iter().filter(|n| s.get(&n.name).is_none()).map(|n| format!("{} -> {}", d.name, n.name)));
             let names = d.looping.iter().filter_map(|l| l.wave.as_ref()).chain(d.random.iter().flat_map(|r| &r.waves));
             for path in names.filter_map(WaveName::file_path) {
                 waves += 1;

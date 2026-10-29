@@ -116,10 +116,7 @@ impl StudioModel {
                 }
             }
         }
-        let include_bone_maps = includes
-            .iter()
-            .map(|inc| mdl.bones.iter().map(|b| inc.mdl.find_bone(&b.name)).collect())
-            .collect();
+        let include_bone_maps = includes.iter().map(|inc| mdl.bones.iter().map(|b| inc.mdl.find_bone(&b.name)).collect()).collect();
 
         let anim_block_data = if mdl.anim_block_name.is_empty() { None } else { fs.read(&mdl.anim_block_name) };
 
@@ -151,17 +148,8 @@ impl StudioModel {
             }
         }
 
-        let mut model = Self {
-            path,
-            mdl,
-            meshes,
-            includes,
-            anim_block_data,
-            material_paths,
-            include_bone_maps,
-            pose_parameters,
-            autoplay: Vec::new(),
-        };
+        let mut model =
+            Self { path, mdl, meshes, includes, anim_block_data, material_paths, include_bone_maps, pose_parameters, autoplay: Vec::new() };
         model.autoplay = (0..model.sequence_count())
             .filter(|&i| model.sequence(i).is_some_and(|(m, l)| m.mdl.sequences[l].flags & seq_flags::AUTOPLAY != 0))
             .map(|i| {
@@ -214,9 +202,8 @@ impl StudioModel {
     }
 
     pub fn find_sequence_by_activity(&self, activity: &str) -> Option<usize> {
-        (0..self.sequence_count()).find(|&i| {
-            self.sequence(i).is_some_and(|(m, li)| m.mdl.sequences[li].activity_name.eq_ignore_ascii_case(activity))
-        })
+        (0..self.sequence_count())
+            .find(|&i| self.sequence(i).is_some_and(|(m, li)| m.mdl.sequences[li].activity_name.eq_ignore_ascii_case(activity)))
     }
 
     pub fn find_pose_parameter(&self, name: &str) -> Option<usize> {
@@ -386,7 +373,15 @@ impl StudioModel {
             out
         };
         // Within 0.001 of a grid line counts as on it.
-        let edge = |s: f32| if s < 0.001 { Some(0) } else if s > 0.999 { Some(1) } else { None };
+        let edge = |s: f32| {
+            if s < 0.001 {
+                Some(0)
+            } else if s > 0.999 {
+                Some(1)
+            } else {
+                None
+            }
+        };
         match (edge(s0), edge(s1)) {
             (Some(a), Some(b)) => sample(i0 + a, i1 + b),
             (Some(a), None) => blend((i0 + a, i1), (i0 + a, i1 + 1), s1),
@@ -568,11 +563,7 @@ fn blend_poses(a: &mut [(Vec3, Quat)], b: &[(Vec3, Quat)], t: f32) {
 /// diagonal alternates from cell to cell.
 fn triangle(i0: usize, i1: usize, s0: f32, s1: f32) -> ([(usize, usize); 3], [f32; 3]) {
     let (corners, w0, w1) = if (i0 + i1) % 2 == 1 {
-        if s0 + s1 > 1.0 {
-            ([(1, 0), (1, 1), (0, 1)], 1.0 - s1, s0 + s1 - 1.0)
-        } else {
-            ([(0, 1), (0, 0), (1, 0)], s1, 1.0 - s0 - s1)
-        }
+        if s0 + s1 > 1.0 { ([(1, 0), (1, 1), (0, 1)], 1.0 - s1, s0 + s1 - 1.0) } else { ([(0, 1), (0, 0), (1, 0)], s1, 1.0 - s0 - s1) }
     } else if s0 <= s1 {
         ([(1, 1), (0, 1), (0, 0)], s0, s1 - s0)
     } else {

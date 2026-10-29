@@ -40,7 +40,9 @@ pub fn arg_f32(args: &[Value], i: usize) -> f32 {
 }
 
 pub fn arg_vec(vm: &Vm, args: &[Value], i: usize) -> Result<Vec3> {
-    args.get(i).and_then(|v| vector::read(vm, v)).ok_or_else(|| Error::runtime(format!("parameter {i} has an invalid type ; expected: 'Vector'")))
+    args.get(i)
+        .and_then(|v| vector::read(vm, v))
+        .ok_or_else(|| Error::runtime(format!("parameter {i} has an invalid type ; expected: 'Vector'")))
 }
 
 pub fn make_vec(vm: &mut Vm, world: &World, v: Vec3) -> Value {

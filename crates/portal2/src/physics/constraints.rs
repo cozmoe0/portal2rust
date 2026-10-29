@@ -107,12 +107,7 @@ fn body(registry: &EntityRegistry, name: &str, bodies: &Query<&RigidBody>) -> Op
 
 /// Hinges join their objects once those exist as bodies; an object hinged
 /// to the world turns about a fixed anchor.
-fn build_hinges(
-    mut hinges: Query<&mut Hinge>,
-    registry: Res<EntityRegistry>,
-    bodies: Query<&RigidBody>,
-    mut commands: Commands,
-) {
+fn build_hinges(mut hinges: Query<&mut Hinge>, registry: Res<EntityRegistry>, bodies: Query<&RigidBody>, mut commands: Commands) {
     for mut h in &mut hinges {
         if h.built {
             continue;

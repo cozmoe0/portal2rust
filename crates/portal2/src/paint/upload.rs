@@ -72,7 +72,12 @@ fn write_rects(mut pending: ResMut<PendingWrites>, images: Res<RenderAssets<GpuI
             continue;
         }
         queue.write_texture(
-            TexelCopyTextureInfo { texture: &gpu.texture, mip_level: 0, origin: Origin3d { x: rect.x, y: rect.y, z: 0 }, aspect: TextureAspect::All },
+            TexelCopyTextureInfo {
+                texture: &gpu.texture,
+                mip_level: 0,
+                origin: Origin3d { x: rect.x, y: rect.y, z: 0 },
+                aspect: TextureAspect::All,
+            },
             &rect.data,
             TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(rect.width * 4), rows_per_image: None },
             Extent3d { width: rect.width, height: rect.height, depth_or_array_layers: 1 },

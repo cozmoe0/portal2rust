@@ -67,8 +67,7 @@ impl VmtEnv {
         }
         match rest {
             "srgb" | "srgb_pc" => self.srgb,
-            "srgb_gameconsole" | "360" | "x360" | "ps3" | "sonyps3" | "gameconsole" | "lowfill" | "osx" | "linux"
-            | "posix" => false,
+            "srgb_gameconsole" | "360" | "x360" | "ps3" | "sonyps3" | "gameconsole" | "lowfill" | "osx" | "linux" | "posix" => false,
             "hdr" | "ldr" => rest == "hdr",
             // The game skips keys with conditions it does not know.
             _ => false,
@@ -123,20 +122,11 @@ impl Vmt {
         Self::parse_inner(text, include, 0, &VmtEnv::default())
     }
 
-    pub fn parse_with_env(
-        text: &str,
-        include: &mut dyn FnMut(&str) -> Option<String>,
-        env: &VmtEnv,
-    ) -> Option<Self> {
+    pub fn parse_with_env(text: &str, include: &mut dyn FnMut(&str) -> Option<String>, env: &VmtEnv) -> Option<Self> {
         Self::parse_inner(text, include, 0, env)
     }
 
-    fn parse_inner(
-        text: &str,
-        include: &mut dyn FnMut(&str) -> Option<String>,
-        depth: u32,
-        env: &VmtEnv,
-    ) -> Option<Self> {
+    fn parse_inner(text: &str, include: &mut dyn FnMut(&str) -> Option<String>, depth: u32, env: &VmtEnv) -> Option<Self> {
         let root = kv::parse(text)?;
         let shader = root.key.to_ascii_lowercase();
         if shader == "patch" {

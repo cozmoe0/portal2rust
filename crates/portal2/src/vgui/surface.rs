@@ -293,7 +293,8 @@ impl Surface {
     /// Draws one character at the pen position; returns its advance.
     pub fn draw_char(&mut self, font: FontId, x: i32, y: i32, ch: char, color: Rgba) -> i32 {
         let abc = self.char_abc(font, ch);
-        if ch != ' ' && abc.b > 0
+        if ch != ' '
+            && abc.b > 0
             && let Some(slot) = self.glyph(font, ch)
         {
             let additive = self.fonts[font.0 as usize].raster.spec().additive();

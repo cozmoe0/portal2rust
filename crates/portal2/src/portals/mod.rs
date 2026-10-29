@@ -9,9 +9,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::camera::{Exposure, Hdr, RenderTarget, visibility::RenderLayers};
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
-use bevy::render::render_resource::{
-    AsBindGroup, Extent3d, ShaderType, TextureDimension, TextureFormat, TextureUsages,
-};
+use bevy::render::render_resource::{AsBindGroup, Extent3d, ShaderType, TextureDimension, TextureFormat, TextureUsages};
 use bevy::render::view::Tonemapping;
 use bevy::shader::ShaderRef;
 use bevy::window::PrimaryWindow;
@@ -42,17 +40,9 @@ impl Plugin for PortalsPlugin {
             .add_message::<PlacePortal>()
             .add_message::<FizzlePortals>()
             .add_message::<PortalFx>()
-            .add_systems(
-                Update,
-                (apply_placements, fizzle_portals, clear_on_map_load, animate_portals, update_holes).chain(),
-            )
+            .add_systems(Update, (apply_placements, fizzle_portals, clear_on_map_load, animate_portals, update_holes).chain())
             .add_systems(FixedUpdate, (teleport_player, portal_sounds).chain().after(PlayerMoveSet))
-            .add_systems(
-                PostUpdate,
-                update_portal_cameras
-                    .after(crate::player::PlayerCameraSet)
-                    .before(TransformSystems::Propagate),
-            )
+            .add_systems(PostUpdate, update_portal_cameras.after(crate::player::PlayerCameraSet).before(TransformSystems::Propagate))
             .add_plugins(gun::GunPlugin);
     }
 }
@@ -251,12 +241,8 @@ impl PortalHole {
         let extent = |axis: Vec3| axis.x.abs() * h.x + axis.y.abs() * h.y + axis.z.abs() * h.z;
         let l = f.to_local(c);
         let (ex, ey, ez) = (extent(f.forward), extent(f.left()), extent(f.up));
-        l.y.abs() + ey <= HALF_WIDTH + 1.0
-            && l.z.abs() + ez <= HALF_HEIGHT + 1.0
-            && l.x - ex < 4.0
-            && l.x + ex > -96.0
+        l.y.abs() + ey <= HALF_WIDTH + 1.0 && l.z.abs() + ez <= HALF_HEIGHT + 1.0 && l.x - ex < 4.0 && l.x + ex > -96.0
     }
-
 }
 
 /// Static volumes reaching into the space behind an opening (a little
@@ -304,10 +290,7 @@ fn portal_quad() -> Mesh {
     let (w, h) = (HALF_WIDTH, HALF_HEIGHT);
     let x = 0.4;
     Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD)
-        .with_inserted_attribute(
-            Mesh::ATTRIBUTE_POSITION,
-            vec![[x, w, -h], [x, -w, -h], [x, -w, h], [x, w, h]],
-        )
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vec![[x, w, -h], [x, -w, -h], [x, -w, h], [x, w, h]])
         .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[1.0, 0.0, 0.0]; 4])
         .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, vec![[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]])
         // Counter-clockwise seen from the front (+X), where +Y is screen right.
@@ -322,8 +305,7 @@ fn view_texture(width: u32, height: u32) -> Image {
         TextureFormat::Rgba16Float,
         RenderAssetUsages::RENDER_WORLD,
     );
-    image.texture_descriptor.usage =
-        TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST | TextureUsages::RENDER_ATTACHMENT;
+    image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST | TextureUsages::RENDER_ATTACHMENT;
     image
 }
 
@@ -421,7 +403,8 @@ fn apply_placements(
                 .id()
         };
         let camera = view_camera(format!("portal {} view", req.slot), -10 + req.slot as isize, &texture, PORTAL_INNER_LAYER);
-        let inner_camera = view_camera(format!("portal {} inner view", req.slot), -20 + req.slot as isize, &inner_texture, PORTAL_END_LAYER);
+        let inner_camera =
+            view_camera(format!("portal {} inner view", req.slot), -20 + req.slot as isize, &inner_texture, PORTAL_END_LAYER);
         let quad = meshes.add(portal_quad());
         let mut surface_on = |layer: usize, material: &Handle<PortalMaterial>| {
             commands.spawn((Mesh3d(quad.clone()), MeshMaterial3d(material.clone()), RenderLayers::layer(layer), Transform::IDENTITY)).id()
@@ -483,7 +466,12 @@ fn fizzle_portals(
 }
 
 /// Portal entities are map objects and vanish with the map; forget them.
-pub(crate) fn clear_on_map_load(mut loaded: MessageReader<MapLoaded>, mut portals: ResMut<Portals>, mut commands: Commands, query: Query<&Portal>) {
+pub(crate) fn clear_on_map_load(
+    mut loaded: MessageReader<MapLoaded>,
+    mut portals: ResMut<Portals>,
+    mut commands: Commands,
+    query: Query<&Portal>,
+) {
     if loaded.read().last().is_none() {
         return;
     }
@@ -697,7 +685,15 @@ fn teleport_player(
             let in_plane = offset - to.forward * offset.dot(to.forward);
             let corner = center + Vec3::select(in_plane.cmplt(Vec3::ZERO), -extents, extents);
             let local = to.to_local(corner);
-            let fit = |d: f32, limit: f32| if d > limit { d - limit } else if d < -limit { d + limit } else { 0.0 };
+            let fit = |d: f32, limit: f32| {
+                if d > limit {
+                    d - limit
+                } else if d < -limit {
+                    d + limit
+                } else {
+                    0.0
+                }
+            };
             center -= to.left() * fit(local.y, HALF_WIDTH - 5.0) + to.up * fit(local.z, HALF_HEIGHT - 5.0);
         }
         p.state.origin = center - half_new;
@@ -747,9 +743,7 @@ pub struct PortalEnvironment {
 fn box_touches_portal(frame: &PortalFrame, center: Vec3, half: Vec3) -> bool {
     let l = frame.to_local(center);
     let extent = |axis: Vec3| axis.x.abs() * half.x + axis.y.abs() * half.y + axis.z.abs() * half.z;
-    l.x.abs() <= extent(frame.forward)
-        && l.y.abs() <= HALF_WIDTH + extent(frame.left())
-        && l.z.abs() <= HALF_HEIGHT + extent(frame.up)
+    l.x.abs() <= extent(frame.forward) && l.y.abs() <= HALF_WIDTH + extent(frame.left()) && l.z.abs() <= HALF_HEIGHT + extent(frame.up)
 }
 
 /// `PortalPlayer.EnterPortal` as the player's core (a quarter of their box)
@@ -771,9 +765,7 @@ fn portal_sounds(
     // Keep the portal the player is in while they touch it, else take one
     // they touch.
     env.slot = frames.and_then(|f| {
-        env.slot
-            .filter(|&s| box_touches_portal(&f[s], center, half))
-            .or_else(|| (0..2).find(|&s| box_touches_portal(&f[s], center, half)))
+        env.slot.filter(|&s| box_touches_portal(&f[s], center, half)).or_else(|| (0..2).find(|&s| box_touches_portal(&f[s], center, half)))
     });
     let speed = p.state.velocity.length();
     let mut play = |name: &str| {
@@ -803,7 +795,8 @@ fn portal_sounds(
 /// behind it: that view looks back out of the opening.
 pub fn view_through_portals(frames: &[PortalFrame; 2], eye: Vec3, rot: Quat, near: f32, near_half: Vec2) -> (Vec3, Quat) {
     let (f, r, u) = (rot * Vec3::X, rot * Vec3::NEG_Y, rot * Vec3::Z);
-    let corners = [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)].map(|(sx, sy)| eye + f * near + r * (near_half.x * sx) + u * (near_half.y * sy));
+    let corners = [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)]
+        .map(|(sx, sy)| eye + f * near + r * (near_half.x * sx) + u * (near_half.y * sy));
     for slot in 0..2 {
         let (from, to) = (frames[slot], frames[1 - slot]);
         let in_tube = |l: Vec3| l.x < 0.0 && l.x > -CARVE_DEPTH && l.y.abs() <= HALF_WIDTH && l.z.abs() <= HALF_HEIGHT;
@@ -876,7 +869,8 @@ mod tests {
         let behind_b = b.to_world(Vec3::new(-2.0, 0.0, 10.0));
         assert_eq!(view_through_portals(&[a, b], behind_b, out_of_b, 4.0, near_half).0, behind_b);
         // Looking along the wall from in front of it: no change.
-        let (eye, _) = view_through_portals(&[a, b], Vec3::new(3.0, 0.0, 10.0), Quat::from_rotation_z(std::f32::consts::FRAC_PI_2), 4.0, near_half);
+        let (eye, _) =
+            view_through_portals(&[a, b], Vec3::new(3.0, 0.0, 10.0), Quat::from_rotation_z(std::f32::consts::FRAC_PI_2), 4.0, near_half);
         assert_eq!(eye, Vec3::new(3.0, 0.0, 10.0));
     }
 }

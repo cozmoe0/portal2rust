@@ -8,9 +8,9 @@ use std::sync::OnceLock;
 
 use bevy::math::{Quat, Vec3};
 
-use super::defs::{Common, ConstraintKind, Def, DefRef, EmitterKind, ForceKind, InitKind, OpKind, field};
 #[cfg(test)]
 use super::defs::Op;
+use super::defs::{Common, ConstraintKind, Def, DefRef, EmitterKind, ForceKind, InitKind, OpKind, field};
 
 pub const MAX_CONTROL_POINTS: usize = 64;
 
@@ -420,11 +420,7 @@ impl Collection {
         for (i, e) in def.emitters.iter().enumerate() {
             let mut st = EmitterState { active: true, started: self.time, ..Default::default() };
             if let EmitterKind::Instant { start, start_max, count, count_min, .. } = e.kind {
-                st.count = if count_min >= 0 {
-                    count_min + ((count - count_min + 1) as f32 * self.rand()) as i32
-                } else {
-                    count
-                };
+                st.count = if count_min >= 0 { count_min + ((count - count_min + 1) as f32 * self.rand()) as i32 } else { count };
                 st.remaining = st.count;
                 st.start = if start_max > 0.0 { self.rand_range(start, start_max) } else { start };
             }
@@ -502,9 +498,7 @@ impl Collection {
                     st.active && rate > 0.0 && (duration == 0.0 || self.time <= st.started + start + duration)
                 }
                 EmitterKind::Instant { .. } => st.active && st.remaining > 0,
-                EmitterKind::Noise { duration, start, .. } => {
-                    st.active && (duration == 0.0 || self.time <= st.started + start + duration)
-                }
+                EmitterKind::Noise { duration, start, .. } => st.active && (duration == 0.0 || self.time <= st.started + start + duration),
                 EmitterKind::Maintain { .. } => st.active,
             });
         !may_emit && self.children.iter().all(|c| c.collection.finished())
@@ -949,18 +943,7 @@ impl Collection {
                     }
                 }
             }
-            InitKind::Sphere {
-                distance,
-                bias,
-                bias_abs,
-                local_bias,
-                cp,
-                speed,
-                local_speed,
-                distribute_cps,
-                growth_time,
-                scale_cp,
-            } => {
+            InitKind::Sphere { distance, bias, bias_abs, local_bias, cp, speed, local_speed, distribute_cps, growth_time, scale_cp } => {
                 let scale = if scale_cp >= 0 { self.cp(scale_cp).position } else { Vec3::ONE };
                 for i in first..n {
                     let created = self.particles.s[CREATED][i].max(self.prev_time);
@@ -1038,28 +1021,14 @@ impl Collection {
                     }
                 }
             }
-            InitKind::VelocityNoise {
-                cp,
-                time_scale,
-                spatial_scale,
-                time_offset,
-                spatial_offset,
-                absolute,
-                invert,
-                min,
-                max,
-                local,
-            } => {
+            InitKind::VelocityNoise { cp, time_scale, spatial_scale, time_offset, spatial_offset, absolute, invert, min, max, local } => {
                 for i in first..n {
                     let p = self.particles.v[POSITION][i] * spatial_scale + spatial_offset;
                     let t = self.time * time_scale + time_offset;
                     let mut v = Vec3::ZERO;
                     for k in 0..3 {
-                        let s = noise01(
-                            Vec3::new(p.x + t, p.y + k as f32 * 31.7, p.z - t),
-                            axis(absolute, k) != 0.0,
-                            axis(invert, k) != 0.0,
-                        );
+                        let s =
+                            noise01(Vec3::new(p.x + t, p.y + k as f32 * 31.7, p.z - t), axis(absolute, k) != 0.0, axis(invert, k) != 0.0);
                         let value = axis(min, k) + (axis(max, k) - axis(min, k)) * s;
                         match k {
                             0 => v.x = value,
@@ -1097,12 +1066,7 @@ impl Collection {
             }
             InitKind::Ring { cp, radius, thickness, speed, angles, even, even_count, xy_velocity } => {
                 let c = self.cp(cp);
-                let rot = Quat::from_euler(
-                    bevy::math::EulerRot::ZYX,
-                    angles.y.to_radians(),
-                    angles.x.to_radians(),
-                    angles.z.to_radians(),
-                );
+                let rot = Quat::from_euler(bevy::math::EulerRot::ZYX, angles.y.to_radians(), angles.x.to_radians(), angles.z.to_radians());
                 for i in first..n {
                     let a = if even {
                         let count = if even_count > 0.0 { even_count } else { (n - first).max(1) as f32 };
@@ -1298,11 +1262,8 @@ impl Collection {
                     return;
                 }
                 for i in first..n {
-                    let k = if random {
-                        (self.rand() * self.parent_cache.len() as f32) as usize
-                    } else {
-                        self.particles.id[i] as usize
-                    } % self.parent_cache.len();
+                    let k = if random { (self.rand() * self.parent_cache.len() as f32) as usize } else { self.particles.id[i] as usize }
+                        % self.parent_cache.len();
                     let (p, prev) = self.parent_cache[k];
                     self.particles.v[POSITION][i] = p;
                     self.particles.v[PREV_POSITION][i] = p - (p - prev) * velocity_scale;
@@ -1325,19 +1286,8 @@ impl Collection {
                     self.particles.s[LIFE][i] = dist / speed;
                 }
             }
-            InitKind::RemapScalarToVector {
-                input,
-                in_range,
-                output,
-                out_range,
-                scale_initial,
-                local,
-                cp,
-                emitter_window,
-            } => {
-                if !is_vector(output)
-                    || (emitter_window.0 >= 0.0 && (self.time < emitter_window.0 || self.time > emitter_window.1))
-                {
+            InitKind::RemapScalarToVector { input, in_range, output, out_range, scale_initial, local, cp, emitter_window } => {
+                if !is_vector(output) || (emitter_window.0 >= 0.0 && (self.time < emitter_window.0 || self.time > emitter_window.1)) {
                     return;
                 }
                 let c = self.cp(cp);
@@ -1465,11 +1415,7 @@ impl Collection {
                     } else {
                         range.0 + (range.1 - range.0) * self.particle_rand(i, k as u32).powf(exponent)
                     };
-                    let t = if proportional {
-                        self.particles.age_fraction(i, time).clamp(0.0, 1.0)
-                    } else {
-                        self.particles.age(i, time)
-                    };
+                    let t = if proportional { self.particles.age_fraction(i, time).clamp(0.0, 1.0) } else { self.particles.age(i, time) };
                     if t < fade && fade > 0.0 {
                         self.particles.s[ALPHA][i] = self.particles.s0[ALPHA][i] * smoothstep(t / fade);
                     }
@@ -1503,8 +1449,7 @@ impl Collection {
                         ((age - start) / fade.max(1e-6)).clamp(0.0, 1.0)
                     };
                     let a0 = self.particles.s0[ALPHA][i];
-                    self.particles.s[ALPHA][i] =
-                        if ease { (a0 * (1.0 - smoothstep(f))).max(0.0) } else { (1.0 - bias(f, b)) * a0 };
+                    self.particles.s[ALPHA][i] = if ease { (a0 * (1.0 - smoothstep(f))).max(0.0) } else { (1.0 - bias(f, b)) * a0 };
                 }
             }
             OpKind::FadeInSimple { time: fade } => {
@@ -1598,18 +1543,7 @@ impl Collection {
                     self.particles.s[ROLL][i] += self.particles.s[ROLL_SPEED][i] * dt;
                 }
             }
-            OpKind::Oscillate {
-                field,
-                rate,
-                frequency,
-                proportional,
-                start,
-                end,
-                start_end_proportional,
-                multiplier,
-                phase,
-                vector,
-            } => {
+            OpKind::Oscillate { field, rate, frequency, proportional, start, end, start_end_proportional, multiplier, phase, vector } => {
                 let base = multiplier * time + phase;
                 for i in 0..n {
                     let life = self.particles.s[LIFE][i];
@@ -1690,11 +1624,7 @@ impl Collection {
                 for i in 0..n {
                     let life = self.particles.s[LIFE][i];
                     let age = self.particles.age(i, time);
-                    let t = if proportional {
-                        if life > 0.0 { age / life } else { 0.0 }
-                    } else {
-                        age
-                    };
+                    let t = if proportional { if life > 0.0 { age / life } else { 0.0 } } else { age };
                     let s = start.0 + (start.1 - start.0) * self.particle_rand(i, 31);
                     let e = end.0 + (end.1 - end.0) * self.particle_rand(i, 32);
                     if t < s || t >= e {
@@ -1963,11 +1893,7 @@ impl Collection {
                     return;
                 }
                 let from = self.cp(from_cp);
-                let dir = if direction != Vec3::ZERO {
-                    from.rotate(direction).normalize_or(from.forward)
-                } else {
-                    from.forward
-                };
+                let dir = if direction != Vec3::ZERO { from.rotate(direction).normalize_or(from.forward) } else { from.forward };
                 let end = from.position + dir * length;
                 let hit = match env.trace(from.position, end) {
                     Some((f, _)) => from.position.lerp(end, f) - dir * offset,
@@ -2120,11 +2046,8 @@ impl Collection {
                     let centre = a.lerp(b, t);
                     let m = if max_mid >= 0.0 { max_mid } else { max };
                     let e = if max_end >= 0.0 { max_end } else { max };
-                    let limit = if t < mid {
-                        max + (m - max) * (t / mid.max(1e-3))
-                    } else {
-                        m + (e - m) * ((t - mid) / (1.0 - mid).max(1e-3))
-                    };
+                    let limit =
+                        if t < mid { max + (m - max) * (t / mid.max(1e-3)) } else { m + (e - m) * ((t - mid) / (1.0 - mid).max(1e-3)) };
                     let d = self.particles.v[POSITION][i] - centre;
                     let len = d.length();
                     if len > 0.0 && (len < min || len > limit) {
@@ -2208,14 +2131,7 @@ mod tests {
     #[test]
     fn continuous_rate_carries_fractions() {
         let def = def_from(
-            vec![op(EmitterKind::Continuous {
-                start: 0.0,
-                rate: 10.0,
-                duration: 0.0,
-                scale_cp: -1,
-                scale_cp_field: 0,
-                per_used_cp: 0.0,
-            })],
+            vec![op(EmitterKind::Continuous { start: 0.0, rate: 10.0, duration: 0.0, scale_cp: -1, scale_cp_field: 0, per_used_cp: 0.0 })],
             vec![],
         );
         let mut c = Collection::new(def, &Lib, 1);

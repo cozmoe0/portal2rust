@@ -33,13 +33,18 @@ fn main() {
     for i in 0..image.len() {
         let Ok(scene) = image.scene(i) else { continue };
         for a in scene.actors.iter().filter(|a| a.name.eq_ignore_ascii_case(&actor)) {
-            let events: Vec<_> = a.channels.iter().flat_map(|c| &c.events).filter(|e| kind.as_deref().is_none_or(|k| e.kind.name() == k)).collect();
+            let events: Vec<_> =
+                a.channels.iter().flat_map(|c| &c.events).filter(|e| kind.as_deref().is_none_or(|k| e.kind.name() == k)).collect();
             if events.is_empty() {
                 continue;
             }
             let crc = image.entries()[i].crc;
             let name = names.get(&crc).cloned().unwrap_or_else(|| format!("{crc:08x} (not referenced by SP maps or scripts)"));
-            println!("{name}: {} events, e.g. {:?}", events.len(), events.iter().take(3).map(|e| (e.kind.name(), e.param.as_str(), e.start, e.end)).collect::<Vec<_>>());
+            println!(
+                "{name}: {} events, e.g. {:?}",
+                events.len(),
+                events.iter().take(3).map(|e| (e.kind.name(), e.param.as_str(), e.start, e.end)).collect::<Vec<_>>()
+            );
         }
     }
 }

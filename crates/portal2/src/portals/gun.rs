@@ -242,7 +242,9 @@ fn fire_gun(
     }
     let (Ok((pe, p)), Some(map)) = (players.single(), map) else { return };
     gun.next_fire = now + FIRE_DELAY;
-    events.write(GameEvent::new("portal_fired").with("userid", EventValue::Entity(Some(pe))).with("leftportal", EventValue::Int((slot == 0) as i32)));
+    events.write(
+        GameEvent::new("portal_fired").with("userid", EventValue::Entity(Some(pe))).with("leftportal", EventValue::Int((slot == 0) as i32)),
+    );
     sounds.write(crate::audio::SoundRequest::on(if slot == 0 { "Weapon_Portalgun.fire_blue" } else { "Weapon_Portalgun.fire_red" }, pe));
     if let Some(vm) = gun.viewmodel
         && let Ok(mut a) = animators.get_mut(vm)

@@ -93,8 +93,7 @@ pub struct RopePlugin;
 
 impl Plugin for RopePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(MaterialPlugin::<RopeMaterial>::default())
-            .add_systems(PreUpdate, spawn_ropes.after(LoadMapSet));
+        app.add_plugins(MaterialPlugin::<RopeMaterial>::default()).add_systems(PreUpdate, spawn_ropes.after(LoadMapSet));
     }
 }
 
@@ -153,9 +152,7 @@ fn spline(nodes: &[Vec3], subdiv: usize) -> Vec<Vec3> {
         for k in 0..=subdiv {
             let t = k as f32 / (subdiv + 1) as f32;
             let (t2, t3) = (t * t, t * t * t);
-            out.push(
-                0.5 * (2.0 * p1 + (p2 - p0) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2 + (3.0 * p1 - p0 - 3.0 * p2 + p3) * t3),
-            );
+            out.push(0.5 * (2.0 * p1 + (p2 - p0) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2 + (3.0 * p1 - p0 - 3.0 * p2 + p3) * t3));
         }
     }
     out.push(nodes[n - 1]);
@@ -229,12 +226,8 @@ fn spawn_ropes(
     }
     let Some(map) = map else { return };
     let bsp = &map.bsp;
-    let by_name: HashMap<String, &MapEntity> = bsp
-        .entities
-        .iter()
-        .filter(|e| is_rope(e))
-        .filter_map(|e| Some((e.targetname()?.to_ascii_lowercase(), e)))
-        .collect();
+    let by_name: HashMap<String, &MapEntity> =
+        bsp.entities.iter().filter(|e| is_rope(e)).filter_map(|e| Some((e.targetname()?.to_ascii_lowercase(), e))).collect();
     // (material, in the 3D sky box) -> batch
     let mut batches: HashMap<(String, bool), RopeBatch> = HashMap::new();
     let sky_area = sky.map(|s| s.area);

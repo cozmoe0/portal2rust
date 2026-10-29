@@ -5,8 +5,8 @@
 pub mod bridge;
 pub mod catapult;
 pub mod func_tank;
-pub mod futbol;
 pub mod funnel;
+pub mod futbol;
 pub mod laser;
 pub mod security_camera;
 pub mod turret;
@@ -27,18 +27,16 @@ pub struct DevicesPlugin;
 
 impl Plugin for DevicesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(MaterialPlugin::<EffectMaterial>::default())
-            .add_systems(Update, animate_effects)
-            .add_plugins((
-                laser::LaserPlugin,
-                bridge::BridgePlugin,
-                funnel::FunnelPlugin,
-                catapult::CatapultPlugin,
-                turret::TurretPlugin,
-                security_camera::SecurityCameraPlugin,
-                func_tank::FuncTankPlugin,
-                futbol::FutbolPlugin,
-            ));
+        app.add_plugins(MaterialPlugin::<EffectMaterial>::default()).add_systems(Update, animate_effects).add_plugins((
+            laser::LaserPlugin,
+            bridge::BridgePlugin,
+            funnel::FunnelPlugin,
+            catapult::CatapultPlugin,
+            turret::TurretPlugin,
+            security_camera::SecurityCameraPlugin,
+            func_tank::FuncTankPlugin,
+            futbol::FutbolPlugin,
+        ));
     }
 }
 
@@ -162,13 +160,7 @@ pub fn trace_beam(
     for _ in 0..max_segments {
         let tr = physics.trace(start, start + dir * 16384.0, Vec3::ZERO, Vec3::ZERO, mask, &skip);
         let end = tr.end;
-        let mut seg = BeamSegment {
-            start,
-            end,
-            dir,
-            hit_entity: tr.entity,
-            through_portal: false,
-        };
+        let mut seg = BeamSegment { start, end, dir, hit_entity: tr.entity, through_portal: false };
         // Into an opening: continue from the other portal.
         if let Some(frames) = frames
             && tr.fraction < 1.0
@@ -232,9 +224,5 @@ pub fn segment_transform(start: Vec3, end: Vec3, width: f32, height: f32) -> Tra
     let z = d / len;
     let x = if z.z.abs() > 0.99 { Vec3::X } else { Vec3::Z.cross(z).normalize() };
     let y = z.cross(x);
-    Transform {
-        translation: start,
-        rotation: Quat::from_mat3(&Mat3::from_cols(x, y, z)),
-        scale: Vec3::new(width, height, len),
-    }
+    Transform { translation: start, rotation: Quat::from_mat3(&Mat3::from_cols(x, y, z)), scale: Vec3::new(width, height, len) }
 }

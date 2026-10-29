@@ -41,7 +41,9 @@ fn this_vec(ctx: &Ctx, args: &[Value]) -> Result<Vec3> {
 }
 
 fn arg_vec(ctx: &Ctx, args: &[Value], i: usize) -> Result<Vec3> {
-    args.get(i).and_then(|v| read(ctx.vm, v)).ok_or_else(|| Error::runtime(format!("parameter {i} has an invalid type ; expected: 'Vector'")))
+    args.get(i)
+        .and_then(|v| read(ctx.vm, v))
+        .ok_or_else(|| Error::runtime(format!("parameter {i} has an invalid type ; expected: 'Vector'")))
 }
 
 fn new_like(ctx: &mut Ctx, args: &[Value], v: Vec3) -> Result<Value> {

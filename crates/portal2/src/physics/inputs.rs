@@ -23,7 +23,14 @@ const SF_PUSH_PLAYER: u32 = 2;
 
 pub fn register(app: &mut App) {
     let mut h = app.world_mut().resource_mut::<InputHandlers>();
-    for class in ["func_physbox", "func_physbox_multiplayer", "prop_weighted_cube", "prop_physics", "prop_physics_override", "prop_physics_multiplayer"] {
+    for class in [
+        "func_physbox",
+        "func_physbox_multiplayer",
+        "prop_weighted_cube",
+        "prop_physics",
+        "prop_physics_override",
+        "prop_physics_multiplayer",
+    ] {
         h.register(class, motion_input);
     }
     h.register("env_physexplosion", explosion_input);
@@ -40,12 +47,7 @@ fn motion_input(world: &mut World, call: &InputCall) -> bool {
             let dynamic = world.get::<RigidBody>(e).is_some_and(|b| b.is_dynamic());
             if !dynamic && let Some(shape) = world.get::<TraceCollider>(e).map(|c| c.shape.clone()) {
                 let Some(collider) = super::collider_for(&shape) else { return true };
-                let mass = world
-                    .get::<MapEntity>(e)
-                    .and_then(|me| me.get_f32("massscale"))
-                    .filter(|s| *s > 0.0)
-                    .unwrap_or(1.0)
-                    * 40.0;
+                let mass = world.get::<MapEntity>(e).and_then(|me| me.get_f32("massscale")).filter(|s| *s > 0.0).unwrap_or(1.0) * 40.0;
                 // A frozen prop may hang from a parent; it falls free now.
                 if let Some(gt) = world.get::<GlobalTransform>(e).copied() {
                     world.entity_mut(e).remove::<ChildOf>().insert(gt.compute_transform());

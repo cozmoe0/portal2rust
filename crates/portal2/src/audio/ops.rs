@@ -302,7 +302,8 @@ impl Stack {
             .collect();
         let mut ops = Vec::with_capacity(defs.len());
         for (i, d) in defs.iter().enumerate() {
-            let mut op = Op { name: names[i].clone(), kind: kinds[i], inputs: HashMap::new(), strings: HashMap::new(), execute_once: false };
+            let mut op =
+                Op { name: names[i].clone(), kind: kinds[i], inputs: HashMap::new(), strings: HashMap::new(), execute_once: false };
             for (k, v) in &d.params {
                 let key = k.to_ascii_lowercase();
                 if key == "operator" {
@@ -505,11 +506,7 @@ pub fn gain_from_mult(gain: f32, dist_mult: f32, dist: f32, cvar: &dyn Fn(&str) 
     let relative = dist * dist_mult * foliage;
     let mut g = if relative <= 0.1 { gain * 10.0 } else { gain / relative };
     if g > 0.5 {
-        let level = if dist_mult != 0.0 {
-            (20.0 * (1000.0 / (dist_mult * cvar("snd_refdist"))).log10()) as i32 as f32
-        } else {
-            0.0
-        };
+        let level = if dist_mult != 0.0 { (20.0 * (1000.0 / (dist_mult * cvar("snd_refdist"))).log10()) as i32 as f32 } else { 0.0 };
         let mut power = 2.5f32;
         if level > 90.0 {
             power = 2.5 - (level - 90.0) * 1.7 * 0.02;
@@ -578,8 +575,14 @@ pub fn spatialize(listener: &Listener, dir: Vec3, mono: f32, rear_scale: f32, mo
         let a = angle_between(rel, angle);
         if a < 90.0 { 1.0 - (a / 90.0).powf(1.5) } else { 0.0 }
     };
-    let front_right = { let g = speaker(45.0); (0.9 - g) * m + g };
-    let front_left = { let g = speaker(135.0); (0.9 - g) * m + g };
+    let front_right = {
+        let g = speaker(45.0);
+        (0.9 - g) * m + g
+    };
+    let front_left = {
+        let g = speaker(135.0);
+        (0.9 - g) * m + g
+    };
     let rear_right = speaker(315.0) * (1.0 - m);
     let rear_left = speaker(225.0) * (1.0 - m);
     out[1] = (front_right + rear_right * rear_scale).clamp(0.0, 1.0);
@@ -763,7 +766,8 @@ impl Stack {
                 }
                 Kind::BlockEntries => {
                     if f("input_active", 1.0, inst) > 0.0 {
-                        let entry = op.s("match_entry").map(str::to_owned).filter(|e| !e.eq_ignore_ascii_case("none")).or(Some(chan.entry.clone()));
+                        let entry =
+                            op.s("match_entry").map(str::to_owned).filter(|e| !e.eq_ignore_ascii_case("none")).or(Some(chan.entry.clone()));
                         env.effects.push(Effect::Block {
                             entry,
                             substring: op.flag("match_substring", false),
@@ -851,10 +855,34 @@ fn math_float(apply: &str, a: f32, b: f32) -> f32 {
         "add" => a + b,
         "sub" => a - b,
         "mult" => a * b,
-        "div" => if b > 0.0 { a / b } else { 0.0 },
-        "mod" => if b > 0.0 { a % b } else { 0.0 },
-        "max" => if a > b { a } else { b },
-        "min" => if b > a { a } else { b },
+        "div" => {
+            if b > 0.0 {
+                a / b
+            } else {
+                0.0
+            }
+        }
+        "mod" => {
+            if b > 0.0 {
+                a % b
+            } else {
+                0.0
+            }
+        }
+        "max" => {
+            if a > b {
+                a
+            } else {
+                b
+            }
+        }
+        "min" => {
+            if b > a {
+                a
+            } else {
+                b
+            }
+        }
         "invert" => 1.0 - a,
         "greater_than" => (a > b) as u8 as f32,
         "less_than" => (b > a) as u8 as f32,
@@ -994,7 +1022,17 @@ mod install_tests {
             _ => 0.0,
         };
         let opvars = HashMap::new();
-        let mut env = Env { listener: &listener, mix: &mix, cvar: &cvar, opvars: &opvars, others: &[], now: 0.0, map: "", speaker_mode: 2, effects: Vec::new() };
+        let mut env = Env {
+            listener: &listener,
+            mix: &mix,
+            cvar: &cvar,
+            opvars: &opvars,
+            others: &[],
+            now: 0.0,
+            map: "",
+            speaker_mode: 2,
+            effects: Vec::new(),
+        };
         stack.run(&mut inst, &mut chan, &mut env);
         for (op, out) in stack.ops.iter().zip(&inst.outputs) {
             println!("{:<32} {:?} {:?}", op.name, op.kind, out.first().map(|v| v[0]));

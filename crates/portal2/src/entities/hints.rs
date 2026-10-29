@@ -46,7 +46,10 @@ fn hint_flags(me: &MapEntity) -> i32 {
         n if n > 0 => unit << (n - 1),
         _ => 0,
     };
-    option("hint_pulseoption", 1) | option("hint_alphaoption", 8) | option("hint_shakeoption", 64) | if me.get_bool("hint_static") { 0x100 } else { 0 }
+    option("hint_pulseoption", 1)
+        | option("hint_alphaoption", 8)
+        | option("hint_shakeoption", 64)
+        | if me.get_bool("hint_static") { 0x100 } else { 0 }
 }
 
 /// Whether the game would send the entity to the client: it has a model

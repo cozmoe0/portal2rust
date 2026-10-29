@@ -85,12 +85,7 @@ fn spawn_composite_camera(mut commands: Commands) {
 }
 
 /// Keeps the surface size and the schemes in step with the window.
-fn track_screen(
-    window: Query<&Window, With<PrimaryWindow>>,
-    mut surface: ResMut<Surface>,
-    mut schemes: ResMut<Schemes>,
-    fs: Res<GameFs>,
-) {
+fn track_screen(window: Query<&Window, With<PrimaryWindow>>, mut surface: ResMut<Surface>, mut schemes: ResMut<Schemes>, fs: Res<GameFs>) {
     let Ok(window) = window.single() else { return };
     let (w, h) = (window.physical_width().max(1) as i32, window.physical_height().max(1) as i32);
     surface.wide = w;
@@ -104,10 +99,8 @@ fn track_screen(
     schemes.source = Scheme::load(&fs, "resource/sourcescheme.res", &symbols).unwrap_or_default();
     if !schemes.fonts_registered {
         schemes.fonts_registered = true;
-        let files: Vec<String> = [&schemes.basemodui, &schemes.client, &schemes.source]
-            .iter()
-            .flat_map(|s| s.custom_font_files.iter().cloned())
-            .collect();
+        let files: Vec<String> =
+            [&schemes.basemodui, &schemes.client, &schemes.source].iter().flat_map(|s| s.custom_font_files.iter().cloned()).collect();
         let mut seen = std::collections::HashSet::new();
         for file in files {
             if !seen.insert(file.to_ascii_lowercase()) {

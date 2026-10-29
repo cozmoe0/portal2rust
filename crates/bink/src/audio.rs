@@ -262,9 +262,7 @@ mod tests {
         let mut dct = Dct::new(n);
         dct.run(&c);
         for k in 0..n {
-            let direct: f64 = (0..n)
-                .map(|j| c[j] as f64 * (std::f64::consts::PI * j as f64 * (k as f64 + 0.5) / n as f64).cos())
-                .sum();
+            let direct: f64 = (0..n).map(|j| c[j] as f64 * (std::f64::consts::PI * j as f64 * (k as f64 + 0.5) / n as f64).cos()).sum();
             assert!((dct.output()[k] - direct).abs() < 1e-9, "k={k}");
         }
     }

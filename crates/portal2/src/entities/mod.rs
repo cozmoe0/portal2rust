@@ -251,10 +251,7 @@ impl SpawnHandlers {
 
 /// Classes that exist only at compile time or are handled elsewhere.
 fn skip_class(class: &str) -> bool {
-    matches!(
-        class,
-        "worldspawn" | "func_detail" | "info_node" | "info_node_hint" | "info_node_air" | "func_viscluster" | "info_lighting"
-    )
+    matches!(class, "worldspawn" | "func_detail" | "info_node" | "info_node_hint" | "info_node_air" | "func_viscluster" | "info_lighting")
 }
 
 fn spawn_on_map_load(world: &mut World) {
@@ -345,11 +342,8 @@ fn create_entity(world: &mut World, index: usize, pairs: &[(String, String)]) ->
             keyvalues.push((k.to_ascii_lowercase(), v.clone()));
         }
     }
-    let targetname = pairs
-        .iter()
-        .find(|(k, _)| k.eq_ignore_ascii_case("targetname"))
-        .map(|(_, v)| v.to_ascii_lowercase())
-        .filter(|s| !s.is_empty());
+    let targetname =
+        pairs.iter().find(|(k, _)| k.eq_ignore_ascii_case("targetname")).map(|(_, v)| v.to_ascii_lowercase()).filter(|s| !s.is_empty());
     let id = crate::save::ids::assign(world, index);
     let e = insert_entity(world, index, id, &classname, targetname, keyvalues, outputs, defaults);
     Some((e, classname))
@@ -501,10 +495,7 @@ pub fn set_parent(world: &mut World, child: Entity, parent: &str) {
 
 /// World placement of an entity's current parent (identity when unparented).
 fn parent_placement(world: &World, e: Entity) -> bevy::math::Affine3A {
-    world
-        .get::<ChildOf>(e)
-        .map(|c| world_transform(world, c.parent()).affine())
-        .unwrap_or(bevy::math::Affine3A::IDENTITY)
+    world.get::<ChildOf>(e).map(|c| world_transform(world, c.parent()).affine()).unwrap_or(bevy::math::Affine3A::IDENTITY)
 }
 
 /// World transform computed from the hierarchy (valid before propagation).

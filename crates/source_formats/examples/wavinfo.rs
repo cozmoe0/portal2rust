@@ -51,23 +51,13 @@ fn main() {
                 continue;
             }
         };
-        println!(
-            "{path} [{}]: {}, {} frames, {:.3} s",
-            fs.locate(&path).unwrap_or_default(),
-            describe(&w),
-            w.frames,
-            w.duration()
-        );
+        println!("{path} [{}]: {}, {} frames, {:.3} s", fs.locate(&path).unwrap_or_default(), describe(&w), w.frames, w.duration());
         if let Some(m) = w.mp3 {
-            println!(
-                "  {} MPEG frames of {} samples, crc {}, {} trailing bytes",
-                m.frame_count, m.samples_per_frame, m.crc, m.trailing
-            );
+            println!("  {} MPEG frames of {} samples, crc {}, {} trailing bytes", m.frame_count, m.samples_per_frame, m.crc, m.trailing);
         }
         if !w.samples.is_empty() {
             let peak = w.samples.iter().map(|&s| (s as i32).abs()).max().unwrap_or(0) as f64 / 32768.0;
-            let rms =
-                (w.samples.iter().map(|&s| (s as f64 / 32768.0).powi(2)).sum::<f64>() / w.samples.len() as f64).sqrt();
+            let rms = (w.samples.iter().map(|&s| (s as f64 / 32768.0).powi(2)).sum::<f64>() / w.samples.len() as f64).sqrt();
             println!("  peak {:.1} dBFS, rms {:.1} dBFS", 20.0 * peak.max(1e-9).log10(), 20.0 * rms.max(1e-9).log10());
         }
         if w.loop_start.is_some() || w.loop_end.is_some() {

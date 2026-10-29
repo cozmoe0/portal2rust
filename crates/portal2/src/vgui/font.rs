@@ -111,11 +111,7 @@ impl RasterFont {
         }
         let raw = self.inner.as_ref().map(|f| f.abc(ch, &self.metrics)).unwrap_or((0, 0, 0));
         let (blur, outline, shadow) = (self.spec.blur, self.spec.outline(), self.spec.dropshadow());
-        let abc = Abc {
-            a: raw.0 - blur - outline,
-            b: raw.1 + shadow + 2 * (blur + outline),
-            c: raw.2 - shadow - blur - outline,
-        };
+        let abc = Abc { a: raw.0 - blur - outline, b: raw.1 + shadow + 2 * (blur + outline), c: raw.2 - shadow - blur - outline };
         self.abc.insert(ch, abc);
         abc
     }
@@ -199,9 +195,7 @@ fn apply_blur(w: i32, h: i32, rgba: &mut [u8], radius: i32) {
     }
     let sigma = radius as f64 * 0.683;
     let scale = 1.0 / (sigma * 6.28 * sigma).sqrt();
-    let kernel: Vec<f32> = (-radius..=radius)
-        .map(|x| (2.7f64.powf(-((x * x) as f64) / (sigma * 2.0 * sigma)) * scale) as f32)
-        .collect();
+    let kernel: Vec<f32> = (-radius..=radius).map(|x| (2.7f64.powf(-((x * x) as f64) / (sigma * 2.0 * sigma)) * scale) as f32).collect();
     let src = rgba.to_vec();
     for y in 0..h {
         for x in 0..w {
@@ -267,8 +261,7 @@ mod platform {
     pub fn register(data: Vec<u8>) -> bool {
         let mut count = 0u32;
         // SAFETY: the bytes stay alive (kept in REGISTERED) for the process.
-        let handle: HANDLE =
-            unsafe { AddFontMemResourceEx(data.as_ptr().cast(), data.len() as u32, std::ptr::null(), &mut count) };
+        let handle: HANDLE = unsafe { AddFontMemResourceEx(data.as_ptr().cast(), data.len() as u32, std::ptr::null(), &mut count) };
         if handle.is_null() {
             return false;
         }
@@ -368,9 +361,7 @@ mod platform {
             let mut abc: ABC = ABC { abcA: 0, abcB: 0, abcC: 0 };
             // SAFETY: valid DC and output pointer.
             unsafe {
-                if GetCharABCWidthsW(self.dc, code, code, &mut abc) != 0
-                    || GetCharABCWidthsA(self.dc, code, code, &mut abc) != 0
-                {
+                if GetCharABCWidthsW(self.dc, code, code, &mut abc) != 0 || GetCharABCWidthsA(self.dc, code, code, &mut abc) != 0 {
                     return (abc.abcA, abc.abcB as i32, abc.abcC);
                 }
                 let mut buf = [0u16; 2];

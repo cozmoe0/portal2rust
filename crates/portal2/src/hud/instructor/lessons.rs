@@ -106,7 +106,8 @@ impl Default for LessonVars {
 
 /// `"r,g,b"` (commas or spaces).
 fn parse_color(s: &str) -> [u8; 3] {
-    let v: Vec<u8> = s.split([',', ' ']).filter(|p| !p.is_empty()).filter_map(|p| p.trim().parse::<i32>().ok()).map(|n| n.clamp(0, 255) as u8).collect();
+    let v: Vec<u8> =
+        s.split([',', ' ']).filter(|p| !p.is_empty()).filter_map(|p| p.trim().parse::<i32>().ok()).map(|n| n.clamp(0, 255) as u8).collect();
     if v.len() >= 3 { [v[0], v[1], v[2]] } else { [255, 255, 255] }
 }
 
@@ -128,7 +129,9 @@ enum Command {
     ScopeOut,
     Close,
     /// `void is multiplayer` (negated with `!is`).
-    Multiplayer { negate: bool },
+    Multiplayer {
+        negate: bool,
+    },
     Var {
         var: String,
         /// Accessor on an entity variable (`classname`, `team`).
@@ -276,7 +279,8 @@ impl LessonDef {
         if let Some(v) = num("integer2") {
             d.integer2 = v as i32;
         }
-        let handlers = |k: &str| kv.get(k).map(|b| b.children().iter().filter(|c| c.is_block()).map(Handler::parse).collect()).unwrap_or_default();
+        let handlers =
+            |k: &str| kv.get(k).map(|b| b.children().iter().filter(|c| c.is_block()).map(Handler::parse).collect()).unwrap_or_default();
         Self {
             name: kv.key.clone(),
             priority: num("priority").unwrap_or(0.0) as i32,
@@ -299,12 +303,7 @@ impl LessonDef {
 /// Parses every lesson of a script (`"instructor_lessons" { ... }`).
 pub fn parse_lessons(text: &str, convar: &dyn Fn(&str) -> Option<f32>) -> Vec<Arc<LessonDef>> {
     let doc = source_formats::kv::parse_document(text);
-    doc.roots
-        .iter()
-        .flat_map(|r| r.children().iter())
-        .filter(|l| l.is_block())
-        .map(|l| Arc::new(LessonDef::parse(l, convar)))
-        .collect()
+    doc.roots.iter().flat_map(|r| r.children().iter()).filter(|l| l.is_block()).map(|l| Arc::new(LessonDef::parse(l, convar))).collect()
 }
 
 /// What a script command can see besides the lesson: the event, the local

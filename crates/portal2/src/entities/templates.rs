@@ -41,10 +41,7 @@ pub struct Template {
 struct TemplateCounter(u32);
 
 fn template_names(me: &MapEntity) -> Vec<String> {
-    (1..=16)
-        .filter_map(|i| me.get(&format!("template{i:02}")).map(str::to_ascii_lowercase))
-        .filter(|s| !s.is_empty())
-        .collect()
+    (1..=16).filter_map(|i| me.get(&format!("template{i:02}")).map(str::to_ascii_lowercase)).filter(|s| !s.is_empty()).collect()
 }
 
 /// Runs after map entities exist and before their classes set up: moves

@@ -75,7 +75,9 @@ fn use_or_grab(
     }
     let Ok((pe, p)) = players.single() else { return };
     // `player_use` / `player_drop` for the instructor's carry lessons.
-    let event = |name: &str, e: Entity| GameEvent::new(name).with("userid", EventValue::Entity(Some(pe))).with("entity", EventValue::Entity(Some(e)));
+    let event = |name: &str, e: Entity| {
+        GameEvent::new(name).with("userid", EventValue::Entity(Some(pe))).with("entity", EventValue::Entity(Some(e)))
+    };
     if let Some(held) = holding.entity.take() {
         sounds.write(crate::audio::SoundRequest::stop("Weapon_Portalgun.HoldSound", pe));
         release(&mut commands, held);
@@ -87,7 +89,12 @@ fn use_or_grab(
     let dir = angles_forward(input.input.angles);
     let r = Vec3::splat(2.0);
     let tr = physics.trace(eye, eye + dir * REACH, -r, r, mask::SOLID_ALL, &[pe]);
-    debug!("use: eye {eye:.0?} dir {dir:.2?} fraction {:.2} entity {:?} body {:?}", tr.fraction, tr.entity, tr.entity.map(|e| props.get(e).map(|p| *p.2)));
+    debug!(
+        "use: eye {eye:.0?} dir {dir:.2?} fraction {:.2} entity {:?} body {:?}",
+        tr.fraction,
+        tr.entity,
+        tr.entity.map(|e| props.get(e).map(|p| *p.2))
+    );
     let Some(target) = tr.entity else {
         sounds.write(crate::audio::SoundRequest::on("PortalPlayer.UseDeny", pe));
         return;
@@ -102,10 +109,7 @@ fn use_or_grab(
             holding.cube = me.classname == "prop_weighted_cube";
             holding.error = 0.0;
             holding.lift = 0.0;
-            commands.entity(target).insert((
-                GravityScale(0.0),
-                layers_for(layers::HELD, layers::WORLD | layers::PROP | layers::MOVER),
-            ));
+            commands.entity(target).insert((GravityScale(0.0), layers_for(layers::HELD, layers::WORLD | layers::PROP | layers::MOVER)));
             sounds.write(crate::audio::SoundRequest::on("Weapon_Portalgun.HoldSound", pe));
             out.write(FireOutput::new(target, "OnPlayerPickup").with_activator(Some(pe)));
             out.write(FireOutput::new(target, "OnPhysGunPickup").with_activator(Some(pe)));

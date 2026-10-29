@@ -41,12 +41,7 @@ fn getroottable(ctx: &mut Ctx, _args: &[Value]) -> Result<Value> {
 
 /// A table with the compile-time constants (changes do not affect them).
 fn getconsttable(ctx: &mut Ctx, _args: &[Value]) -> Result<Value> {
-    let entries: Vec<(Value, Value)> = ctx
-        .vm
-        .consts
-        .iter()
-        .map(|(k, v)| (Value::Str(crate::value::SqStr::new(k)), v.clone()))
-        .collect();
+    let entries: Vec<(Value, Value)> = ctx.vm.consts.iter().map(|(k, v)| (Value::Str(crate::value::SqStr::new(k)), v.clone())).collect();
     let t = ctx.vm.new_table();
     for (k, v) in entries {
         ctx.vm.raw_set(&t, k, v);

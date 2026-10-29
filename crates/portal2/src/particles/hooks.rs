@@ -86,13 +86,7 @@ fn portal_effects(time: Res<Time>, mut events: MessageReader<PortalFx>, mut comm
                 let starts = now + PROJECTILE_DELAY;
                 let ends = now.max(starts + PROJECTILE_MIN_TIME);
                 let aim_point = start + aim.normalize_or(Vec3::X) * start.distance(end);
-                let e = effect_at(
-                    &mut commands,
-                    "portal_projectile_stream",
-                    start,
-                    orientation(aim, Vec3::Z),
-                    PORTAL_COLORS[slot.min(1)],
-                );
+                let e = effect_at(&mut commands, "portal_projectile_stream", start, orientation(aim, Vec3::Z), PORTAL_COLORS[slot.min(1)]);
                 commands.entity(e).insert(PortalBlast { start, aim_point, end, starts, ends });
             }
             PortalFx::Opened { slot, frame } => {

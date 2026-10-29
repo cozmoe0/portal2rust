@@ -536,10 +536,8 @@ const KBPS_V1: [[u16; 15]; 3] = [
     [0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384],
     [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320],
 ];
-const KBPS_V2: [[u16; 15]; 2] = [
-    [0, 32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256],
-    [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160],
-];
+const KBPS_V2: [[u16; 15]; 2] =
+    [[0, 32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256], [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160]];
 
 fn frame_header(h: &[u8]) -> Option<FrameHeader> {
     if h.len() < 4 || !is_mpeg_sync(h) {
@@ -707,8 +705,7 @@ mod tests {
         adtl.extend_from_slice(&u32s(&[1, 500]));
         adtl.extend_from_slice(b"rgn \0\0\0\0\0\0\0\0");
         let vdat = b"VERSION 1.0\nPLAINTEXT\n{\nhello there\n}\nWORDS\n{\nWORD hello 0.1 0.4\n{\n104 h 0.1 0.2 1\n201 e 0.2 0.4 0.8\n}\n}\nEMPHASIS\n{\n0.0 0.5\n}\nCLOSECAPTION\n{\nenglish\n{\nx\n}\n}\nOPTIONS\n{\nvoice_duck 1\n}\n".to_vec();
-        let wav =
-            riff(&[(b"fmt ", fmt(1, 1, 44100, 2, 16, &[])), (b"data", vec![0; 4]), (b"LIST", adtl), (b"VDAT", vdat)]);
+        let wav = riff(&[(b"fmt ", fmt(1, 1, 44100, 2, 16, &[])), (b"data", vec![0; 4]), (b"LIST", adtl), (b"VDAT", vdat)]);
         let w = Wave::parse(&wav).unwrap();
         assert_eq!(w.labels.len(), 2);
         assert_eq!((w.labels[0].kind, w.labels[0].text.as_str()), (*b"labl", "loop"));
@@ -822,9 +819,7 @@ mod tests {
         for (k, n) in &formats {
             println!("  {n:5}  {k}");
         }
-        println!(
-            "  looped {looped}, with sentence data {sentences}, with labels {labelled}, MPEG with trailing bytes {trailing}"
-        );
+        println!("  looped {looped}, with sentence data {sentences}, with labels {labelled}, MPEG with trailing bytes {trailing}");
         for f in failures.iter().take(20) {
             println!("  FAILED {f}");
         }

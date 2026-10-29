@@ -263,8 +263,24 @@ impl Class {
 
 /// Names that make a class member a metamethod.
 pub const METAMETHODS: &[&[u8]] = &[
-    b"_add", b"_sub", b"_mul", b"_div", b"_unm", b"_modulo", b"_set", b"_get", b"_typeof", b"_nexti", b"_cmp", b"_call",
-    b"_cloned", b"_newslot", b"_delslot", b"_tostring", b"_newmember", b"_inherited",
+    b"_add",
+    b"_sub",
+    b"_mul",
+    b"_div",
+    b"_unm",
+    b"_modulo",
+    b"_set",
+    b"_get",
+    b"_typeof",
+    b"_nexti",
+    b"_cmp",
+    b"_call",
+    b"_cloned",
+    b"_newslot",
+    b"_delslot",
+    b"_tostring",
+    b"_newmember",
+    b"_inherited",
 ];
 
 #[derive(Clone)]

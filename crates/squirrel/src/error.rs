@@ -6,10 +6,18 @@ use crate::value::Value;
 
 #[derive(Clone, Debug)]
 pub enum Error {
-    Compile { msg: String, source: String, line: u32 },
+    Compile {
+        msg: String,
+        source: String,
+        line: u32,
+    },
     /// A thrown value (an error message string for runtime errors) with the
     /// call stack at the point it was raised.
-    Runtime { value: Value, message: String, stack: Vec<String> },
+    Runtime {
+        value: Value,
+        message: String,
+        stack: Vec<String>,
+    },
 }
 
 impl Error {

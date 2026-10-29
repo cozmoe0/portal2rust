@@ -47,16 +47,28 @@ const TRIGGER_CLASSES: [&str; 9] = [
 pub enum TriggerKind {
     Plain,
     /// Deals `damage` every half second while touched.
-    Hurt { damage: f32, next: f64 },
-    Teleport { target: String, landmark: Option<String> },
-    Push { dir: Vec3, speed: f32 },
+    Hurt {
+        damage: f32,
+        next: f64,
+    },
+    Teleport {
+        target: String,
+        landmark: Option<String>,
+    },
+    Push {
+        dir: Vec3,
+        speed: f32,
+    },
     /// Emancipation field: removes the player's portals when crossed.
     Cleanser,
     /// Washes paint off props passing through (see paint/props.rs).
     PaintCleanser,
     /// Autosaves when the player enters, then goes away; a dangerous
     /// timer makes it a dangerous autosave.
-    Autosave { dangerous: f32, min_health: f32 },
+    Autosave {
+        dangerous: f32,
+        min_health: f32,
+    },
 }
 
 #[derive(Component, serde::Serialize, serde::Deserialize)]
@@ -104,7 +116,8 @@ fn spawn_trigger(world: &mut World, e: Entity) {
         wait: me.get_f32("wait").unwrap_or(if me.classname == "trigger_multiple" { 1.0 } else { -1.0 }),
         next_allowed: 0.0,
         touching: Vec::new(),
-        allow_players: flags & (SF_CLIENTS | SF_EVERYTHING) != 0 || matches!(me.classname.as_str(), "trigger_portal_cleanser" | "trigger_autosave"),
+        allow_players: flags & (SF_CLIENTS | SF_EVERYTHING) != 0
+            || matches!(me.classname.as_str(), "trigger_portal_cleanser" | "trigger_autosave"),
         filter: me.get("filtername").filter(|s| !s.is_empty()).map(|s| s.to_ascii_lowercase()),
         kind,
     };
@@ -190,10 +203,8 @@ fn filter_named(
         "filter_player_held" => held == Some(activator),
         "filter_multi" if depth < 8 => {
             let any = fe.get_i32("filtertype") == Some(1);
-            let subs: Vec<String> = (1..=10)
-                .filter_map(|i| fe.get(&format!("filter{i:02}")).map(str::to_ascii_lowercase))
-                .filter(|s| !s.is_empty())
-                .collect();
+            let subs: Vec<String> =
+                (1..=10).filter_map(|i| fe.get(&format!("filter{i:02}")).map(str::to_ascii_lowercase)).filter(|s| !s.is_empty()).collect();
             let mut results = subs.iter().map(|s| filter_named(s, activator, is_player, registry, entities, held, depth + 1));
             if any { results.any(|r| r) } else { results.all(|r| r) }
         }
@@ -354,7 +365,10 @@ fn press_floor_buttons(
     clock: Res<GameClock>,
     players: Query<&Player>,
     mut buttons: Query<(Entity, &mut FloorButton, &GlobalTransform, Option<&mut StudioAnimator>, &MapEntity)>,
-    props: Query<(&MapEntity, &crate::collision::Collider, &GlobalTransform), (With<crate::entities::props::PhysicsProp>, Without<FloorButton>)>,
+    props: Query<
+        (&MapEntity, &crate::collision::Collider, &GlobalTransform),
+        (With<crate::entities::props::PhysicsProp>, Without<FloorButton>),
+    >,
     mut out: MessageWriter<FireOutput>,
 ) {
     let Ok(player) = players.single() else { return };
@@ -395,9 +409,7 @@ fn press_floor_buttons(
                 && p.z + half.z > lo.z
                 && p.z - half.z < hi.z
         };
-        let player_on = !cube_only
-            && !ball_only
-            && boxes_overlap(player.state.origin + (pmins + pmaxs) * 0.5, (pmaxs - pmins) * 0.5);
+        let player_on = !cube_only && !ball_only && boxes_overlap(player.state.origin + (pmins + pmaxs) * 0.5, (pmaxs - pmins) * 0.5);
         let prop_on = props.iter().any(|(pm, col, pgt)| {
             if !accepts(pm) {
                 return false;

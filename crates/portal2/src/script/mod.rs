@@ -246,8 +246,7 @@ fn collect_hooks(world: &mut World, vm: &mut Vm, e: Entity, scope: &Value) {
 /// Runs an entity's `vscripts` (before its spawn code) and its Precache
 /// chain. Returns whether the entity has scripts.
 pub fn run_entity_scripts(world: &mut World, e: Entity) -> bool {
-    let Some(files) = world.get::<MapEntity>(e).and_then(|m| m.get("vscripts")).filter(|s| !s.trim().is_empty()).map(str::to_owned)
-    else {
+    let Some(files) = world.get::<MapEntity>(e).and_then(|m| m.get("vscripts")).filter(|s| !s.trim().is_empty()).map(str::to_owned) else {
         return false;
     };
     let Some(scope) = with_vm(world, |world, vm| validate_scope(world, vm, e)) else { return false };
@@ -289,9 +288,7 @@ pub fn queue_post_spawn(world: &mut World, e: Entity) {
     if world.get::<ScriptScope>(e).is_none() {
         return;
     }
-    world
-        .resource_mut::<EventQueue>()
-        .push(0.0, EventTarget::Entity(e), "callscriptfunction", "DispatchOnPostSpawn", Some(e), Some(e));
+    world.resource_mut::<EventQueue>().push(0.0, EventTarget::Entity(e), "callscriptfunction", "DispatchOnPostSpawn", Some(e), Some(e));
 }
 
 /// Calls a function of the entity's scope by name.

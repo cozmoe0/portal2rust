@@ -67,11 +67,7 @@ impl Parser {
     }
 
     fn expect_op(&mut self, op: &str) -> Result<()> {
-        if self.eat_op(op) {
-            Ok(())
-        } else {
-            Err(self.err(format!("expected '{op}'")))
-        }
+        if self.eat_op(op) { Ok(()) } else { Err(self.err(format!("expected '{op}'"))) }
     }
 
     fn ident(&mut self) -> Result<Name> {
@@ -529,7 +525,9 @@ impl Parser {
             if !is_lvalue(&lhs) {
                 return Err(self.err("can't assign expression"));
             }
-            if op == AssignOp::NewSlot && !matches!(lhs.kind, ExprKind::Ident(_) | ExprKind::Field(..) | ExprKind::Index(..) | ExprKind::Root(_)) {
+            if op == AssignOp::NewSlot
+                && !matches!(lhs.kind, ExprKind::Ident(_) | ExprKind::Field(..) | ExprKind::Index(..) | ExprKind::Root(_))
+            {
                 return Err(self.err("can't 'create' a local slot"));
             }
             self.advance();
@@ -769,10 +767,7 @@ impl Parser {
                         self.advance();
                         let name = self.ident()?;
                         let def = self.function_body(Some(name.clone()), fline)?;
-                        slots.push((
-                            Expr::new(ExprKind::Str(name), fline),
-                            Expr::new(ExprKind::Function(Rc::new(def)), fline),
-                        ));
+                        slots.push((Expr::new(ExprKind::Str(name), fline), Expr::new(ExprKind::Function(Rc::new(def)), fline)));
                     } else {
                         let key = self.table_key()?;
                         self.expect_op("=")?;
@@ -802,10 +797,7 @@ impl Parser {
 }
 
 fn is_lvalue(e: &Expr) -> bool {
-    matches!(
-        e.kind,
-        ExprKind::Ident(_) | ExprKind::Field(..) | ExprKind::Index(..) | ExprKind::Root(_) | ExprKind::Vargv(_)
-    )
+    matches!(e.kind, ExprKind::Ident(_) | ExprKind::Field(..) | ExprKind::Index(..) | ExprKind::Root(_) | ExprKind::Vargv(_))
 }
 
 fn describe(t: &Tok) -> String {

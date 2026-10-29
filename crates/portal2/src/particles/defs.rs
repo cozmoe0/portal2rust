@@ -88,16 +88,8 @@ impl Common {
             fade_in: (p.f("operator start fadein", 0.0), p.f("operator end fadein", 0.0)),
             fade_out: (p.f("operator start fadeout", 0.0), p.f("operator end fadeout", 0.0)),
             fade_oscillate: p.f("operator fade oscillate", 0.0),
-            time_offset: (
-                p.i("operator time offset seed", 0),
-                p.f("operator time offset min", 0.0),
-                p.f("operator time offset max", 0.0),
-            ),
-            time_scale: (
-                p.i("operator time scale seed", 0),
-                p.f("operator time scale min", 1.0),
-                p.f("operator time scale max", 1.0),
-            ),
+            time_offset: (p.i("operator time offset seed", 0), p.f("operator time offset min", 0.0), p.f("operator time offset max", 0.0)),
+            time_scale: (p.i("operator time scale seed", 0), p.f("operator time scale min", 1.0), p.f("operator time scale max", 1.0)),
             strength: (
                 p.i("operator strength scale seed", 0),
                 p.f("operator strength random scale min", 1.0),
@@ -118,37 +110,10 @@ impl Common {
 
 #[derive(Clone, Debug)]
 pub enum EmitterKind {
-    Continuous {
-        start: f32,
-        rate: f32,
-        duration: f32,
-        scale_cp: i32,
-        scale_cp_field: usize,
-        per_used_cp: f32,
-    },
-    Instant {
-        start: f32,
-        start_max: f32,
-        count: i32,
-        count_min: i32,
-        per_step: i32,
-        scale_cp: i32,
-        scale_cp_field: usize,
-    },
-    Noise {
-        start: f32,
-        duration: f32,
-        time_scale: f32,
-        time_offset: f32,
-        absolute: bool,
-        invert: bool,
-        min: f32,
-        max: f32,
-    },
-    Maintain {
-        count: i32,
-        start: f32,
-    },
+    Continuous { start: f32, rate: f32, duration: f32, scale_cp: i32, scale_cp_field: usize, per_used_cp: f32 },
+    Instant { start: f32, start_max: f32, count: i32, count_min: i32, per_step: i32, scale_cp: i32, scale_cp_field: usize },
+    Noise { start: f32, duration: f32, time_scale: f32, time_offset: f32, absolute: bool, invert: bool, min: f32, max: f32 },
+    Maintain { count: i32, start: f32 },
 }
 
 #[derive(Clone, Debug)]
@@ -418,9 +383,7 @@ impl InitKind {
             Self::RandomScalar { field, .. } | Self::RandomRotation { field, .. } => bit(*field),
             Self::RandomColor { field, .. } => bit(*field),
             Self::RandomSequence { field, .. } => bit(*field),
-            Self::Sphere { .. } | Self::Box { .. } | Self::Ring { .. } | Self::AlongPath { .. } => {
-                bit(POSITION) | bit(PREV_POSITION)
-            }
+            Self::Sphere { .. } | Self::Box { .. } | Self::Ring { .. } | Self::AlongPath { .. } => bit(POSITION) | bit(PREV_POSITION),
             Self::BetweenPoints { .. } | Self::FromParent { .. } => bit(POSITION) | bit(PREV_POSITION) | bit(LIFE),
             Self::NormalAlign { .. } => bit(NORMAL),
             Self::LitColor { .. } => bit(COLOR),
@@ -828,20 +791,9 @@ fn emitter(op: &ParticleOperator) -> EmitterKind {
             min: p.f("emission minimum", 0.0),
             max: p.f("emission maximum", 100.0),
         },
-        "emit to maintain count" => EmitterKind::Maintain {
-            count: p.i("count to maintain", 100),
-            start: p.f("emission start time", 0.0),
-        },
+        "emit to maintain count" => EmitterKind::Maintain { count: p.i("count to maintain", 100), start: p.f("emission start time", 0.0) },
         // Unknown emitters emit nothing.
-        _ => EmitterKind::Instant {
-            start: 0.0,
-            start_max: -1.0,
-            count: 0,
-            count_min: -1,
-            per_step: -1,
-            scale_cp: -1,
-            scale_cp_field: 0,
-        },
+        _ => EmitterKind::Instant { start: 0.0, start_max: -1.0, count: 0, count_min: -1, per_step: -1, scale_cp: -1, scale_cp_field: 0 },
     }
 }
 
@@ -931,10 +883,7 @@ fn initializer(op: &ParticleOperator) -> InitKind {
             local_bias: p.b("bias in local system", false),
             cp: p.cp("control_point_number", 0),
             speed: (p.f("speed_min", 0.0), p.f("speed_max", 0.0), p.f("speed_random_exponent", 1.0)),
-            local_speed: (
-                p.v("speed_in_local_coordinate_system_min", Vec3::ZERO),
-                p.v("speed_in_local_coordinate_system_max", Vec3::ZERO),
-            ),
+            local_speed: (p.v("speed_in_local_coordinate_system_min", Vec3::ZERO), p.v("speed_in_local_coordinate_system_max", Vec3::ZERO)),
             distribute_cps: p.b("randomly distribute to highest supplied Control Point", false),
             growth_time: p.f("randomly distribution growth time", 0.0),
             scale_cp: p.cp("scale cp (distance/speed/local speed)", -1),
@@ -975,19 +924,14 @@ fn initializer(op: &ParticleOperator) -> InitKind {
         "velocity random" => InitKind::VelocityRandom {
             cp: p.cp("control_point_number", 0),
             speed: (p.f("random_speed_min", 0.0), p.f("random_speed_max", 0.0)),
-            local: (
-                p.v("speed_in_local_coordinate_system_min", Vec3::ZERO),
-                p.v("speed_in_local_coordinate_system_max", Vec3::ZERO),
-            ),
+            local: (p.v("speed_in_local_coordinate_system_min", Vec3::ZERO), p.v("speed_in_local_coordinate_system_max", Vec3::ZERO)),
         },
-        "velocity inherit from control point" => InitKind::VelocityInherit {
-            cp: p.cp("control point number", 0),
-            scale: p.f("velocity scale", 1.0),
-        },
-        "velocity set from control point" => InitKind::VelocityFromCp {
-            cp: p.cp("control point number", 0),
-            scale: p.f("velocity scale", 1.0),
-        },
+        "velocity inherit from control point" => {
+            InitKind::VelocityInherit { cp: p.cp("control point number", 0), scale: p.f("velocity scale", 1.0) }
+        }
+        "velocity set from control point" => {
+            InitKind::VelocityFromCp { cp: p.cp("control point number", 0), scale: p.f("velocity scale", 1.0) }
+        }
         "position along ring" => InitKind::Ring {
             cp: p.cp("control point number", 0),
             radius: p.f("initial radius", 0.0),
@@ -1021,10 +965,7 @@ fn initializer(op: &ParticleOperator) -> InitKind {
             out_range: (p.f("output minimum", 0.0), p.f("output maximum", 1.0)),
             scale_initial: p.b("output is scalar of initial random range", false),
             clamp_to_range: p.b("only active within specified input range", false),
-            emitter_window: (
-                p.f("emitter lifetime start time (seconds)", -1.0),
-                p.f("emitter lifetime end time (seconds)", -1.0),
-            ),
+            emitter_window: (p.f("emitter lifetime start time (seconds)", -1.0), p.f("emitter lifetime end time (seconds)", -1.0)),
         },
         "remap noise to scalar" => InitKind::RemapNoise {
             field: p.field("output field", RADIUS),
@@ -1105,10 +1046,7 @@ fn initializer(op: &ParticleOperator) -> InitKind {
             scale_initial: p.b("output is scalar of initial random range", false),
             local: p.b("use local system", true),
             cp: p.cp("control_point_number", 0),
-            emitter_window: (
-                p.f("emitter lifetime start time (seconds)", -1.0),
-                p.f("emitter lifetime end time (seconds)", -1.0),
-            ),
+            emitter_window: (p.f("emitter lifetime start time (seconds)", -1.0), p.f("emitter lifetime end time (seconds)", -1.0)),
         },
         "color lit per particle" => InitKind::LitColor {
             color1: p.c("color1", [255; 4]),
@@ -1131,11 +1069,9 @@ fn operator(op: &ParticleOperator) -> OpKind {
     let p = P(&op.attributes);
     let name = op.function_name.to_ascii_lowercase();
     match name.as_str() {
-        "movement basic" => OpKind::Movement {
-            gravity: p.v("gravity", Vec3::ZERO),
-            drag: p.f("drag", 0.0),
-            passes: p.i("max constraint passes", 3),
-        },
+        "movement basic" => {
+            OpKind::Movement { gravity: p.v("gravity", Vec3::ZERO), drag: p.f("drag", 0.0), passes: p.i("max constraint passes", 3) }
+        }
         "lifespan decay" => OpKind::Decay,
         "alpha fade and decay" => OpKind::FadeAndKill {
             alpha: (p.f("start_alpha", 1.0), p.f("end_alpha", 0.0)),
@@ -1184,10 +1120,7 @@ fn operator(op: &ParticleOperator) -> OpKind {
         "oscillate scalar" => OpKind::Oscillate {
             field: p.field("oscillation field", ALPHA),
             rate: (Vec3::splat(p.f("oscillation rate min", 0.0)), Vec3::splat(p.f("oscillation rate max", 0.0))),
-            frequency: (
-                Vec3::splat(p.f("oscillation frequency min", 1.0)),
-                Vec3::splat(p.f("oscillation frequency max", 1.0)),
-            ),
+            frequency: (Vec3::splat(p.f("oscillation frequency min", 1.0)), Vec3::splat(p.f("oscillation frequency max", 1.0))),
             proportional: p.b("proportional 0/1", true),
             start: (p.f("start time min", 0.0), p.f("start time max", 0.0)),
             end: (p.f("end time min", 1.0), p.f("end time max", 1.0)),
@@ -1217,11 +1150,7 @@ fn operator(op: &ParticleOperator) -> OpKind {
         },
         "movement lock to control point" => OpKind::Lock {
             cp: p.cp("control_point_number", 0),
-            fade_start: (
-                p.f("start_fadeout_min", 1.0),
-                p.f("start_fadeout_max", 1.0),
-                p.f("start_fadeout_exponent", 1.0),
-            ),
+            fade_start: (p.f("start_fadeout_min", 1.0), p.f("start_fadeout_max", 1.0), p.f("start_fadeout_exponent", 1.0)),
             fade_end: (p.f("end_fadeout_min", 1.0), p.f("end_fadeout_max", 1.0), p.f("end_fadeout_exponent", 1.0)),
             distance_fade: p.f("distance fade range", 0.0),
         },
@@ -1257,16 +1186,12 @@ fn operator(op: &ParticleOperator) -> OpKind {
             proportional: p.b("start/end proportional", true),
             spline: name.contains("spline").then(|| (p.f("bias", 0.5), p.b("ease out", false))),
         },
-        "clamp scalar" => OpKind::Clamp {
-            field: p.field("output field", RADIUS),
-            min: p.f("output minimum", 0.0),
-            max: p.f("output maximum", 1.0),
-        },
+        "clamp scalar" => {
+            OpKind::Clamp { field: p.field("output field", RADIUS), min: p.f("output minimum", 0.0), max: p.f("output maximum", 1.0) }
+        }
         "lifespan minimum radius decay" => OpKind::MinimumDecay { field: RADIUS, minimum: p.f("minimum radius", 1.0) },
         "lifespan minimum alpha decay" => OpKind::MinimumDecay { field: ALPHA, minimum: p.f("minimum alpha", 0.0) },
-        "lifespan minimum velocity decay" => {
-            OpKind::MinimumDecay { field: PREV_POSITION, minimum: p.f("minimum velocity", 1.0) }
-        }
+        "lifespan minimum velocity decay" => OpKind::MinimumDecay { field: PREV_POSITION, minimum: p.f("minimum velocity", 1.0) },
         "remap distance to control point to scalar" => OpKind::RemapDistanceToCp {
             cp: p.cp("control point", 0),
             distance: (p.f("distance minimum", 0.0), p.f("distance maximum", 128.0)),
@@ -1320,11 +1245,9 @@ fn operator(op: &ParticleOperator) -> OpKind {
             within_only: p.b("only active within input range", false),
             radius: p.b("treat distance between points as radius", true),
         },
-        "movement dampen relative to control point" => OpKind::Dampen {
-            cp: p.cp("control_point_number", 0),
-            range: p.f("falloff range", 100.0),
-            scale: p.f("dampen scale", 1.0),
-        },
+        "movement dampen relative to control point" => {
+            OpKind::Dampen { cp: p.cp("control_point_number", 0), range: p.f("falloff range", 100.0), scale: p.f("dampen scale", 1.0) }
+        }
         "movement max velocity" => OpKind::MaxVelocity { max: p.f("Maximum Velocity", 0.0) },
         "set control point positions" => OpKind::SetCpPositions {
             world: p.b("Set positions in world space", false),
@@ -1450,12 +1373,7 @@ fn force(op: &ParticleOperator) -> ForceKind {
             exponent: p.f("Exponent", 1.0),
         },
         "turbulent force" => ForceKind::Turbulence {
-            scales: [
-                p.f("Noise scale 0", 1.0),
-                p.f("Noise scale 1", 0.0),
-                p.f("Noise scale 2", 0.0),
-                p.f("Noise scale 3", 0.0),
-            ],
+            scales: [p.f("Noise scale 0", 1.0), p.f("Noise scale 1", 0.0), p.f("Noise scale 2", 0.0), p.f("Noise scale 3", 0.0)],
             amounts: [
                 p.v("Noise amount 0", Vec3::ONE),
                 p.v("Noise amount 1", Vec3::splat(0.5)),

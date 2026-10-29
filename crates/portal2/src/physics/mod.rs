@@ -37,16 +37,11 @@ pub struct GamePhysicsPlugin;
 
 impl Plugin for GamePhysicsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(
-            PhysicsPlugins::default().with_length_unit(LENGTH_UNIT).with_collision_hooks::<PortalContactHooks>(),
-        )
-        .insert_resource(Gravity(Vec3::NEG_Z * crate::player::movement::GRAVITY))
-        .add_systems(
-            PreUpdate,
-            build_static_world.after(crate::collision::rebuild_on_map_load).before(crate::entities::EntitySpawnSet),
-        )
-        .add_systems(Update, (attach_bodies, attach_player_body, sync_portal_slabs))
-        .add_plugins((carry::CarryPlugin, portal_travel::PortalTravelPlugin));
+        app.add_plugins(PhysicsPlugins::default().with_length_unit(LENGTH_UNIT).with_collision_hooks::<PortalContactHooks>())
+            .insert_resource(Gravity(Vec3::NEG_Z * crate::player::movement::GRAVITY))
+            .add_systems(PreUpdate, build_static_world.after(crate::collision::rebuild_on_map_load).before(crate::entities::EntitySpawnSet))
+            .add_systems(Update, (attach_bodies, attach_player_body, sync_portal_slabs))
+            .add_plugins((carry::CarryPlugin, portal_travel::PortalTravelPlugin));
         inputs::register(app);
         constraints::register(app);
     }
@@ -167,19 +162,12 @@ fn attach_bodies(
         }
         let Some(collider) = shape_collider(&col.shape) else { continue };
         if is_prop && !parented && !me.has_flag(8) {
-            let mass = me
-                .get_f32("massscale")
-                .filter(|s| *s > 0.0)
-                .unwrap_or(1.0)
+            let mass = me.get_f32("massscale").filter(|s| *s > 0.0).unwrap_or(1.0)
                 * me.studio_model().and_then(|p| model_mass(&fs, &p)).unwrap_or(40.0);
             make_dynamic(&mut commands, e, collider, mass);
         } else {
             // Spawnflag 8 on physics props: start motion disabled.
-            commands.entity(e).insert((
-                RigidBody::Kinematic,
-                collider,
-                layers_for(layers::MOVER, layers::PROP | layers::HELD),
-            ));
+            commands.entity(e).insert((RigidBody::Kinematic, collider, layers_for(layers::MOVER, layers::PROP | layers::HELD)));
         }
     }
 }
@@ -219,11 +207,7 @@ fn attach_player_body(mut commands: Commands, players: Query<Entity, (With<Playe
 #[derive(Component)]
 struct PortalSlab;
 
-fn sync_portal_slabs(
-    mut commands: Commands,
-    holes: Res<PortalHoles>,
-    slabs: Query<Entity, With<PortalSlab>>,
-) {
+fn sync_portal_slabs(mut commands: Commands, holes: Res<PortalHoles>, slabs: Query<Entity, With<PortalSlab>>) {
     if !holes.is_changed() {
         return;
     }

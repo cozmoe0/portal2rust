@@ -92,12 +92,7 @@ impl Scheme {
         }
         if let Some(fonts) = root.get("Fonts") {
             for f in fonts.children().iter().filter(|f| f.is_block()) {
-                let entries = f
-                    .children()
-                    .iter()
-                    .filter(|e| e.is_block())
-                    .map(font_entry)
-                    .collect::<Vec<_>>();
+                let entries = f.children().iter().filter(|e| e.is_block()).map(font_entry).collect::<Vec<_>>();
                 scheme.fonts.entry(f.key.to_ascii_lowercase()).or_insert(entries);
             }
         }

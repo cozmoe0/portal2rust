@@ -101,10 +101,7 @@ impl Vpk {
                         full.push('.');
                         full.push_str(&ext);
                     }
-                    entries.insert(
-                        normalize_path(&full),
-                        VpkEntry { crc, archive_index, offset, length, preload_start, preload_len },
-                    );
+                    entries.insert(normalize_path(&full), VpkEntry { crc, archive_index, offset, length, preload_start, preload_len });
                 }
             }
         }
@@ -115,14 +112,7 @@ impl Vpk {
         let file_name = dir_path.file_name().and_then(|s| s.to_str()).unwrap_or_default().to_owned();
         let archive_stem = file_name.strip_suffix("_dir.vpk").unwrap_or(&file_name).to_owned();
         let archives = (0..=max_archive as usize).map(|_| OnceLock::new()).collect();
-        Ok(Self {
-            dir_path,
-            archive_stem,
-            data_offset: tree_end as u64,
-            dir_data: data,
-            entries,
-            archives,
-        })
+        Ok(Self { dir_path, archive_stem, data_offset: tree_end as u64, dir_data: data, entries, archives })
     }
 
     pub fn path(&self) -> &Path {
@@ -166,10 +156,7 @@ impl Vpk {
         out.resize(start + entry.length as usize, 0);
         if entry.archive_index == DIR_ARCHIVE {
             let off = (self.data_offset + entry.offset as u64) as usize;
-            let src = self
-                .dir_data
-                .get(off..off + entry.length as usize)
-                .ok_or(Error::Eof)?;
+            let src = self.dir_data.get(off..off + entry.length as usize).ok_or(Error::Eof)?;
             out[start..].copy_from_slice(src);
         } else {
             let file = self.archive(entry.archive_index)?;

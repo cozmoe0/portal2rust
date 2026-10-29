@@ -82,10 +82,7 @@ impl Plugin for VguiRenderPlugin {
             .add_systems(ExtractSchedule, extract_frame)
             .add_systems(
                 Render,
-                (
-                    prepare_buffers.in_set(RenderSystems::PrepareResources),
-                    prepare_bind_groups.in_set(RenderSystems::PrepareBindGroups),
-                ),
+                (prepare_buffers.in_set(RenderSystems::PrepareResources), prepare_bind_groups.in_set(RenderSystems::PrepareBindGroups)),
             )
             .add_systems(Core3d, draw_interface.in_set(Core3dSystems::PostProcess).in_set(VguiDrawSet));
     }
@@ -164,14 +161,11 @@ fn init_pipelines(
         })
     };
     let add = BlendOperation::Add;
-    let alpha = pass(
-        "vgui_alpha",
-        BlendComponent { src_factor: BlendFactor::SrcAlpha, dst_factor: BlendFactor::OneMinusSrcAlpha, operation: add },
-    );
+    let alpha =
+        pass("vgui_alpha", BlendComponent { src_factor: BlendFactor::SrcAlpha, dst_factor: BlendFactor::OneMinusSrcAlpha, operation: add });
     let additive =
         pass("vgui_additive", BlendComponent { src_factor: BlendFactor::SrcAlpha, dst_factor: BlendFactor::One, operation: add });
-    let modulate =
-        pass("vgui_modulate", BlendComponent { src_factor: BlendFactor::Dst, dst_factor: BlendFactor::Zero, operation: add });
+    let modulate = pass("vgui_modulate", BlendComponent { src_factor: BlendFactor::Dst, dst_factor: BlendFactor::Zero, operation: add });
     let backdrop = cache.queue_render_pipeline(RenderPipelineDescriptor {
         label: Some("vgui_backdrop".into()),
         layout: vec![layout.clone()],
@@ -184,11 +178,7 @@ fn init_pipelines(
         }),
         ..default()
     });
-    let sampler = device.create_sampler(&SamplerDescriptor {
-        mag_filter: FilterMode::Linear,
-        min_filter: FilterMode::Linear,
-        ..default()
-    });
+    let sampler = device.create_sampler(&SamplerDescriptor { mag_filter: FilterMode::Linear, min_filter: FilterMode::Linear, ..default() });
     commands.insert_resource(VguiPipelines { layout, sampler, backdrop, alpha, additive, modulate });
 }
 
@@ -205,12 +195,7 @@ impl Default for VguiBuffers {
     }
 }
 
-fn prepare_buffers(
-    frame: Res<ExtractedFrame>,
-    mut buffers: ResMut<VguiBuffers>,
-    device: Res<RenderDevice>,
-    queue: Res<RenderQueue>,
-) {
+fn prepare_buffers(frame: Res<ExtractedFrame>, mut buffers: ResMut<VguiBuffers>, device: Res<RenderDevice>, queue: Res<RenderQueue>) {
     buffers.vertices.clear();
     if frame.0.batches.is_empty() {
         return;
@@ -257,11 +242,7 @@ fn prepare_bind_groups(
             Some((_, g)) => g.clone(),
             None => {
                 let g = images.get(batch.image).map(|gpu| {
-                    device.create_bind_group(
-                        "vgui_bind_group",
-                        &layout,
-                        &BindGroupEntries::sequential((&gpu.texture_view, &gpu.sampler)),
-                    )
+                    device.create_bind_group("vgui_bind_group", &layout, &BindGroupEntries::sequential((&gpu.texture_view, &gpu.sampler)))
                 });
                 by_image.push((batch.image, g.clone()));
                 g

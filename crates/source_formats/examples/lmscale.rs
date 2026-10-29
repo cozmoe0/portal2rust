@@ -8,9 +8,13 @@ fn main() {
     let bsp = Bsp::parse(&fs.read(&format!("maps/{map}.bsp")).unwrap()).unwrap();
     let mut ratios = Vec::new();
     for f in &bsp.faces {
-        if f.light_offset < 0 || f.dispinfo >= 0 || f.texinfo < 0 { continue; }
+        if f.light_offset < 0 || f.dispinfo >= 0 || f.texinfo < 0 {
+            continue;
+        }
         let n = bsp.planes[f.plane as usize].normal;
-        if n.z < 0.95 { continue; }
+        if n.z < 0.95 {
+            continue;
+        }
         let verts = bsp.face_vertices(f);
         let center = verts.iter().fold(glam::Vec3::ZERO, |a, &b| a + b) / verts.len() as f32;
         let ti = &bsp.texinfo[f.texinfo as usize];
@@ -25,9 +29,20 @@ fn main() {
         let l = lum(lm[(tii * w + si) as usize]);
         let Some(cube) = bsp.ambient_cube(center + glam::Vec3::Z * 16.0) else { continue };
         let a = lum(cube[4]);
-        if l > 1e-4 && a > 1e-6 { ratios.push(a / l); }
+        if l > 1e-4 && a > 1e-6 {
+            ratios.push(a / l);
+        }
     }
     ratios.sort_by(|a, b| a.total_cmp(b));
-    if ratios.is_empty() { println!("no samples"); return; }
-    println!("{map}: {} floor samples, ambient(+Z)/lightmap median {:.3} p25 {:.3} p75 {:.3}", ratios.len(), ratios[ratios.len() / 2], ratios[ratios.len() / 4], ratios[ratios.len() * 3 / 4]);
+    if ratios.is_empty() {
+        println!("no samples");
+        return;
+    }
+    println!(
+        "{map}: {} floor samples, ambient(+Z)/lightmap median {:.3} p25 {:.3} p75 {:.3}",
+        ratios.len(),
+        ratios[ratios.len() / 2],
+        ratios[ratios.len() / 4],
+        ratios[ratios.len() * 3 / 4]
+    );
 }

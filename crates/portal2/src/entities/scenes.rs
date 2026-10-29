@@ -212,7 +212,11 @@ fn input(world: &mut World, call: &InputCall) -> bool {
                 s.targets[i - 1] = (!name.is_empty()).then_some(name);
             }
         }
-        "cancelatnextinterrupt" | "interjectresponse" | "stopwaitingforactor" | "startwaitingforactor" | "scriptplayerdeath"
+        "cancelatnextinterrupt"
+        | "interjectresponse"
+        | "stopwaitingforactor"
+        | "startwaitingforactor"
+        | "scriptplayerdeath"
         | "setbreakpoint" => {}
         _ => return false,
     }
@@ -290,8 +294,7 @@ fn speak(world: &mut World, e: Entity, who: Entity, ev: &source_formats::vcd::Ev
 /// After a saved game is restored: lines that were being spoken carry on
 /// from where they were.
 pub fn resume_speech(world: &mut World) {
-    let playing: Vec<Entity> =
-        world.query::<(Entity, &ChoreoScene)>().iter(world).filter(|(_, s)| s.playing).map(|(e, _)| e).collect();
+    let playing: Vec<Entity> = world.query::<(Entity, &ChoreoScene)>().iter(world).filter(|(_, s)| s.playing).map(|(e, _)| e).collect();
     for e in playing {
         let Some(scene) = loaded(world, e) else { continue };
         let Some((time, pitch)) = world.get::<ChoreoScene>(e).map(|s| (s.time, s.pitch)) else { continue };

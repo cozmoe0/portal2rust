@@ -228,11 +228,8 @@ fn load_animator(world: &mut World, e: Entity, bytes: &[u8]) -> Result<(), Strin
     a.looping = s.looping;
     a.finished = s.finished;
     a.default_sequence = s.default_sequence.as_deref().and_then(|n| find(&a, n));
-    let layers = s
-        .layers
-        .iter()
-        .filter_map(|(n, cycle, weight)| Some(Layer { sequence: find(&a, n)?, cycle: *cycle, weight: *weight }))
-        .collect();
+    let layers =
+        s.layers.iter().filter_map(|(n, cycle, weight)| Some(Layer { sequence: find(&a, n)?, cycle: *cycle, weight: *weight })).collect();
     a.set_layers(layers);
     for (name, value) in &s.pose {
         a.set_pose_parameter(name, *value);

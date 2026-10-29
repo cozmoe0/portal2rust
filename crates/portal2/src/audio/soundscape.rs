@@ -278,11 +278,8 @@ pub fn update_soundscapes(world: &mut World) {
 fn choose(world: &mut World, state: &mut SoundscapeState, now: f64) {
     let Some(player) = world.resource::<EntityRegistry>().player else { return };
     let Some(ear) = world.get::<GlobalTransform>(player).map(|t| t.translation() + Vec3::Z * 64.0) else { return };
-    let candidates: Vec<(Entity, Vec3, SoundscapeEnt)> = world
-        .query::<(Entity, &GlobalTransform, &SoundscapeEnt)>()
-        .iter(world)
-        .map(|(e, t, s)| (e, t.translation(), s.clone()))
-        .collect();
+    let candidates: Vec<(Entity, Vec3, SoundscapeEnt)> =
+        world.query::<(Entity, &GlobalTransform, &SoundscapeEnt)>().iter(world).map(|(e, t, s)| (e, t.translation(), s.clone())).collect();
     let clear = |world: &mut World, from: Vec3| -> bool {
         let mut sys: bevy::ecs::system::SystemState<Physics> = bevy::ecs::system::SystemState::new(world);
         let Ok(physics) = sys.get(world) else { return true };
@@ -323,7 +320,8 @@ fn choose(world: &mut World, state: &mut SoundscapeState, now: f64) {
     let registry = world.resource::<EntityRegistry>();
     let targets: Vec<Option<Entity>> =
         ent.positions.iter().map(|p| p.as_ref().and_then(|n| registry.by_name.get(n).and_then(|l| l.first()).copied())).collect();
-    let positions: Vec<Option<Vec3>> = targets.into_iter().map(|t| t.and_then(|t| world.get::<GlobalTransform>(t)).map(|g| g.translation())).collect();
+    let positions: Vec<Option<Vec3>> =
+        targets.into_iter().map(|t| t.and_then(|t| world.get::<GlobalTransform>(t)).map(|g| g.translation())).collect();
     let (mut loops, mut randoms) = (Vec::new(), Vec::new());
     let (fade, mixer) = {
         let sounds = world.resource::<Sounds>();

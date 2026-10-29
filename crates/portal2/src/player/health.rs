@@ -18,9 +18,7 @@ pub struct HealthPlugin;
 
 impl Plugin for HealthPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<DamagePlayer>()
-            .add_systems(Update, reset_health)
-            .add_systems(FixedUpdate, apply_damage.after(PlayerMoveSet));
+        app.add_message::<DamagePlayer>().add_systems(Update, reset_health).add_systems(FixedUpdate, apply_damage.after(PlayerMoveSet));
     }
 }
 
@@ -48,11 +46,7 @@ pub struct DamagePlayer {
     pub source: Option<Entity>,
 }
 
-fn reset_health(
-    mut commands: Commands,
-    start: Option<Res<PlayerStart>>,
-    mut players: Query<(Entity, Option<&mut Health>), With<Player>>,
-) {
+fn reset_health(mut commands: Commands, start: Option<Res<PlayerStart>>, mut players: Query<(Entity, Option<&mut Health>), With<Player>>) {
     for (e, health) in &mut players {
         match health {
             Some(mut h) if start.as_ref().is_some_and(|s| s.is_changed()) => *h = Health { god: h.god, ..default() },

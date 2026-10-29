@@ -10,9 +10,7 @@ use crate::console::Console;
 use crate::vgui::{Schemes, Surface, VguiPaint, layer};
 
 pub fn build(app: &mut App) {
-    app.init_resource::<ConsoleUi>()
-        .add_systems(Update, input.before(super::input))
-        .add_systems(PostUpdate, paint.in_set(VguiPaint));
+    app.init_resource::<ConsoleUi>().add_systems(Update, input.before(super::input)).add_systems(PostUpdate, paint.in_set(VguiPaint));
     app.world_mut().resource_mut::<Console>().register_command("toggleconsole", |world, _| {
         let mut ui = world.resource_mut::<ConsoleUi>();
         ui.open = !ui.open;
@@ -30,7 +28,12 @@ pub struct ConsoleUi {
     ignore_next: bool,
 }
 
-fn input(mut ui: ResMut<ConsoleUi>, mut events: MessageReader<KeyboardInput>, keys: Res<ButtonInput<KeyCode>>, mut console: ResMut<Console>) {
+fn input(
+    mut ui: ResMut<ConsoleUi>,
+    mut events: MessageReader<KeyboardInput>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut console: ResMut<Console>,
+) {
     if keys.just_pressed(KeyCode::Backquote) && !ui.open {
         ui.open = true;
         ui.ignore_next = true;

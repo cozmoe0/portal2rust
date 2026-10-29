@@ -228,7 +228,13 @@ impl Args {
             }
         }
         // Start on the first shot's map rather than loading the default one.
-        if let Some(first) = args.shots.as_deref().or(args.bench.as_deref()).and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| crate::shots::parse_shots(&t).into_iter().next()) {
+        if let Some(first) = args
+            .shots
+            .as_deref()
+            .or(args.bench.as_deref())
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|t| crate::shots::parse_shots(&t).into_iter().next())
+        {
             args.map = first.map;
         }
         if let Some(first) = &args.chain {

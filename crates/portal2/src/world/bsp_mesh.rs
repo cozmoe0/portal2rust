@@ -249,12 +249,8 @@ fn build_overlays(
         }
         let v = n.cross(u).normalize_or_zero();
         let quad: [Vec2; 4] = std::array::from_fn(|i| ov.uv_points[i].truncate());
-        let tex: [Vec2; 4] = [
-            Vec2::new(ov.u[0], ov.v[0]),
-            Vec2::new(ov.u[0], ov.v[1]),
-            Vec2::new(ov.u[1], ov.v[1]),
-            Vec2::new(ov.u[1], ov.v[0]),
-        ];
+        let tex: [Vec2; 4] =
+            [Vec2::new(ov.u[0], ov.v[0]), Vec2::new(ov.u[0], ov.v[1]), Vec2::new(ov.u[1], ov.v[1]), Vec2::new(ov.u[1], ov.v[0])];
         let sky = ov.faces.first().is_some_and(|&f| in_skybox(f.max(0) as usize));
         let key = (ov.render_order, ti.texdata, sky);
         let pos = match batches.iter().position(|(o, t, s, _)| (*o, *t, *s) == key) {
@@ -369,8 +365,7 @@ fn build_overlays(
         );
     }
     batches.sort_by_key(|(order, _, _, _)| *order);
-    let (sky, world): (Vec<_>, Vec<_>) =
-        batches.into_iter().filter(|(_, _, _, b)| !b.indices.is_empty()).partition(|(_, _, sky, _)| *sky);
+    let (sky, world): (Vec<_>, Vec<_>) = batches.into_iter().filter(|(_, _, _, b)| !b.indices.is_empty()).partition(|(_, _, sky, _)| *sky);
     (world.into_iter().map(|(_, _, _, b)| b).collect(), sky.into_iter().map(|(_, _, _, b)| b).collect())
 }
 
@@ -528,15 +523,7 @@ fn build_face(bsp: &Bsp, face: &Face, m: &FaceMapping, batch: &mut MeshBatch) {
     let bump_step = m.bump_step();
     let base = batch.positions.len() as u32;
     for &p in &verts {
-        batch.push_vertex(VertexIn {
-            pos: p,
-            normal,
-            tangent,
-            uv0: m.uv0(p),
-            uv1: m.luxel_to_uv1(m.luxel(p)),
-            bump_step,
-            alpha: 1.0,
-        });
+        batch.push_vertex(VertexIn { pos: p, normal, tangent, uv0: m.uv0(p), uv1: m.luxel_to_uv1(m.luxel(p)), bump_step, alpha: 1.0 });
     }
     // Source polygons wind clockwise seen from the front; Bevy front faces are CCW.
     if face.num_prims > 0 && !bsp.primitives.is_empty() {
@@ -553,11 +540,7 @@ fn build_face(bsp: &Bsp, face: &Face, m: &FaceMapping, batch: &mut MeshBatch) {
                 }
             } else {
                 for i in 2..idx.len() {
-                    let (a, b, c) = if i % 2 == 0 {
-                        (idx[i - 2], idx[i - 1], idx[i])
-                    } else {
-                        (idx[i - 1], idx[i - 2], idx[i])
-                    };
+                    let (a, b, c) = if i % 2 == 0 { (idx[i - 2], idx[i - 1], idx[i]) } else { (idx[i - 1], idx[i - 2], idx[i]) };
                     batch.indices.extend([base + a as u32, base + c as u32, base + b as u32]);
                 }
             }
@@ -591,11 +574,7 @@ fn disp_grid(bsp: &Bsp, face: &Face, disp_index: usize, m: &FaceMapping) -> Opti
         return None;
     }
     let start = (0..4)
-        .min_by(|&a, &b| {
-            corners[a]
-                .distance_squared(disp.start_position)
-                .total_cmp(&corners[b].distance_squared(disp.start_position))
-        })
+        .min_by(|&a, &b| corners[a].distance_squared(disp.start_position).total_cmp(&corners[b].distance_squared(disp.start_position)))
         .unwrap_or(0);
     let c = [corners[start], corners[(start + 1) % 4], corners[(start + 2) % 4], corners[(start + 3) % 4]];
     let lux = c.map(|p| m.luxel(p));
@@ -648,11 +627,7 @@ fn disp_grid(bsp: &Bsp, face: &Face, disp_index: usize, m: &FaceMapping) -> Opti
             let v01 = v00 + 1;
             let v10 = (i + 1) * n + j;
             let v11 = v10 + 1;
-            let (t1, t2) = if (i + j) % 2 == 0 {
-                ([v00, v10, v11], [v00, v11, v01])
-            } else {
-                ([v00, v10, v01], [v01, v10, v11])
-            };
+            let (t1, t2) = if (i + j) % 2 == 0 { ([v00, v10, v11], [v00, v11, v01]) } else { ([v00, v10, v01], [v01, v10, v11]) };
             // Both triangles are counter-clockwise around the grid normal
             // (row x column); flip them when that faces away from the surface.
             for t in [t1, t2] {

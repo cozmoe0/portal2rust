@@ -229,7 +229,13 @@ fn update_scale(
 ) {
     let t = &mut *tonemap;
     let forced = console.f32("mat_force_tonemap_scale");
-    t.forced = if forced > 0.0 { forced } else if args.fixed_exposure { args.exposure } else { 0.0 };
+    t.forced = if forced > 0.0 {
+        forced
+    } else if args.fixed_exposure {
+        args.exposure
+    } else {
+        0.0
+    };
     if t.forced > 0.0 {
         t.scale = t.forced;
         t.target = t.forced;

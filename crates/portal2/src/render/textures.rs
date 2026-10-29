@@ -5,9 +5,7 @@ use std::collections::HashMap;
 use bevy::asset::RenderAssetUsages;
 use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
 use bevy::prelude::*;
-use bevy::render::render_resource::{
-    Extent3d, TextureDimension, TextureFormat, TextureViewDescriptor, TextureViewDimension,
-};
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureViewDescriptor, TextureViewDimension};
 use source_formats::vtf::{self, Vtf, VtfFormat};
 
 use crate::vfs::GameFs;
@@ -51,8 +49,7 @@ impl TextureCache {
                 height: vtf.height,
                 flags: vtf.flags,
                 has_alpha: vtf.format.has_alpha()
-                    && (vtf.flags & (vtf::flags::ONEBITALPHA | vtf::flags::EIGHTBITALPHA) != 0
-                        || vtf.format != VtfFormat::Dxt5),
+                    && (vtf.flags & (vtf::flags::ONEBITALPHA | vtf::flags::EIGHTBITALPHA) != 0 || vtf.format != VtfFormat::Dxt5),
                 frames: vtf.frames,
                 reflectivity: Vec3::from(vtf.reflectivity),
             }
@@ -123,19 +120,39 @@ fn gpu_format(format: VtfFormat, srgb: bool, w: u32, h: u32) -> Option<TextureFo
     let block_ok = w % 4 == 0 && h % 4 == 0;
     Some(match format {
         VtfFormat::Dxt1 | VtfFormat::Dxt1OneBitAlpha if block_ok => {
-            if srgb { TextureFormat::Bc1RgbaUnormSrgb } else { TextureFormat::Bc1RgbaUnorm }
+            if srgb {
+                TextureFormat::Bc1RgbaUnormSrgb
+            } else {
+                TextureFormat::Bc1RgbaUnorm
+            }
         }
         VtfFormat::Dxt3 if block_ok => {
-            if srgb { TextureFormat::Bc2RgbaUnormSrgb } else { TextureFormat::Bc2RgbaUnorm }
+            if srgb {
+                TextureFormat::Bc2RgbaUnormSrgb
+            } else {
+                TextureFormat::Bc2RgbaUnorm
+            }
         }
         VtfFormat::Dxt5 if block_ok => {
-            if srgb { TextureFormat::Bc3RgbaUnormSrgb } else { TextureFormat::Bc3RgbaUnorm }
+            if srgb {
+                TextureFormat::Bc3RgbaUnormSrgb
+            } else {
+                TextureFormat::Bc3RgbaUnorm
+            }
         }
         VtfFormat::Bgra8888 => {
-            if srgb { TextureFormat::Bgra8UnormSrgb } else { TextureFormat::Bgra8Unorm }
+            if srgb {
+                TextureFormat::Bgra8UnormSrgb
+            } else {
+                TextureFormat::Bgra8Unorm
+            }
         }
         VtfFormat::Rgba8888 => {
-            if srgb { TextureFormat::Rgba8UnormSrgb } else { TextureFormat::Rgba8Unorm }
+            if srgb {
+                TextureFormat::Rgba8UnormSrgb
+            } else {
+                TextureFormat::Rgba8Unorm
+            }
         }
         VtfFormat::Rgba16161616F => TextureFormat::Rgba16Float,
         _ => return None,
@@ -180,10 +197,7 @@ pub fn vtf_to_image(vtf: &Vtf, srgb: bool, frame: u32) -> Image {
     image.data = Some(data);
     image.texture_descriptor.mip_level_count = mips;
     if faces == 6 {
-        image.texture_view_descriptor = Some(TextureViewDescriptor {
-            dimension: Some(TextureViewDimension::Cube),
-            ..default()
-        });
+        image.texture_view_descriptor = Some(TextureViewDescriptor { dimension: Some(TextureViewDimension::Cube), ..default() });
     }
 
     let clamp_s = vtf.flags & vtf::flags::CLAMPS != 0 || faces == 6;

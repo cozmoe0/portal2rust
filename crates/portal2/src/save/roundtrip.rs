@@ -19,9 +19,7 @@ pub struct RoundTripPlugin;
 
 impl Plugin for RoundTripPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup)
-            .add_systems(Update, run)
-            .add_systems(PreUpdate, check_restored.after(super::finish_restore));
+        app.add_systems(Startup, setup).add_systems(Update, run).add_systems(PreUpdate, check_restored.after(super::finish_restore));
     }
 }
 
@@ -165,8 +163,13 @@ fn compare(a: &SaveFile, b: &SaveFile) -> Vec<String> {
         if x.outputs.len() != y.outputs.len() {
             out.push(format!("{who}: outputs {} vs {}", x.outputs.len(), y.outputs.len()));
         }
-        if x.transform.translation.distance(y.transform.translation) > 0.01 || x.transform.rotation.dot(y.transform.rotation).abs() < 0.99999 {
-            out.push(format!("{who}: placement {:?} {:?} vs {:?} {:?}", x.transform.translation, x.transform.rotation, y.transform.translation, y.transform.rotation));
+        if x.transform.translation.distance(y.transform.translation) > 0.01
+            || x.transform.rotation.dot(y.transform.rotation).abs() < 0.99999
+        {
+            out.push(format!(
+                "{who}: placement {:?} {:?} vs {:?} {:?}",
+                x.transform.translation, x.transform.rotation, y.transform.translation, y.transform.rotation
+            ));
         }
         if x.parent != y.parent {
             out.push(format!("{who}: parent {:?} vs {:?}", x.parent, y.parent));

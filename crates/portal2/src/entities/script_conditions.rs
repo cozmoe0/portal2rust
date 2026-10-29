@@ -178,7 +178,8 @@ fn evaluate(
                 };
                 let looking = in_view_cone(eye, input.input.angles, target_pos, c.fov, c.true_cone);
                 let sight = c.los == Tristate::DontCare
-                    || (physics.trace(target_pos, eye, Vec3::ZERO, Vec3::ZERO, LOS_MASK, &[te, pe]).fraction >= 1.0) == (c.los == Tristate::Yes);
+                    || (physics.trace(target_pos, eye, Vec3::ZERO, Vec3::ZERO, LOS_MASK, &[te, pe]).fraction >= 1.0)
+                        == (c.los == Tristate::Yes);
                 near && looking && sight
             }
             _ => true,

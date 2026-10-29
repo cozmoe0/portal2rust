@@ -12,13 +12,19 @@ fn main() {
     let bsp = Bsp::parse(&fs.read(&format!("maps/{map}.bsp")).unwrap()).unwrap();
     let mut faces: Vec<(f32, glam::Vec3, glam::Vec3, f32)> = Vec::new();
     for f in &bsp.faces {
-        if f.texinfo < 0 || f.dispinfo >= 0 || f.area < 64.0 * 112.0 { continue; }
+        if f.texinfo < 0 || f.dispinfo >= 0 || f.area < 64.0 * 112.0 {
+            continue;
+        }
         let ti = &bsp.texinfo[f.texinfo as usize];
-        if ti.flags & (surf::NOPORTAL | surf::NODRAW | surf::SKY | surf::TRIGGER) != 0 { continue; }
+        if ti.flags & (surf::NOPORTAL | surf::NODRAW | surf::SKY | surf::TRIGGER) != 0 {
+            continue;
+        }
         let v = bsp.face_vertices(f);
         let c = v.iter().fold(glam::Vec3::ZERO, |s, &x| s + x) / v.len() as f32;
         let n = bsp.planes[f.plane as usize].normal;
-        if n.dot(p - c) <= 0.0 { continue; } // must face the point
+        if n.dot(p - c) <= 0.0 {
+            continue;
+        } // must face the point
         faces.push((c.distance(p), c, n, f.area));
     }
     faces.sort_by(|x, y| x.0.total_cmp(&y.0));

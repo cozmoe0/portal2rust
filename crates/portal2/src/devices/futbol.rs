@@ -173,7 +173,11 @@ fn burst_futbols(
             let tr = physics.trace(pos, pos + ahead, Vec3::ZERO, Vec3::ZERO, mask::SOLID_ALL, &[e]);
             hit = tr.hit() && !tr.start_solid;
         }
-        let stopped = !forced && ball.on_touch && Some(e) != held && ball.last_speed > TOUCH_SPEED * 2.0 && ball.last_speed - speed > TOUCH_SPEED * 2.0;
+        let stopped = !forced
+            && ball.on_touch
+            && Some(e) != held
+            && ball.last_speed > TOUCH_SPEED * 2.0
+            && ball.last_speed - speed > TOUCH_SPEED * 2.0;
         ball.last_speed = speed;
         if !(forced || hit || stopped) {
             continue;

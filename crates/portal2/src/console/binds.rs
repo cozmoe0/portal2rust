@@ -131,9 +131,30 @@ const MOUSE: &[(&str, MouseButton)] = &[
 /// Controller button names; binds to them are kept (controllers are not
 /// read yet).
 const PAD: &[&str] = &[
-    "a_button", "b_button", "x_button", "y_button", "l_shoulder", "r_shoulder", "back", "start", "stick1", "stick2",
-    "up", "right", "down", "left", "l_trigger", "r_trigger", "s1_up", "s1_down", "s1_left", "s1_right", "s2_up",
-    "s2_down", "s2_left", "s2_right",
+    "a_button",
+    "b_button",
+    "x_button",
+    "y_button",
+    "l_shoulder",
+    "r_shoulder",
+    "back",
+    "start",
+    "stick1",
+    "stick2",
+    "up",
+    "right",
+    "down",
+    "left",
+    "l_trigger",
+    "r_trigger",
+    "s1_up",
+    "s1_down",
+    "s1_left",
+    "s1_right",
+    "s2_up",
+    "s2_down",
+    "s2_left",
+    "s2_right",
 ];
 
 /// Whether `name` is a key the engine knows (bind accepts only these).

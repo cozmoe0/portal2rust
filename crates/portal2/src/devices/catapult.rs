@@ -265,10 +265,7 @@ fn run_catapults(
     transforms: Query<&GlobalTransform>,
     mut catapults: Query<(Entity, &mut Catapult)>,
     mut players: Query<(Entity, &mut Player)>,
-    mut props: Query<
-        (Entity, &TraceCollider, &GlobalTransform, &RigidBody, &mut LinearVelocity, &mut AngularVelocity),
-        With<PhysicsProp>,
-    >,
+    mut props: Query<(Entity, &TraceCollider, &GlobalTransform, &RigidBody, &mut LinearVelocity, &mut AngularVelocity), With<PhysicsProp>>,
     mut air: ResMut<AirControl>,
     mut out: MessageWriter<FireOutput>,
 ) {
@@ -284,12 +281,8 @@ fn run_catapults(
             continue;
         }
         c.refire.retain(|(_, until)| *until > now);
-        let target_pos = c
-            .target
-            .as_ref()
-            .and_then(|t| registry.first_named(t))
-            .and_then(|t| transforms.get(t).ok())
-            .map(|t| t.translation());
+        let target_pos =
+            c.target.as_ref().and_then(|t| registry.first_named(t)).and_then(|t| transforms.get(t).ok()).map(|t| t.translation());
         let mut now_touching = Vec::new();
 
         if let (Some(pe), Some(p)) = (pe, p.as_deref_mut())

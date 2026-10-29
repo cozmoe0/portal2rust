@@ -271,12 +271,7 @@ impl MaterialCache {
         self.paint = None;
     }
 
-    pub fn world(
-        &mut self,
-        name: &str,
-        ctx: &mut MaterialContext,
-        materials: &mut Assets<WorldMaterial>,
-    ) -> WorldMaterialInfo {
+    pub fn world(&mut self, name: &str, ctx: &mut MaterialContext, materials: &mut Assets<WorldMaterial>) -> WorldMaterialInfo {
         let key = material_path(name);
         if let Some(info) = self.world.get(&key) {
             return info.clone();
@@ -318,7 +313,10 @@ impl MaterialCache {
                     p.flags |= world_flags::BLEND_MODULATE;
                 }
                 if let Some(env) = ctx.cubemap(vmt, "$envmap").or_else(|| {
-                    vmt.get("$envmap").is_some_and(|e| e.eq_ignore_ascii_case("env_cubemap")).then(|| self.default_cubemap.clone()).flatten()
+                    vmt.get("$envmap")
+                        .is_some_and(|e| e.eq_ignore_ascii_case("env_cubemap"))
+                        .then(|| self.default_cubemap.clone())
+                        .flatten()
                 }) {
                     m.envmap = Some(env);
                     p.flags |= world_flags::ENVMAP;
@@ -454,7 +452,10 @@ impl MaterialCache {
                     }
                 }
                 if let Some(env) = ctx.cubemap(vmt, "$envmap").or_else(|| {
-                    vmt.get("$envmap").is_some_and(|e| e.eq_ignore_ascii_case("env_cubemap")).then(|| self.default_cubemap.clone()).flatten()
+                    vmt.get("$envmap")
+                        .is_some_and(|e| e.eq_ignore_ascii_case("env_cubemap"))
+                        .then(|| self.default_cubemap.clone())
+                        .flatten()
                 }) {
                     m.envmap = Some(env);
                     p.flags |= model_flags::ENVMAP;

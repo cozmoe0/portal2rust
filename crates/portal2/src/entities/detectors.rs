@@ -12,7 +12,9 @@ use crate::player::Player;
 use crate::portals::{Portal, Portals};
 
 pub fn register(app: &mut App) {
-    app.init_resource::<SpeedMod>().init_resource::<PlayerFog>().add_systems(FixedUpdate, (detect_portals, player_proxy_outputs).in_set(ThinkSet));
+    app.init_resource::<SpeedMod>()
+        .init_resource::<PlayerFog>()
+        .add_systems(FixedUpdate, (detect_portals, player_proxy_outputs).in_set(ThinkSet));
     let world = app.world_mut();
     {
         let mut s = world.resource_mut::<SpawnHandlers>();
@@ -112,14 +114,10 @@ fn player_proxy_outputs(
     let (jumping, ducked) = (p.state.jump_held && !p.state.on_ground, p.state.ducked);
     let before = last.replace((jumping, ducked));
     let Some((was_jumping, was_ducked)) = before else { return };
-    let events: Vec<&str> = [
-        (jumping && !was_jumping, "OnJump"),
-        (ducked && !was_ducked, "OnDuck"),
-        (!ducked && was_ducked, "OnUnDuck"),
-    ]
-    .into_iter()
-    .filter_map(|(hit, name)| hit.then_some(name))
-    .collect();
+    let events: Vec<&str> = [(jumping && !was_jumping, "OnJump"), (ducked && !was_ducked, "OnDuck"), (!ducked && was_ducked, "OnUnDuck")]
+        .into_iter()
+        .filter_map(|(hit, name)| hit.then_some(name))
+        .collect();
     if events.is_empty() {
         return;
     }

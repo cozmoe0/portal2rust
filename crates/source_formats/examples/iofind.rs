@@ -20,8 +20,8 @@ fn main() {
             if fields.len() < 2 {
                 continue;
             }
-            let hit = fields.iter().take(3).any(|f| f.to_ascii_lowercase().contains(&needle))
-                || name.to_ascii_lowercase().contains(&needle);
+            let hit =
+                fields.iter().take(3).any(|f| f.to_ascii_lowercase().contains(&needle)) || name.to_ascii_lowercase().contains(&needle);
             if hit {
                 println!(
                     "#{i} {} '{name}' at {:?}: {key} -> {} . {} ({}) delay {}",

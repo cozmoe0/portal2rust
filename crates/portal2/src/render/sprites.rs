@@ -16,9 +16,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, MeshVertexBufferLayoutRef, PrimitiveTopology};
 use bevy::pbr::{MaterialPipeline, MaterialPipelineKey};
 use bevy::prelude::*;
-use bevy::render::render_resource::{
-    AsBindGroup, CompareFunction, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError,
-};
+use bevy::render::render_resource::{AsBindGroup, CompareFunction, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError};
 use bevy::shader::ShaderRef;
 use serde::{Deserialize, Serialize};
 
@@ -167,20 +165,12 @@ pub struct SpriteSource {
     pub orientation: f32,
 }
 
-pub fn load_sprite_source(
-    fs: &GameFs,
-    textures: &mut TextureCache,
-    images: &mut Assets<Image>,
-    model: &str,
-) -> SpriteSource {
+pub fn load_sprite_source(fs: &GameFs, textures: &mut TextureCache, images: &mut Assets<Image>, model: &str) -> SpriteSource {
     let name = model.replace('\\', "/").to_ascii_lowercase();
     let name = name.trim_start_matches("materials/").trim_end_matches(".vmt").trim_end_matches(".spr");
     let vmt = load_vmt(fs, &format!("materials/{name}.vmt"));
     let srgb = !vmt.as_ref().is_some_and(|v| v.get_bool("$nosrgb"));
-    let tex = vmt
-        .as_ref()
-        .and_then(|v| v.texture_path("$basetexture"))
-        .and_then(|p| textures.load(fs, images, &p, srgb));
+    let tex = vmt.as_ref().and_then(|v| v.texture_path("$basetexture")).and_then(|p| textures.load(fs, images, &p, srgb));
     let orientation = vmt.as_ref().and_then(|v| v.get("$spriteorientation")).map(orientation).unwrap_or(0.0);
     SpriteSource {
         size: tex.as_ref().map(|t| Vec2::new(t.width as f32, t.height as f32)).unwrap_or(Vec2::splat(64.0)),
@@ -192,10 +182,7 @@ pub fn load_sprite_source(
 /// The quad sprites are drawn on (corners in y and z, -1 to 1).
 pub fn sprite_quad() -> Mesh {
     Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD)
-        .with_inserted_attribute(
-            Mesh::ATTRIBUTE_POSITION,
-            vec![[0.0, -1.0, -1.0], [0.0, 1.0, -1.0], [0.0, 1.0, 1.0], [0.0, -1.0, 1.0]],
-        )
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0, -1.0, -1.0], [0.0, 1.0, -1.0], [0.0, 1.0, 1.0], [0.0, -1.0, 1.0]])
         .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, vec![[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]])
         .with_inserted_indices(Indices::U16(vec![0, 1, 2, 0, 2, 3]))
 }

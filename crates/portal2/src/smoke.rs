@@ -9,9 +9,9 @@ use std::fmt::Write as _;
 use bevy::prelude::*;
 
 use crate::args::Args;
+use crate::entities::io::InputHandlers;
 use crate::entities::io::IoStats;
 use crate::entities::{MapEntity, SpawnHandlers};
-use crate::entities::io::InputHandlers;
 use crate::vfs::GameFs;
 use crate::world::{CurrentMap, LoadMap, MapLoadType};
 

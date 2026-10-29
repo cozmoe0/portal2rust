@@ -171,9 +171,10 @@ fn transition_script(world: &World) -> Option<Entity> {
         }
     }
     let scripts = registry.by_class.get("logic_script")?;
-    scripts.iter().copied().find(|&e| {
-        world.get::<MapEntity>(e).and_then(|m| m.targetname.as_deref()).is_some_and(|n| n.contains("transition_script"))
-    })
+    scripts
+        .iter()
+        .copied()
+        .find(|&e| world.get::<MapEntity>(e).and_then(|m| m.targetname.as_deref()).is_some_and(|n| n.contains("transition_script")))
 }
 
 fn stats_think(world: &mut World) {

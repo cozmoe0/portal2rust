@@ -194,18 +194,10 @@ fn animate_models(
             // Report events whose cycle was crossed this frame.
             if let Some((owner, local)) = anim.model.studio.sequence(anim.sequence) {
                 for e in &owner.mdl.sequences[local].events {
-                    let crossed = if cycle >= previous {
-                        e.cycle > previous && e.cycle <= cycle
-                    } else {
-                        e.cycle > previous || e.cycle <= cycle
-                    };
+                    let crossed =
+                        if cycle >= previous { e.cycle > previous && e.cycle <= cycle } else { e.cycle > previous || e.cycle <= cycle };
                     if crossed {
-                        events.write(AnimationEvent {
-                            entity,
-                            event: e.event,
-                            name: e.name.clone(),
-                            options: e.options.clone(),
-                        });
+                        events.write(AnimationEvent { entity, event: e.event, name: e.name.clone(), options: e.options.clone() });
                     }
                 }
             }

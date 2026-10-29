@@ -308,9 +308,7 @@ impl Vm {
         let mut roots = vec![Value::Table(self.root), Value::Table(self.registry), self.error_handler.clone()];
         let d = self.delegates;
         roots.extend(
-            [d.table, d.array, d.string, d.number, d.closure, d.generator, d.class, d.instance, d.weakref]
-                .into_iter()
-                .map(Value::Table),
+            [d.table, d.array, d.string, d.number, d.closure, d.generator, d.class, d.instance, d.weakref].into_iter().map(Value::Table),
         );
         roots.extend(self.consts.values().cloned());
         roots.extend(self.stack.iter().cloned());
@@ -617,14 +615,32 @@ impl Vm {
         };
         match (a, b) {
             (Value::Int(x), Value::Int(y)) => Ok(ord(x.cmp(y))),
-            (Value::Float(x), Value::Float(y)) => Ok(if x.to_bits() == y.to_bits() { 0 } else if x < y { -1 } else { 1 }),
+            (Value::Float(x), Value::Float(y)) => Ok(if x.to_bits() == y.to_bits() {
+                0
+            } else if x < y {
+                -1
+            } else {
+                1
+            }),
             (Value::Int(x), Value::Float(y)) => {
                 let x = *x as f32;
-                Ok(if x == *y { 0 } else if x < *y { -1 } else { 1 })
+                Ok(if x == *y {
+                    0
+                } else if x < *y {
+                    -1
+                } else {
+                    1
+                })
             }
             (Value::Float(x), Value::Int(y)) => {
                 let y = *y as f32;
-                Ok(if *x == y { 0 } else if *x < y { -1 } else { 1 })
+                Ok(if *x == y {
+                    0
+                } else if *x < y {
+                    -1
+                } else {
+                    1
+                })
             }
             (Value::Str(x), Value::Str(y)) => Ok(ord(x.bytes().cmp(y.bytes()))),
             _ if std::mem::discriminant(a) == std::mem::discriminant(b) => {
@@ -731,11 +747,7 @@ impl Vm {
             BinOp::In => Value::Bool(self.get(host, &b, &a, true)?.is_some()),
             BinOp::InstanceOf => {
                 let (Value::Class(c), Value::Instance(i)) = (&b, &a) else {
-                    return Err(Error::runtime(format!(
-                        "cannot apply instanceof between a {} and a {}",
-                        b.type_name(),
-                        a.type_name()
-                    )));
+                    return Err(Error::runtime(format!("cannot apply instanceof between a {} and a {}", b.type_name(), a.type_name())));
                 };
                 let mut cur = Some(self.heap.instance(*i).class);
                 let mut found = false;
@@ -771,10 +783,7 @@ impl Vm {
             UnOp::Resume => match v {
                 Value::Generator(g) => self.resume(host, g)?,
                 other => {
-                    return Err(Error::runtime(format!(
-                        "trying to resume a '{}',only genenerator can be resumed",
-                        other.type_name()
-                    )));
+                    return Err(Error::runtime(format!("trying to resume a '{}',only genenerator can be resumed", other.type_name())));
                 }
             },
         })
@@ -882,9 +891,7 @@ impl Vm {
             Value::Native(n) => {
                 let native = self.heap.native(n).clone();
                 let nargs = argc + 1;
-                if (native.nparams > 0 && native.nparams as usize != nargs)
-                    || (native.nparams < 0 && nargs < (-native.nparams) as usize)
-                {
+                if (native.nparams > 0 && native.nparams as usize != nargs) || (native.nparams < 0 && nargs < (-native.nparams) as usize) {
                     return Err(Error::runtime("wrong number of parameters"));
                 }
                 let mut args: Vec<Value> = self.stack[sp + 1..sp + 1 + nargs].to_vec();
@@ -1364,9 +1371,7 @@ impl Vm {
                 let iter = self.stack[base + slot as usize + 1].clone();
                 let pos = iter.as_i32().unwrap_or(0).max(0) as usize;
                 let next: Option<(Value, Value, Value)> = match &container {
-                    Value::Table(t) => {
-                        self.heap.table(*t).map.next(pos).map(|(n, k, v)| (Value::Int(n as i32), k.clone(), v.clone()))
-                    }
+                    Value::Table(t) => self.heap.table(*t).map.next(pos).map(|(n, k, v)| (Value::Int(n as i32), k.clone(), v.clone())),
                     Value::Array(a) => {
                         let arr = self.heap.array(*a);
                         (pos < arr.len()).then(|| (Value::Int(pos as i32 + 1), Value::Int(pos as i32), arr[pos].clone()))

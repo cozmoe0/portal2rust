@@ -24,10 +24,7 @@ fn main() {
     let compiled = image.as_ref().and_then(|img| img.find(&path).map(|i| (img, i)));
     if let Some((img, i)) = compiled {
         let s = img.summary(i).expect("summary");
-        println!(
-            "image entry {i}: {} ms, last speak ends {} ms, sounds {:?}",
-            s.duration_ms, s.last_speak_ms, s.sounds
-        );
+        println!("image entry {i}: {} ms, last speak ends {} ms, sounds {:?}", s.duration_ms, s.last_speak_ms, s.sounds);
     }
     let text = if force_image { None } else { fs.read_string(&path) };
     let scene = match (text, compiled) {
@@ -67,8 +64,7 @@ fn print_scene(s: &Scene) {
 }
 
 fn print_event(e: &Event, indent: &str) {
-    let time =
-        if e.has_duration() { format!("{:7.3}-{:<7.3}", e.start, e.end) } else { format!("{:7.3}        ", e.start) };
+    let time = if e.has_duration() { format!("{:7.3}-{:<7.3}", e.start, e.end) } else { format!("{:7.3}        ", e.start) };
     let mut line = format!("{indent}{time} {} {:?}", e.kind.name(), e.name);
     for (key, value) in [("param", &e.param), ("param2", &e.param2), ("param3", &e.param3)] {
         if !value.is_empty() {

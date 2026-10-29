@@ -259,11 +259,8 @@ pub fn spawn_model_parts(
         joints.reserve(bones.len());
         for (i, b) in bones.iter().enumerate() {
             let parent = if b.parent >= 0 { joints[b.parent as usize] } else { root };
-            let local = if b.parent >= 0 {
-                model.default_pose[b.parent as usize].inverse() * model.default_pose[i]
-            } else {
-                model.default_pose[i]
-            };
+            let local =
+                if b.parent >= 0 { model.default_pose[b.parent as usize].inverse() * model.default_pose[i] } else { model.default_pose[i] };
             let (_, rot, pos) = local.to_scale_rotation_translation();
             let j = commands.spawn((Name::new(b.name.clone()), Transform::from_translation(pos).with_rotation(rot))).id();
             commands.entity(parent).add_child(j);

@@ -139,11 +139,7 @@ pub fn str_from_nul(b: &[u8]) -> String {
 }
 
 /// Reads `count` fixed-size records with a per-record parser.
-pub fn read_records<'a, T>(
-    data: &'a [u8],
-    stride: usize,
-    mut f: impl FnMut(&mut Reader<'a>) -> Result<T>,
-) -> Result<Vec<T>> {
+pub fn read_records<'a, T>(data: &'a [u8], stride: usize, mut f: impl FnMut(&mut Reader<'a>) -> Result<T>) -> Result<Vec<T>> {
     if stride == 0 {
         return Ok(Vec::new());
     }

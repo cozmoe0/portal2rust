@@ -87,11 +87,7 @@ fn spawn_controller(world: &mut World, e: Entity) {
         start: me.get_f32("fogstart").unwrap_or(500.0),
         end: me.get_f32("fogend").unwrap_or(2000.0),
     };
-    let dir = if me.get_bool("use_angles") {
-        crate::coords::angles_forward(me.angles())
-    } else {
-        me.get_vec3("fogdir").unwrap_or(Vec3::X)
-    };
+    let dir = if me.get_bool("use_angles") { crate::coords::angles_forward(me.angles()) } else { me.get_vec3("fogdir").unwrap_or(Vec3::X) };
     let controller = FogController {
         enabled: me.get_bool("fogenable"),
         blend: me.get_bool("fogblend"),
@@ -148,10 +144,7 @@ fn active_controller(world: &World) -> Option<Entity> {
         return Some(e);
     }
     let all = registry.by_class.get("env_fog_controller")?;
-    all.iter()
-        .copied()
-        .find(|&e| world.get::<MapEntity>(e).is_some_and(|m| m.has_flag(1)))
-        .or_else(|| all.first().copied())
+    all.iter().copied().find(|&e| world.get::<MapEntity>(e).is_some_and(|m| m.has_flag(1))).or_else(|| all.first().copied())
 }
 
 fn srgb_to_linear(c: f32) -> f32 {

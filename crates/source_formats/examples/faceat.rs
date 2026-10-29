@@ -35,11 +35,8 @@ fn main() {
         let ti = &bsp.texinfo[face.texinfo as usize];
         let td = &bsp.texdata[ti.texdata as usize];
         let name = bsp.texdata_strings.get(td.name_index as usize).cloned().unwrap_or_default();
-        let model = bsp
-            .models
-            .iter()
-            .position(|m| (m.first_face..m.first_face + m.num_faces).contains(&(fi as i32)))
-            .map_or(-1, |m| m as i32);
+        let model =
+            bsp.models.iter().position(|m| (m.first_face..m.first_face + m.num_faces).contains(&(fi as i32))).map_or(-1, |m| m as i32);
         let owner = bsp
             .entities
             .iter()

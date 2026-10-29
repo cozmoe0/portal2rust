@@ -129,10 +129,7 @@ fn srgb_to_linear(c: f32) -> f32 {
 
 fn beam_quad() -> Mesh {
     Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD)
-        .with_inserted_attribute(
-            Mesh::ATTRIBUTE_POSITION,
-            vec![[0.0, -1.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0], [1.0, -1.0, 0.0]],
-        )
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0, -1.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0], [1.0, -1.0, 0.0]])
         .with_inserted_indices(Indices::U16(vec![0, 1, 2, 0, 2, 3]))
 }
 
@@ -152,8 +149,7 @@ fn spawn_spotlight(world: &mut World, e: Entity) {
         })
         .unwrap_or(Vec3::splat(255.0))
         / 255.0;
-    let color = Vec3::new(srgb_to_linear(c.x), srgb_to_linear(c.y), srgb_to_linear(c.z))
-        * me.get_f32("hdrcolorscale").unwrap_or(1.0);
+    let color = Vec3::new(srgb_to_linear(c.x), srgb_to_linear(c.y), srgb_to_linear(c.z)) * me.get_f32("hdrcolorscale").unwrap_or(1.0);
 
     let fs = world.resource::<GameFs>().clone();
     let (beam_tex, halo) = world.resource_scope(|world, mut textures: Mut<TextureCache>| {
@@ -202,14 +198,7 @@ fn spawn_spotlight(world: &mut World, e: Entity) {
             visibility,
         ))
         .id();
-    world.entity_mut(halo).insert(SourceSprite {
-        on,
-        mode: 9,
-        proxy_size: 4.0,
-        visible: 0.0,
-        material: halo_material,
-        quad: Some(halo),
-    });
+    world.entity_mut(halo).insert(SourceSprite { on, mode: 9, proxy_size: 4.0, visible: 0.0, material: halo_material, quad: Some(halo) });
     world.entity_mut(e).add_children(&[beam, halo]);
     let axis = if flags & 16 != 0 {
         Vec3::X

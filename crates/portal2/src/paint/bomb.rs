@@ -143,9 +143,13 @@ fn burst_bombs(
         }
         let settings = SplatSettings::from_console(&console);
         let reach = console.f32("paintbomb_explosion_radius");
-        let radius = console.f32(if bomb.paint == PaintType::Erase { "sv_erase_surface_sphere_radius" } else { "sv_paint_surface_sphere_radius" });
+        let radius =
+            console.f32(if bomb.paint == PaintType::Erase { "sv_erase_surface_sphere_radius" } else { "sv_paint_surface_sphere_radius" });
         let coat = console.f32("sv_paint_alpha_coat");
-        let dirs = burst_directions(console.i32("paintbomb_horizontal_angle_split").max(1) as usize, console.i32("paintbomb_vertical_angle_split").max(1) as usize);
+        let dirs = burst_directions(
+            console.i32("paintbomb_horizontal_angle_split").max(1) as usize,
+            console.i32("paintbomb_vertical_angle_split").max(1) as usize,
+        );
         let (smin, smax) = (console.f32("paintbomb_streak_speed_min"), console.f32("paintbomb_streak_speed_max"));
         for (i, d) in dirs.iter().enumerate() {
             let tr = physics.trace(pos, pos + *d * reach, Vec3::ZERO, Vec3::ZERO, mask::SOLID_BRUSH_ONLY, &[e]);

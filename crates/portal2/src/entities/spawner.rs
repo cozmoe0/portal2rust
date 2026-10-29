@@ -80,15 +80,7 @@ pub fn attach_studio_model(world: &mut World, e: Entity, path: &str, opts: Model
     let joints = spawn_model_parts(
         &mut commands,
         e,
-        SpawnModel {
-            model: &model,
-            skin: opts.skin,
-            body: opts.body,
-            vhv: None,
-            animated: opts.animated,
-            lighting: Some(light),
-            envmap,
-        },
+        SpawnModel { model: &model, skin: opts.skin, body: opts.body, vhv: None, animated: opts.animated, lighting: Some(light), envmap },
         &fs,
         &mut ctx,
         &mut mats,

@@ -541,12 +541,7 @@ impl Bsp {
         }
         let mut lumps = Vec::with_capacity(64);
         for _ in 0..64 {
-            lumps.push(LumpInfo {
-                offset: r.i32()? as usize,
-                length: r.i32()? as usize,
-                version: r.i32()?,
-                uncompressed_size: r.i32()?,
-            });
+            lumps.push(LumpInfo { offset: r.i32()? as usize, length: r.i32()? as usize, version: r.i32()?, uncompressed_size: r.i32()? });
         }
         let map_revision = r.i32()?;
 
@@ -564,9 +559,7 @@ impl Bsp {
         };
 
         let entities = parse_entities(&String::from_utf8_lossy(&lump_data(lump::ENTITIES)?));
-        let planes = read_records(&lump_data(lump::PLANES)?, 20, |r| {
-            Ok(Plane { normal: r.vec3()?, dist: r.f32()?, kind: r.i32()? })
-        })?;
+        let planes = read_records(&lump_data(lump::PLANES)?, 20, |r| Ok(Plane { normal: r.vec3()?, dist: r.f32()?, kind: r.i32()? }))?;
         let texdata = read_records(&lump_data(lump::TEXDATA)?, 32, |r| {
             Ok(TexData { reflectivity: r.vec3()?, name_index: r.i32()?, width: r.i32()?, height: r.i32()? })
         })?;
@@ -685,22 +678,16 @@ impl Bsp {
                 lightmap_sample_position_start,
             })
         })?;
-        let disp_verts = read_records(&lump_data(lump::DISP_VERTS)?, 20, |r| {
-            Ok(DispVert { vec: r.vec3()?, dist: r.f32()?, alpha: r.f32()? })
-        })?;
+        let disp_verts =
+            read_records(&lump_data(lump::DISP_VERTS)?, 20, |r| Ok(DispVert { vec: r.vec3()?, dist: r.f32()?, alpha: r.f32()? }))?;
         let disp_tris = read_records(&lump_data(lump::DISP_TRIS)?, 2, |r| r.u16())?;
         let visibility = Visibility::parse(&lump_data(lump::VISIBILITY)?)?;
         let game_lumps = parse_game_lumps(data, lumps[lump::GAME_LUMP])?;
-        let static_props = game_lumps
-            .iter()
-            .find(|g| &g.id == b"sprp")
-            .map(|g| parse_static_props(&g.data, g.version))
-            .transpose()?
-            .unwrap_or_default();
+        let static_props =
+            game_lumps.iter().find(|g| &g.id == b"sprp").map(|g| parse_static_props(&g.data, g.version)).transpose()?.unwrap_or_default();
         let pakfile = lump_data(lump::PAKFILE)?.to_vec();
-        let cubemaps = read_records(&lump_data(lump::CUBEMAPS)?, 16, |r| {
-            Ok(Cubemap { origin: [r.i32()?, r.i32()?, r.i32()?], size: r.i32()? })
-        })?;
+        let cubemaps =
+            read_records(&lump_data(lump::CUBEMAPS)?, 16, |r| Ok(Cubemap { origin: [r.i32()?, r.i32()?, r.i32()?], size: r.i32()? }))?;
         let overlays = read_records(&lump_data(lump::OVERLAYS)?, 352, |r| {
             let id = r.i32()?;
             let texinfo = r.i16()?;
@@ -730,9 +717,8 @@ impl Bsp {
         } else {
             (lump::LEAF_AMBIENT_INDEX, lump::LEAF_AMBIENT_LIGHTING)
         };
-        let leaf_ambient_index = read_records(&lump_data(amb_idx_lump)?, 4, |r| {
-            Ok(LeafAmbientIndex { sample_count: r.u16()?, first_sample: r.u16()? })
-        })?;
+        let leaf_ambient_index =
+            read_records(&lump_data(amb_idx_lump)?, 4, |r| Ok(LeafAmbientIndex { sample_count: r.u16()?, first_sample: r.u16()? }))?;
         let leaf_ambient_samples = read_records(&lump_data(amb_lump)?, 28, |r| {
             let mut cube = [Vec3::ZERO; 6];
             for c in cube.iter_mut() {
@@ -780,13 +766,7 @@ impl Bsp {
         let primitives = read_records(&lump_data(lump::PRIMITIVES)?, 10, |r| {
             let kind = r.u8()?;
             r.skip(1)?;
-            Ok(Primitive {
-                kind,
-                first_index: r.u16()?,
-                index_count: r.u16()?,
-                first_vert: r.u16()?,
-                vert_count: r.u16()?,
-            })
+            Ok(Primitive { kind, first_index: r.u16()?, index_count: r.u16()?, first_vert: r.u16()?, vert_count: r.u16()? })
         })?;
         let prim_verts = read_records(&lump_data(lump::PRIMVERTS)?, 12, |r| r.vec3())?;
         let prim_indices = read_records(&lump_data(lump::PRIMINDICES)?, 2, |r| r.u16())?;
@@ -955,11 +935,7 @@ fn parse_game_lumps(data: &[u8], info: LumpInfo) -> Result<Vec<GameLump>> {
         // fourcc, so 'sprp' reads back as the bytes "prps".
         let id = id_raw.to_be_bytes();
         let raw = data.get(offset..offset + length).ok_or(Error::Eof)?;
-        let bytes = if flags & 1 != 0 && raw.starts_with(b"LZMA") {
-            crate::zip::decode_valve_lzma_header(raw)?
-        } else {
-            raw.to_vec()
-        };
+        let bytes = if flags & 1 != 0 && raw.starts_with(b"LZMA") { crate::zip::decode_valve_lzma_header(raw)? } else { raw.to_vec() };
         out.push(GameLump { id, flags, version, data: bytes });
     }
     Ok(out)

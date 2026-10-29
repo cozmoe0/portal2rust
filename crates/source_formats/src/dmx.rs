@@ -139,16 +139,9 @@ impl Element {
 /// Splits off the text header; returns it and the offset of the binary body.
 pub fn parse_header(data: &[u8]) -> Result<(Header, usize)> {
     if !data.starts_with(MAGIC) {
-        return Err(Error::Magic {
-            expected: "<!-- dmx encoding",
-            found: data[..data.len().min(MAGIC.len())].to_vec(),
-        });
+        return Err(Error::Magic { expected: "<!-- dmx encoding", found: data[..data.len().min(MAGIC.len())].to_vec() });
     }
-    let close = data
-        .windows(3)
-        .take(256)
-        .position(|w| w == b"-->")
-        .ok_or_else(|| Error::Invalid("unterminated dmx header".into()))?;
+    let close = data.windows(3).take(256).position(|w| w == b"-->").ok_or_else(|| Error::Invalid("unterminated dmx header".into()))?;
     let text = String::from_utf8_lossy(&data[MAGIC.len()..close]);
     let bad = || Error::Invalid(format!("bad dmx header {text:?}"));
     let words: Vec<&str> = text.split_whitespace().collect();
@@ -271,11 +264,7 @@ fn read_value(r: &mut Reader, strings: &Strings, kind: u8, elements: usize) -> R
     })
 }
 
-fn array<'a, T>(
-    r: &mut Reader<'a>,
-    min_size: usize,
-    mut read: impl FnMut(&mut Reader<'a>) -> Result<T>,
-) -> Result<Vec<T>> {
+fn array<'a, T>(r: &mut Reader<'a>, min_size: usize, mut read: impl FnMut(&mut Reader<'a>) -> Result<T>) -> Result<Vec<T>> {
     let n = read_count(r, min_size)?;
     let mut out = Vec::with_capacity(n);
     for _ in 0..n {
@@ -423,11 +412,7 @@ fn fmt_floats<const N: usize>(f: &mut fmt::Formatter<'_>, v: [f32; N]) -> fmt::R
     Ok(())
 }
 
-fn fmt_list<T>(
-    f: &mut fmt::Formatter<'_>,
-    items: &[T],
-    item: impl Fn(&mut fmt::Formatter<'_>, &T) -> fmt::Result,
-) -> fmt::Result {
+fn fmt_list<T>(f: &mut fmt::Formatter<'_>, items: &[T], item: impl Fn(&mut fmt::Formatter<'_>, &T) -> fmt::Result) -> fmt::Result {
     f.write_str("[")?;
     for (i, x) in items.iter().enumerate() {
         if i > 0 {

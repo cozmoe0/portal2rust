@@ -26,9 +26,7 @@ pub struct FunnelPlugin;
 
 impl Plugin for FunnelPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<PlayerPull>()
-            .add_systems(FixedUpdate, update_funnels.before(PlayerMoveSet))
-            .add_systems(Update, draw_funnels);
+        app.init_resource::<PlayerPull>().add_systems(FixedUpdate, update_funnels.before(PlayerMoveSet)).add_systems(Update, draw_funnels);
         let world = app.world_mut();
         world.resource_mut::<SpawnHandlers>().register("prop_tractor_beam", spawn_funnel);
         world.resource_mut::<InputHandlers>().register("prop_tractor_beam", funnel_input);
@@ -203,9 +201,7 @@ fn draw_funnels(
         .clone();
     for mut f in &mut funnels {
         while f.tubes.len() < f.segments.len() {
-            let e = commands
-                .spawn((Mesh3d(mesh.clone()), MeshMaterial3d(forward.clone()), Transform::default(), MapObject))
-                .id();
+            let e = commands.spawn((Mesh3d(mesh.clone()), MeshMaterial3d(forward.clone()), Transform::default(), MapObject)).id();
             f.tubes.push(e);
         }
         while f.tubes.len() > f.segments.len() {

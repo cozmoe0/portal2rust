@@ -78,11 +78,27 @@ pub struct ProtoSnap {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ObjectSnap {
-    Table { nodes: Vec<(ValueSnap, ValueSnap, Option<u32>)>, first_free: u32, used: u32, delegate: Option<ObjRef> },
+    Table {
+        nodes: Vec<(ValueSnap, ValueSnap, Option<u32>)>,
+        first_free: u32,
+        used: u32,
+        delegate: Option<ObjRef>,
+    },
     Array(Vec<ValueSnap>),
-    Closure { proto: u32, outers: Vec<ValueSnap>, defaults: Vec<ValueSnap>, env: Option<ValueSnap> },
+    Closure {
+        proto: u32,
+        outers: Vec<ValueSnap>,
+        defaults: Vec<ValueSnap>,
+        env: Option<ValueSnap>,
+    },
     /// `native` indexes [`VmSnapshot::natives`].
-    Native { native: u32, name: u32, nparams: i32, data: ValueSnap, env: Option<ValueSnap> },
+    Native {
+        native: u32,
+        name: u32,
+        nparams: i32,
+        data: ValueSnap,
+        env: Option<ValueSnap>,
+    },
     Class {
         base: Option<ObjRef>,
         members: Vec<(ValueSnap, MemberKind, usize)>,
@@ -93,8 +109,19 @@ pub enum ObjectSnap {
         locked: bool,
         type_tag: u32,
     },
-    Instance { class: ObjRef, fields: Vec<ValueSnap>, user: u64 },
-    Generator { state: GenState, closure: ObjRef, stack: Vec<ValueSnap>, ip: usize, varargs: Vec<ValueSnap>, this: ValueSnap },
+    Instance {
+        class: ObjRef,
+        fields: Vec<ValueSnap>,
+        user: u64,
+    },
+    Generator {
+        state: GenState,
+        closure: ObjRef,
+        stack: Vec<ValueSnap>,
+        ip: usize,
+        varargs: Vec<ValueSnap>,
+        this: ValueSnap,
+    },
     WeakRef(ValueSnap),
 }
 
@@ -210,12 +237,7 @@ impl Writer<'_> {
     fn object(&mut self, obj: &Object, map_user: &mut dyn FnMut(u32, u64) -> u64) -> Result<ObjectSnap, String> {
         Ok(match obj {
             Object::Table(t) => ObjectSnap::Table {
-                nodes: t
-                    .map
-                    .nodes
-                    .iter()
-                    .map(|n| (self.value(&n.key), self.value(&n.val), n.next.map(|x| x as u32)))
-                    .collect(),
+                nodes: t.map.nodes.iter().map(|n| (self.value(&n.key), self.value(&n.val), n.next.map(|x| x as u32))).collect(),
                 first_free: t.map.first_free as u32,
                 used: t.map.used as u32,
                 delegate: t.delegate,
@@ -328,10 +350,7 @@ impl Reader<'_> {
                 members: members.iter().map(|(k, kind, i)| Ok((self.value(k)?, *kind, *i))).collect::<Result<_, String>>()?,
                 fields: fields.iter().map(|(a, b)| Ok((self.value(a)?, self.value(b)?))).collect::<Result<_, String>>()?,
                 methods: methods.iter().map(|(a, b)| Ok((self.value(a)?, self.value(b)?))).collect::<Result<_, String>>()?,
-                metamethods: metamethods
-                    .iter()
-                    .map(|(n, v)| Ok((n.bytes().to_vec(), self.value(v)?)))
-                    .collect::<Result<_, String>>()?,
+                metamethods: metamethods.iter().map(|(n, v)| Ok((n.bytes().to_vec(), self.value(v)?))).collect::<Result<_, String>>()?,
                 attrs: self.value(attrs)?,
                 locked: *locked,
                 type_tag: *type_tag,

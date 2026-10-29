@@ -313,15 +313,19 @@ pub fn speed_off_gel(c: &SpeedCheck, touching: Option<Vec3>, on_bounce: bool, de
 /// Forward and side input scales while the top speed is raised: on the
 /// ground with both pressed, the one less aligned with the velocity is
 /// weakened by the side-move factor.
-pub fn move_axis_scales(forward_dir: Vec3, right_dir: Vec3, velocity: Vec3, forward: f32, right: f32, on_ground: bool, g: &GelSettings) -> (f32, f32) {
+pub fn move_axis_scales(
+    forward_dir: Vec3,
+    right_dir: Vec3,
+    velocity: Vec3,
+    forward: f32,
+    right: f32,
+    on_ground: bool,
+    g: &GelSettings,
+) -> (f32, f32) {
     if !on_ground || forward == 0.0 || right == 0.0 {
         return (1.0, 1.0);
     }
-    if forward_dir.dot(velocity).abs() <= right_dir.dot(velocity).abs() {
-        (g.side_move_factor, 1.0)
-    } else {
-        (1.0, g.side_move_factor)
-    }
+    if forward_dir.dot(velocity).abs() <= right_dir.dot(velocity).abs() { (g.side_move_factor, 1.0) } else { (1.0, g.side_move_factor) }
 }
 
 #[cfg(test)]
@@ -333,7 +337,16 @@ mod tests {
     }
 
     fn falling(onto: Vec3, v: Vec3) -> BounceCheck {
-        BounceCheck { velocity: v, normal: onto, up: Vec3::Z, in_air: true, jump_held: false, ducked: false, max_speed: 175.0, eye_forward: Vec3::X }
+        BounceCheck {
+            velocity: v,
+            normal: onto,
+            up: Vec3::Z,
+            in_air: true,
+            jump_held: false,
+            ducked: false,
+            max_speed: 175.0,
+            eye_forward: Vec3::X,
+        }
     }
 
     #[test]

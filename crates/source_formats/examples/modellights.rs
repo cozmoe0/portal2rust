@@ -46,9 +46,7 @@ fn main() {
     let mut rows: Vec<(f32, f32, &source_formats::bsp::WorldLight)> = bsp
         .world_lights
         .iter()
-        .filter(|l| {
-            l.cluster < 0 || pvs.as_ref().is_none_or(|v| v[(l.cluster / 8) as usize] & (1 << (l.cluster % 8)) != 0)
-        })
+        .filter(|l| l.cluster < 0 || pvs.as_ref().is_none_or(|v| v[(l.cluster / 8) as usize] & (1 << (l.cluster % 8)) != 0))
         .map(|l| {
             let dist = (l.origin - p).length().max(1.0);
             let denom = l.constant_attn + l.linear_attn * dist + l.quadratic_attn * dist * dist;

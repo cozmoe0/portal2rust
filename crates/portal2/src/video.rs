@@ -7,9 +7,9 @@
 //! audio track, when it has one, is decoded up front and played through
 //! the mixer when the video starts.
 
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
+use std::sync::{Arc, Mutex};
 
 use bevy::prelude::*;
 
@@ -68,14 +68,7 @@ impl Videos {
 
     /// Like `open`; without `sound` the movie's audio track is not played
     /// (in-world screens).
-    pub fn open_with(
-        &mut self,
-        fs: &GameFs,
-        surface: &mut Surface,
-        path: &str,
-        looping: bool,
-        sound: bool,
-    ) -> Option<VideoId> {
+    pub fn open_with(&mut self, fs: &GameFs, surface: &mut Surface, path: &str, looping: bool, sound: bool) -> Option<VideoId> {
         let data = fs.read(path)?;
         let bink = match bink::Bink::open(data) {
             Ok(b) => b,

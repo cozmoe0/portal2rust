@@ -23,8 +23,8 @@ use crate::entities::io::{InputCall, InputHandlers};
 use crate::entities::{MapEntity, SpawnHandlers};
 use crate::render::source_material::{WorldMaterial, world_flags};
 use crate::vfs::GameFs;
-use crate::video::{VideoId, Videos};
 use crate::vgui::Surface;
+use crate::video::{VideoId, Videos};
 
 #[derive(Component, Clone, Debug, Serialize, Deserialize)]
 pub struct MovieDisplay {

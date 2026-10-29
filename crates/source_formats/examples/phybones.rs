@@ -29,11 +29,7 @@ fn main() {
         }
     }
     let (lo, hi) = (sm.mdl.hull_min - glam::Vec3::splat(2.0), sm.mdl.hull_max + glam::Vec3::splat(2.0));
-    for (label, f) in [
-        ("raw", 0),
-        ("bone pose * p", 1),
-        ("bone pose * pose_to_bone * p", 2),
-    ] {
+    for (label, f) in [("raw", 0), ("bone pose * p", 1), ("bone pose * pose_to_bone * p", 2)] {
         let mut inside = 0;
         let mut total = 0;
         for (i, s) in phy.solids.iter().enumerate() {
@@ -46,7 +42,9 @@ fn main() {
             for p in s.pieces.iter().flat_map(|p| p.points.iter()) {
                 let q = m.transform_point3(*p);
                 total += 1;
-                if q.cmpge(lo).all() && q.cmple(hi).all() { inside += 1; }
+                if q.cmpge(lo).all() && q.cmple(hi).all() {
+                    inside += 1;
+                }
             }
         }
         println!("{label}: {inside}/{total} points inside model hull");

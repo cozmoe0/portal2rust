@@ -16,8 +16,18 @@ fn main() {
         let px = v.decode_rgba_f32(0, 0, 4);
         let mut mx = [0f32; 4];
         let mut mean = [0f64; 4];
-        for p in &px { for i in 0..4 { mx[i] = mx[i].max(p[i]); mean[i] += p[i] as f64; } }
-        for m in mean.iter_mut() { *m /= px.len() as f64; }
-        println!("{n}: {:?} {}x{} mips {} faces {} flags {:#x} max {:?} mean(up face) {:?}", v.format, v.width, v.height, v.mip_count, v.faces, v.flags, mx, mean);
+        for p in &px {
+            for i in 0..4 {
+                mx[i] = mx[i].max(p[i]);
+                mean[i] += p[i] as f64;
+            }
+        }
+        for m in mean.iter_mut() {
+            *m /= px.len() as f64;
+        }
+        println!(
+            "{n}: {:?} {}x{} mips {} faces {} flags {:#x} max {:?} mean(up face) {:?}",
+            v.format, v.width, v.height, v.mip_count, v.faces, v.flags, mx, mean
+        );
     }
 }

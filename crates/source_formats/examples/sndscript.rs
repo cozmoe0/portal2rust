@@ -29,8 +29,7 @@ fn main() {
     };
     let Some(e) = scripts.get(&name) else {
         let needle = name.to_ascii_lowercase();
-        let found: Vec<&str> =
-            scripts.iter().filter(|e| e.name.to_ascii_lowercase().contains(&needle)).map(|e| e.name.as_str()).collect();
+        let found: Vec<&str> = scripts.iter().filter(|e| e.name.to_ascii_lowercase().contains(&needle)).map(|e| e.name.as_str()).collect();
         println!("no entry {name:?}; {} entries contain it", found.len());
         for f in found.iter().take(50) {
             println!("  {f}");

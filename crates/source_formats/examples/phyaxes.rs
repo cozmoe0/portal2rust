@@ -24,16 +24,33 @@ fn main() {
         let (Ok(phy), Ok(mdl)) = (Phy::parse(&pb), Mdl::parse(mb)) else { continue };
         let (lo, hi) = (mdl.hull_min - glam::Vec3::splat(2.0), mdl.hull_max + glam::Vec3::splat(2.0));
         let size = mdl.hull_max - mdl.hull_min;
-        if size.min_element() <= 0.0 { continue; }
+        if size.min_element() <= 0.0 {
+            continue;
+        }
         let pts: Vec<glam::Vec3> = phy.solids.iter().flat_map(|s| s.pieces.iter().flat_map(|p| p.points.iter().copied())).collect();
-        if pts.is_empty() { continue; }
-        let scores: Vec<f32> = maps.iter().map(|(_, f)| {
-            pts.iter().filter(|p| { let q = f(**p); q.cmpge(lo).all() && q.cmple(hi).all() }).count() as f32 / pts.len() as f32
-        }).collect();
+        if pts.is_empty() {
+            continue;
+        }
+        let scores: Vec<f32> = maps
+            .iter()
+            .map(|(_, f)| {
+                pts.iter()
+                    .filter(|p| {
+                        let q = f(**p);
+                        q.cmpge(lo).all() && q.cmple(hi).all()
+                    })
+                    .count() as f32
+                    / pts.len() as f32
+            })
+            .collect();
         let best = (0..4).max_by(|&a, &b| scores[a].total_cmp(&scores[b])).unwrap();
-        if scores[best] < 0.95 { continue; }
+        if scores[best] < 0.95 {
+            continue;
+        }
         // Only count models where the mappings disagree (not cube-like).
-        if scores.iter().filter(|s| **s >= 0.95).count() == 4 { continue; }
+        if scores.iter().filter(|s| **s >= 0.95).count() == 4 {
+            continue;
+        }
         tested += 1;
         wins[best] += 1;
         // Flat models discriminate axes most clearly.

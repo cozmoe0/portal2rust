@@ -386,9 +386,7 @@ impl MixData {
             }
         }
         self.total_solo = 0.0;
-        if !solo_disabled
-            && let Some(m) = self.current.map(|c| &self.mixes[c])
-        {
+        if !solo_disabled && let Some(m) = self.current.map(|c| &self.mixes[c]) {
             for g in 0..n {
                 let s = m.values.get(g).map_or(0.0, |v| v.solo);
                 self.total_solo = self.total_solo.max(s).max(self.layer_solo[g]);

@@ -46,7 +46,10 @@ impl Plugin for AudioPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, init_sounds)
             .add_message::<SoundRequest>()
-            .add_systems(PostUpdate, (map_changed, ambient::start_pending, handle_requests, update_channels).chain().after(TransformSystems::Propagate))
+            .add_systems(
+                PostUpdate,
+                (map_changed, ambient::start_pending, handle_requests, update_channels).chain().after(TransformSystems::Propagate),
+            )
             .add_systems(Update, (soundscape::update_soundscapes, footsteps::player_footsteps, motion::motion_sounds, write_recording));
         ambient::register(app);
         soundscape::register(app);

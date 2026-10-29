@@ -39,13 +39,9 @@ impl Plugin for CaptionsPlugin {
         app.init_resource::<CaptionState>().add_systems(PostUpdate, draw_captions.in_set(VguiPaint));
         let mut console = app.world_mut().resource_mut::<Console>();
         console.register_cvar("cc_minvisibleitems", "1", 0);
-        for (name, default) in [
-            ("closecaption", "0"),
-            ("cc_subtitles", "0"),
-            ("cc_lang", ""),
-            ("cc_linger_time", "1.0"),
-            ("cc_predisplay_time", "0.25"),
-        ] {
+        for (name, default) in
+            [("closecaption", "0"), ("cc_subtitles", "0"), ("cc_lang", ""), ("cc_linger_time", "1.0"), ("cc_predisplay_time", "0.25")]
+        {
             console.register_cvar(name, default, crate::console::cvars::flags::ARCHIVE);
         }
     }
@@ -111,10 +107,12 @@ fn load(world: &mut World) {
     if let Some(text) = fs.read_string("resource/captioning_colors.txt") {
         for root in source_formats::kv::parse_document(&format!("\"colors\" {{ {text} }}")).roots {
             for c in root.children() {
-                let rgb = c.as_str().and_then(|v| parse_tags(v).into_iter().find_map(|s| match s {
-                    Span::Tag(Tag::Color(Some(rgb))) => Some(rgb),
-                    _ => None,
-                }));
+                let rgb = c.as_str().and_then(|v| {
+                    parse_tags(v).into_iter().find_map(|s| match s {
+                        Span::Tag(Tag::Color(Some(rgb))) => Some(rgb),
+                        _ => None,
+                    })
+                });
                 if let Some(rgb) = rgb {
                     colors.insert(c.key.to_ascii_lowercase(), rgb);
                 }

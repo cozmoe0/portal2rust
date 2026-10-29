@@ -66,7 +66,10 @@ fn funnel_props(
 
 /// The closest open floor portal under `at` whose opening, grown by half,
 /// `at` lies over, with the offset from `at` to its centre.
-fn floor_portal_below(frames: &[crate::portals::placement::PortalFrame; 2], at: Vec3) -> Option<(crate::portals::placement::PortalFrame, Vec3)> {
+fn floor_portal_below(
+    frames: &[crate::portals::placement::PortalFrame; 2],
+    at: Vec3,
+) -> Option<(crate::portals::placement::PortalFrame, Vec3)> {
     use crate::portals::placement::{HALF_HEIGHT, HALF_WIDTH};
     let mut best: Option<(f32, crate::portals::placement::PortalFrame, Vec3)> = None;
     for p in frames {
@@ -217,7 +220,11 @@ fn fizzle_props(
     }
 }
 
-fn run_dissolves(clock: Res<crate::clock::GameClock>, mut dissolving: Query<(Entity, &Dissolving, &mut Visibility)>, mut commands: Commands) {
+fn run_dissolves(
+    clock: Res<crate::clock::GameClock>,
+    mut dissolving: Query<(Entity, &Dissolving, &mut Visibility)>,
+    mut commands: Commands,
+) {
     for (e, d, mut vis) in &mut dissolving {
         let age = clock.curtime - d.since;
         if age >= DISSOLVE_TIME {

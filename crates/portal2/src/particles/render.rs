@@ -16,9 +16,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, MeshVertexAttribute, MeshVertexBufferLayoutRef, PrimitiveTopology, VertexAttributeValues};
 use bevy::pbr::{MaterialPipeline, MaterialPipelineKey};
 use bevy::prelude::*;
-use bevy::render::render_resource::{
-    AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError, VertexFormat,
-};
+use bevy::render::render_resource::{AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError, VertexFormat};
 use bevy::shader::ShaderRef;
 use source_formats::vtf::{Sheet, Vtf};
 
@@ -286,12 +284,7 @@ fn load_look(
         base,
         alpha_mode: if additive { AlphaMode::Add } else { AlphaMode::Blend },
     });
-    Look {
-        material,
-        sheet: Arc::new(sheet),
-        additive,
-        hidden: shader == "refract" || vmt.is_none(),
-    }
+    Look { material, sheet: Arc::new(sheet), additive, hidden: shader == "refract" || vmt.is_none() }
 }
 
 /// Vertex arrays for one renderer's particles.
@@ -396,10 +389,7 @@ pub fn empty_mesh() -> Mesh {
 pub fn visibility_scale(v: &super::defs::Visibility, visible: f32) -> Seen {
     let span = v.input.1 - v.input.0;
     let t = if span.abs() < 1e-6 { if visible >= v.input.1 { 1.0 } else { 0.0 } } else { ((visible - v.input.0) / span).clamp(0.0, 1.0) };
-    Seen {
-        alpha: v.alpha.0 + (v.alpha.1 - v.alpha.0) * t,
-        radius: v.radius_scale.0 + (v.radius_scale.1 - v.radius_scale.0) * t,
-    }
+    Seen { alpha: v.alpha.0 + (v.alpha.1 - v.alpha.0) * t, radius: v.radius_scale.0 + (v.radius_scale.1 - v.radius_scale.0) * t }
 }
 
 /// What the view sees of a renderer's proxy (0..1), applied to alpha and radius.

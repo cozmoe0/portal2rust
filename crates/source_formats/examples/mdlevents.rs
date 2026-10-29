@@ -16,7 +16,15 @@ fn main() {
         }
         let (fps, frames) = model.sequence_timing(i);
         for e in &s.events {
-            println!("{} ({:.2} s): cycle {:.4} event {} name {:?} options {:?}", s.label, (frames - 1) as f32 / fps, e.cycle, e.event, e.name, e.options);
+            println!(
+                "{} ({:.2} s): cycle {:.4} event {} name {:?} options {:?}",
+                s.label,
+                (frames - 1) as f32 / fps,
+                e.cycle,
+                e.event,
+                e.name,
+                e.options
+            );
         }
     }
 }

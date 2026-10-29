@@ -6,9 +6,9 @@
 //! `sky origin + eye / scale` with the camera's own fog and the 2D sky
 //! behind it, after which the main view draws over it.
 
+use bevy::asset::RenderAssetUsages;
 use bevy::camera::visibility::{NoFrustumCulling, RenderLayers, VisibilitySystems};
 use bevy::camera::{Exposure, Hdr};
-use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, MeshVertexBufferLayoutRef, PrimitiveTopology};
 use bevy::pbr::{DistanceFog, FogFalloff, MaterialPipeline, MaterialPipelineKey};
 use bevy::prelude::*;
@@ -143,10 +143,7 @@ impl Plugin for SkyPlugin {
         app.add_plugins(MaterialPlugin::<SkyMaterial>::default())
             .add_systems(PreUpdate, spawn_sky.after(LoadMapSet))
             .add_systems(PostUpdate, update_sky_cameras.after(crate::camera::sync_camera_transform).before(TransformSystems::Propagate))
-            .add_systems(
-                PostUpdate,
-                sort_into_skybox.after(VisibilitySystems::CalculateBounds).before(VisibilitySystems::CheckVisibility),
-            );
+            .add_systems(PostUpdate, sort_into_skybox.after(VisibilitySystems::CalculateBounds).before(VisibilitySystems::CheckVisibility));
     }
 }
 
@@ -190,10 +187,7 @@ fn sky_material(fs: &GameFs, textures: &mut TextureCache, images: &mut Assets<Im
         c /= 255.0;
     }
     let linear = Color::srgb(c.x, c.y, c.z).to_linear();
-    Some(SkyMaterial {
-        params: SkyParams { color: Vec4::new(linear.red, linear.green, linear.blue, 1.0), flags },
-        base,
-    })
+    Some(SkyMaterial { params: SkyParams { color: Vec4::new(linear.red, linear.green, linear.blue, 1.0), flags }, base })
 }
 
 fn spawn_sky(
@@ -210,14 +204,8 @@ fn spawn_sky(
         return;
     }
     let Some(map) = map else { return };
-    let skyname = map
-        .bsp
-        .entities
-        .iter()
-        .find(|e| e.classname() == "worldspawn")
-        .and_then(|e| e.get("skyname"))
-        .unwrap_or("sky_urb01")
-        .to_owned();
+    let skyname =
+        map.bsp.entities.iter().find(|e| e.classname() == "worldspawn").and_then(|e| e.get("skyname")).unwrap_or("sky_urb01").to_owned();
     let mut load_all = |name: &str| -> Option<Vec<SkyMaterial>> {
         SIDES.iter().map(|side| sky_material(&fs, &mut textures, &mut images, &format!("{name}{side}"))).collect()
     };

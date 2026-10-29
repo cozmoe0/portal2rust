@@ -61,8 +61,7 @@ pub enum OperatorKind {
 }
 
 impl OperatorKind {
-    pub const ALL: [OperatorKind; 6] =
-        [Self::Renderer, Self::Operator, Self::Initializer, Self::Emitter, Self::Force, Self::Constraint];
+    pub const ALL: [OperatorKind; 6] = [Self::Renderer, Self::Operator, Self::Initializer, Self::Emitter, Self::Force, Self::Constraint];
 
     /// Element-array attribute of the definition holding this stack.
     pub fn attribute(self) -> &'static str {
@@ -410,19 +409,13 @@ impl ParticleSystemDefinition {
             view_model_effect: a.get_bool("view model effect").unwrap_or(d.view_model_effect),
             screen_space_effect: a.get_bool("screen space effect").unwrap_or(d.screen_space_effect),
             draw_through_leafsystem: a.get_bool("draw through leafsystem").unwrap_or(d.draw_through_leafsystem),
-            max_portal_recursion_depth: a
-                .get_i32("maximum portal recursion depth")
-                .unwrap_or(d.max_portal_recursion_depth),
+            max_portal_recursion_depth: a.get_i32("maximum portal recursion depth").unwrap_or(d.max_portal_recursion_depth),
             aggregation_radius: a.get_f32("aggregation radius").unwrap_or(d.aggregation_radius),
-            min_free_particles_to_aggregate: a
-                .get_i32("minimum free particles to aggregate")
-                .unwrap_or(d.min_free_particles_to_aggregate),
+            min_free_particles_to_aggregate: a.get_i32("minimum free particles to aggregate").unwrap_or(d.min_free_particles_to_aggregate),
             min_simulation_time_step: a.get_f32("minimum simulation time step").unwrap_or(d.min_simulation_time_step),
             min_cpu_level: a.get_i32("minimum CPU level").unwrap_or(d.min_cpu_level),
             min_gpu_level: a.get_i32("minimum GPU level").unwrap_or(d.min_gpu_level),
-            freeze_simulation_after_time: a
-                .get_f32("freeze simulation after time")
-                .unwrap_or(d.freeze_simulation_after_time),
+            freeze_simulation_after_time: a.get_f32("freeze simulation after time").unwrap_or(d.freeze_simulation_after_time),
             prevent_name_based_lookup: a.get_bool("preventNameBasedLookup").unwrap_or(d.prevent_name_based_lookup),
             renderers: stack(OperatorKind::Renderer),
             operators: stack(OperatorKind::Operator),
@@ -478,12 +471,7 @@ mod tests {
         let refs = |v: &[usize]| Value::ElementArray(v.iter().map(|&i| Some(i)).collect());
         let text = |s: &str| Value::String(s.to_owned());
         let dmx = Dmx {
-            header: Header {
-                encoding: "binary".to_owned(),
-                encoding_version: 5,
-                format: "pcf".to_owned(),
-                format_version: 2,
-            },
+            header: Header { encoding: "binary".to_owned(), encoding_version: 5, format: "pcf".to_owned(), format_version: 2 },
             elements: vec![
                 element("DmElement", "untitled", vec![("particleSystemDefinitions", refs(&[1]))]),
                 element(
@@ -509,11 +497,7 @@ mod tests {
                     "burst",
                     vec![("functionName", text("emit_instantaneously")), ("num_to_emit", Value::Int(8))],
                 ),
-                element(
-                    "DmeParticleChild",
-                    "child",
-                    vec![("child", Value::Element(Some(5))), ("delay", Value::Float(0.25))],
-                ),
+                element("DmeParticleChild", "child", vec![("child", Value::Element(Some(5))), ("delay", Value::Float(0.25))]),
                 element("DmeParticleSystemDefinition", "unlisted", vec![("radius", Value::Float(2.0))]),
             ],
         };
@@ -526,15 +510,9 @@ mod tests {
         assert_eq!(parent.renderers[0].function_name, "render_animated_sprites");
         assert_eq!(parent.renderers[0].attributes.get_f32("animation rate"), Some(0.5));
         assert!(parent.renderers[0].attributes.get("functionName").is_none());
-        assert_eq!(
-            (parent.emitters[0].name.as_str(), parent.emitters[0].function_name.as_str()),
-            ("burst", "emit_instantaneously")
-        );
+        assert_eq!((parent.emitters[0].name.as_str(), parent.emitters[0].function_name.as_str()), ("burst", "emit_instantaneously"));
         assert!(parent.operators.is_empty() && parent.forces.is_empty());
-        assert_eq!(
-            parent.children,
-            vec![ParticleChild { name: "unlisted".to_owned(), index: 1, delay: 0.25, end_cap_effect: false }]
-        );
+        assert_eq!(parent.children, vec![ParticleChild { name: "unlisted".to_owned(), index: 1, delay: 0.25, end_cap_effect: false }]);
         assert_eq!(parent.attributes.get_i32("bounding_box_control_point"), Some(0));
         assert!(parent.attributes.get("renderers").is_none());
         assert_eq!(pcf.systems[1].radius, 2.0);

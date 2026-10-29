@@ -231,10 +231,7 @@ impl Env for World2<'_, '_, '_> {
     }
 
     fn light(&self, at: Vec3) -> Vec3 {
-        self.map
-            .and_then(|m| m.bsp.ambient_cube(at))
-            .map(|c| c.iter().copied().sum::<Vec3>() / 6.0)
-            .unwrap_or(Vec3::splat(0.5))
+        self.map.and_then(|m| m.bsp.ambient_cube(at)).map(|c| c.iter().copied().sum::<Vec3>() / 6.0).unwrap_or(Vec3::splat(0.5))
     }
 }
 

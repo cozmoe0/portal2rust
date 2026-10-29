@@ -111,8 +111,12 @@ impl Bench {
             let _ = std::fs::create_dir_all(dir);
         }
         let old = std::fs::read_to_string(&self.out).unwrap_or_default();
-        let _ = std::fs::write(&self.out, old + &line + "
-");
+        let _ = std::fs::write(
+            &self.out,
+            old + &line
+                + "
+",
+        );
     }
 }
 

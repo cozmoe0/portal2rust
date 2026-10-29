@@ -125,10 +125,7 @@ impl Plugin for ProjectedPlugin {
         });
         app.insert_resource(gpu)
             .add_systems(Startup, (spawn_shadow_cameras, load_shader_module))
-            .add_systems(
-                PostUpdate,
-                update_lights.after(TransformSystems::Propagate).after(crate::camera::sync_camera_transform),
-            );
+            .add_systems(PostUpdate, update_lights.after(TransformSystems::Propagate).after(crate::camera::sync_camera_transform));
         let world = app.world_mut();
         world.resource_mut::<SpawnHandlers>().register("env_projectedtexture", spawn_projected);
         world.resource_mut::<InputHandlers>().register("env_projectedtexture", projected_input);
@@ -202,8 +199,7 @@ fn cookie_array(fs: &GameFs) -> (Image, Vec<String>) {
         TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::RENDER_WORLD,
     );
-    image.texture_view_descriptor =
-        Some(TextureViewDescriptor { dimension: Some(TextureViewDimension::D2Array), ..default() });
+    image.texture_view_descriptor = Some(TextureViewDescriptor { dimension: Some(TextureViewDimension::D2Array), ..default() });
     image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
         address_mode_u: ImageAddressMode::ClampToEdge,
         address_mode_v: ImageAddressMode::ClampToEdge,
@@ -222,8 +218,7 @@ fn shadow_image() -> Image {
         TextureFormat::Rgba16Float,
         RenderAssetUsages::RENDER_WORLD,
     );
-    image.texture_descriptor.usage =
-        TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST | TextureUsages::RENDER_ATTACHMENT;
+    image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST | TextureUsages::RENDER_ATTACHMENT;
     image
 }
 
@@ -409,8 +404,7 @@ fn update_lights(
     let mut shadow_slots: Vec<(usize, Transform, PerspectiveProjection)> = Vec::new();
     for (i, a) in active.iter().enumerate() {
         let fov = a.light.fov.to_radians();
-        let projection =
-            PerspectiveProjection { fov, aspect_ratio: 1.0, near: a.light.near, far: a.light.far, ..default() };
+        let projection = PerspectiveProjection { fov, aspect_ratio: 1.0, near: a.light.near, far: a.light.far, ..default() };
         let transform = Transform { translation: a.position, rotation: camera_rotation(a.rotation), ..default() };
         let clip_from_world = projection.get_clip_from_view() * transform.to_matrix().inverse();
         let slot = (a.light.shadows && shadow_slots.len() < MAX_SHADOWS).then(|| {

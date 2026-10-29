@@ -22,8 +22,7 @@ use std::borrow::Cow;
 use crate::fs::GameFileSystem;
 use crate::reader::Reader;
 use crate::vcd::{
-    Actor, CcType, Channel, Curve, CurveType, Event, EventFlags, EventKind, FlexTrack, Sample, Scene, Tag, TagRef,
-    TimingTag,
+    Actor, CcType, Channel, Curve, CurveType, Event, EventFlags, EventKind, FlexTrack, Sample, Scene, Tag, TagRef, TimingTag,
 };
 use crate::{Error, Result, invalid};
 
@@ -119,11 +118,7 @@ impl ScenesImage {
         let e = self.entry(index)?;
         let start = e.offset as usize;
         let blob = self.data.get(start..start + e.length as usize).ok_or(Error::Eof)?;
-        if blob.starts_with(b"LZMA") {
-            Ok(Cow::Owned(crate::zip::decode_valve_lzma_header(blob)?))
-        } else {
-            Ok(Cow::Borrowed(blob))
-        }
+        if blob.starts_with(b"LZMA") { Ok(Cow::Owned(crate::zip::decode_valve_lzma_header(blob)?)) } else { Ok(Cow::Borrowed(blob)) }
     }
 
     pub fn summary(&self, index: usize) -> Result<SceneSummary> {
@@ -314,19 +309,7 @@ impl<S: AsRef<str>, F: Fn(usize) -> Option<S>> Decoder<'_, F> {
             sync_to_following_gesture: false,
         };
         let distance_to_target = self.r.f32()?;
-        let mut ev = Event {
-            kind,
-            name,
-            start,
-            end,
-            param,
-            param2,
-            param3,
-            ramp,
-            flags,
-            distance_to_target,
-            ..Event::default()
-        };
+        let mut ev = Event { kind, name, start, end, param, param2, param3, ramp, flags, distance_to_target, ..Event::default() };
         for _ in 0..self.count()? {
             let name = self.str()?;
             ev.tags.push(Tag { name, value: self.unit()? });
@@ -531,14 +514,12 @@ mod tests {
                 assert!(i == 0 || image.entries()[i - 1].crc < e.crc, "{game}: entries not sorted");
                 let data = image.scene_data(i).unwrap_or_else(|err| panic!("{game} #{i}: {err}"));
                 compressed += matches!(data, Cow::Owned(_)) as usize;
-                let (scene, used) =
-                    decode(&data, |s| image.string(s)).unwrap_or_else(|err| panic!("{game} #{i}: {err}"));
+                let (scene, used) = decode(&data, |s| image.string(s)).unwrap_or_else(|err| panic!("{game} #{i}: {err}"));
                 assert_eq!(used, data.len(), "{game} #{i}: trailing bytes");
                 let summary = image.summary(i).unwrap();
                 // The summary's "last speak" is the end of the speak event that
                 // comes last in the scene, not the one that ends last.
-                let last_speak =
-                    scene.all_events().filter(|e| e.kind == EventKind::Speak).last().map_or(0.0, |e| e.end);
+                let last_speak = scene.all_events().filter(|e| e.kind == EventKind::Speak).last().map_or(0.0, |e| e.end);
                 let ms = |s: f32| s * 1000.0;
                 let (end, speak) = (ms(scene.end_time()), ms(last_speak));
                 assert!((end - summary.duration_ms as f32).abs() <= 1.0, "{game} #{i}: {end} {summary:?}");
@@ -585,11 +566,7 @@ mod tests {
                     }
                 }
             }
-            eprintln!(
-                "{game}: compared {compared} scenes, {} differ, {} texts differ from the image's source",
-                differ.len(),
-                stale.len()
-            );
+            eprintln!("{game}: compared {compared} scenes, {} differ, {} texts differ from the image's source", differ.len(), stale.len());
             for s in stale.iter().take(10) {
                 eprintln!("  stale: {s}");
             }
@@ -608,38 +585,24 @@ mod tests {
             check(t.len() == b.len(), &|| format!("{at}: {} vs {} events", t.len(), b.len()))?;
             for (x, y) in t.iter().zip(b) {
                 let at = format!("{at}/{}", x.name);
-                check(same(&x.name, &y.name) && x.kind == y.kind, &|| {
-                    format!("{at}: {:?} vs {:?} {:?}", x.kind, y.kind, y.name)
-                })?;
-                check(x.start == y.start && x.end == y.end, &|| {
-                    format!("{at}: time {}..{} vs {}..{}", x.start, x.end, y.start, y.end)
-                })?;
+                check(same(&x.name, &y.name) && x.kind == y.kind, &|| format!("{at}: {:?} vs {:?} {:?}", x.kind, y.kind, y.name))?;
+                check(x.start == y.start && x.end == y.end, &|| format!("{at}: time {}..{} vs {}..{}", x.start, x.end, y.start, y.end))?;
                 check(same(&x.param, &y.param) && same(&x.param2, &y.param2) && same(&x.param3, &y.param3), &|| {
-                    format!(
-                        "{at}: params {:?} vs {:?}",
-                        [&x.param, &x.param2, &x.param3],
-                        [&y.param, &y.param2, &y.param3]
-                    )
+                    format!("{at}: params {:?} vs {:?}", [&x.param, &x.param2, &x.param3], [&y.param, &y.param2, &y.param3])
                 })?;
                 let mut flags = x.flags;
                 flags.sync_to_following_gesture = false;
                 check(flags == y.flags, &|| format!("{at}: flags {:?} vs {:?}", x.flags, y.flags))?;
                 check(x.distance_to_target == y.distance_to_target, &|| format!("{at}: distance"))?;
                 let ramp_ok = x.ramp.samples.len() == y.ramp.samples.len()
-                    && x.ramp
-                        .samples
-                        .iter()
-                        .zip(&y.ramp.samples)
-                        .all(|(p, q)| p.time == q.time && near(p.value, q.value, 1.0 / 255.0));
+                    && x.ramp.samples.iter().zip(&y.ramp.samples).all(|(p, q)| p.time == q.time && near(p.value, q.value, 1.0 / 255.0));
                 check(ramp_ok, &|| format!("{at}: ramp {:?} vs {:?}", x.ramp.samples, y.ramp.samples))?;
                 let tags_ok = |p: &[Tag], q: &[Tag], eps: f32| {
-                    p.len() == q.len()
-                        && p.iter().zip(q).all(|(a, b)| same(&a.name, &b.name) && near(a.value, b.value, eps))
+                    p.len() == q.len() && p.iter().zip(q).all(|(a, b)| same(&a.name, &b.name) && near(a.value, b.value, eps))
                 };
                 check(tags_ok(&x.tags, &y.tags, 1.0 / 255.0), &|| format!("{at}: tags {:?} vs {:?}", x.tags, y.tags))?;
                 check(
-                    tags_ok(&x.playback_tags, &y.playback_tags, 1.0 / 4096.0)
-                        && tags_ok(&x.shifted_tags, &y.shifted_tags, 1.0 / 4096.0),
+                    tags_ok(&x.playback_tags, &y.playback_tags, 1.0 / 4096.0) && tags_ok(&x.shifted_tags, &y.shifted_tags, 1.0 / 4096.0),
                     &|| format!("{at}: absolute tags {:?} vs {:?}", x.playback_tags, y.playback_tags),
                 )?;
                 check(x.timing_tags.len() == y.timing_tags.len(), &|| format!("{at}: timing tags"))?;
@@ -647,9 +610,7 @@ mod tests {
                 check(x.flex_tracks.len() == y.flex_tracks.len(), &|| format!("{at}: flex tracks"))?;
                 if x.kind == EventKind::Gesture {
                     let (a, b) = (x.sequence_duration.unwrap_or(0.0), y.sequence_duration.unwrap_or(0.0));
-                    check(a == b, &|| {
-                        format!("{at}: sequence duration {:?} vs {:?}", x.sequence_duration, y.sequence_duration)
-                    })?;
+                    check(a == b, &|| format!("{at}: sequence duration {:?} vs {:?}", x.sequence_duration, y.sequence_duration))?;
                 }
                 if x.kind == EventKind::Loop {
                     check(x.loop_count == y.loop_count, &|| format!("{at}: loop count"))?;
@@ -667,9 +628,7 @@ mod tests {
             Ok(())
         };
         events(&text.events, &bin.events, "scene")?;
-        check(text.actors.len() == bin.actors.len(), &|| {
-            format!("{} vs {} actors", text.actors.len(), bin.actors.len())
-        })?;
+        check(text.actors.len() == bin.actors.len(), &|| format!("{} vs {} actors", text.actors.len(), bin.actors.len()))?;
         for (a, b) in text.actors.iter().zip(&bin.actors) {
             check(same(&a.name, &b.name) && a.active == b.active, &|| format!("actor {:?} vs {:?}", a.name, b.name))?;
             check(a.channels.len() == b.channels.len(), &|| format!("{}: channel count", a.name))?;
