@@ -16,6 +16,7 @@
 //! pixels taller than the text, the box grows to new heights and fades over
 //! `GrowTime`, and each item fades in after `ItemHiddenTime`.
 
+use portal2_core::events::CaptionRequest;
 use std::collections::HashMap;
 
 use bevy::prelude::*;
@@ -36,7 +37,10 @@ pub struct CaptionsPlugin;
 
 impl Plugin for CaptionsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<CaptionState>().add_systems(PostUpdate, draw_captions.in_set(VguiPaint));
+        app.init_resource::<CaptionState>().add_systems(
+            PostUpdate,
+            (show_requested.after(portal2_audio::AudioSet::Mix).before(VguiPaint), draw_captions.in_set(VguiPaint)),
+        );
         let mut console = app.world_mut().resource_mut::<Console>();
         console.register_cvar("cc_minvisibleitems", "1", 0);
         for (name, default) in
@@ -125,10 +129,23 @@ fn load(world: &mut World) {
     s.colors = colors;
 }
 
+/// Shows the captions of sounds that started this frame.
+fn show_requested(world: &mut World) {
+    let requests: Vec<CaptionRequest> = world.resource_mut::<Messages<CaptionRequest>>().drain().collect();
+    for r in requests {
+        emit_at(world, &r.token, r.duration, r.from_player, r.time);
+    }
+}
+
 /// Queues the caption for a sound or scene token that just started.
 pub fn emit(world: &mut World, token: &str, duration: f32, from_player: bool) {
-    load(world);
     let now = world.resource::<GameClock>().curtime;
+    emit_at(world, token, duration, from_player, now);
+}
+
+/// [`emit`] for a token that started at game time `now`.
+fn emit_at(world: &mut World, token: &str, duration: f32, from_player: bool, now: f64) {
+    load(world);
     let (predisplay, linger, subtitles_only) = {
         let c = world.resource::<Console>();
         (c.f32("cc_predisplay_time"), c.f32("cc_linger_time"), c.bool("cc_subtitles"))

@@ -221,7 +221,7 @@ fn fire_gun(
     portal_query: Query<&super::Portal>,
     (mut place, mut sounds, mut fx): (
         MessageWriter<PlacePortal>,
-        MessageWriter<crate::audio::SoundRequest>,
+        MessageWriter<portal2_audio::SoundRequest>,
         MessageWriter<super::PortalFx>,
     ),
     mut animators: Query<&mut StudioAnimator>,
@@ -246,7 +246,7 @@ fn fire_gun(
     events.write(
         GameEvent::new("portal_fired").with("userid", EventValue::Entity(Some(pe))).with("leftportal", EventValue::Int((slot == 0) as i32)),
     );
-    sounds.write(crate::audio::SoundRequest::on(if slot == 0 { "Weapon_Portalgun.fire_blue" } else { "Weapon_Portalgun.fire_red" }, pe));
+    sounds.write(portal2_audio::SoundRequest::on(if slot == 0 { "Weapon_Portalgun.fire_blue" } else { "Weapon_Portalgun.fire_red" }, pe));
     if let Some(vm) = gun.viewmodel
         && let Ok(mut a) = animators.get_mut(vm)
     {
@@ -323,7 +323,7 @@ fn fire_gun(
         Err(e) => {
             info!("portal {slot} shot failed: {e:?}");
             let tr = physics.trace(eye, eye + dir * 56756.0, Vec3::ZERO, Vec3::ZERO, crate::collision::mask::SOLID_ALL, &[pe]);
-            sounds.write(crate::audio::SoundRequest::at("Portal.fizzle_invalid_surface", tr.end));
+            sounds.write(portal2_audio::SoundRequest::at("Portal.fizzle_invalid_surface", tr.end));
             fx.write(super::PortalFx::Shot { slot, start: muzzle, end: tr.end, aim: dir });
             if tr.fraction < 1.0 {
                 fx.write(super::PortalFx::BadSurface { slot, at: tr.end, normal: tr.normal });

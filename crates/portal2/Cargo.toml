@@ -9,6 +9,7 @@ description = "A Portal 2 engine reimplementation written in Rust on top of Bevy
 bevy = { workspace = true, features = ["serialize"] }
 portal2_core.workspace = true
 portal2_render.workspace = true
+portal2_audio.workspace = true
 source_formats = { path = "../source_formats" }
 squirrel = { path = "../squirrel", features = ["serde"] }
 bink = { path = "../bink" }
@@ -22,8 +23,6 @@ log.workspace = true
 bytemuck.workspace = true
 avian3d = "0.8"
 half = "2"
-cpal = "0.17"
-symphonia = { version = "0.5.4", default-features = false, features = ["mp3"] }
 
 # The interface rasterizes fonts with GDI, as the game does on Windows.
 [target.'cfg(windows)'.dependencies]

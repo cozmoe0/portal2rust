@@ -576,7 +576,7 @@ fn apply(world: &mut World) {
     for a in actions {
         match a {
             Action::Sound(s) => {
-                crate::audio::emit(world, s, crate::audio::Emit { soundlevel: Some(0.0), ..default() });
+                portal2_audio::emit(world, s, portal2_audio::Emit { soundlevel: Some(0.0), ..default() });
             }
             Action::Console(c) => portal2_core::console::queue(world, &c),
             Action::Quit => {
@@ -630,7 +630,7 @@ fn update_background(world: &mut World) {
             })
         };
         let music = format!("#music/mainmenu/portal2_background{act:02}.wav");
-        let id = crate::audio::emit(world, &music, crate::audio::Emit { soundlevel: Some(0.0), ..default() });
+        let id = portal2_audio::emit(world, &music, portal2_audio::Emit { soundlevel: Some(0.0), ..default() });
         let mut ui = world.resource_mut::<GameUi>();
         ui.background = Some((act, video));
         ui.music = id;
@@ -643,7 +643,7 @@ fn update_background(world: &mut World) {
             world.resource_mut::<Videos>().close(v);
         }
         if let Some(m) = music {
-            crate::audio::stop_channel(world, m);
+            portal2_audio::stop_channel(world, m);
         }
     }
 }

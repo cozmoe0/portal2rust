@@ -1,0 +1,13 @@
+[package]
+name = "portal2_audio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The portal2rust sound engine: Source sound scripts, operator stacks and mixers on a software mixer"
+
+[dependencies]
+bevy.workspace = true
+portal2_core.workspace = true
+source_formats.workspace = true
+cpal = "0.17"
+symphonia = { version = "0.5.4", default-features = false, features = ["mp3"] }

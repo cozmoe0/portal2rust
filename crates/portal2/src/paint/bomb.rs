@@ -13,10 +13,10 @@ use bevy::prelude::*;
 
 use super::blobs::{Blob, Blobs};
 use super::{PaintMap, PaintType, SplatSettings};
-use crate::audio::SoundRequest;
 use crate::collision::{Physics, mask};
 use crate::entities::SpawnHandlers;
 use crate::entities::io::FireOutput;
+use portal2_audio::SoundRequest;
 use portal2_core::console::Console;
 use portal2_core::entity::MapEntity;
 use portal2_core::sets::ThinkSet;

@@ -28,6 +28,7 @@ use source_formats::fgd::{Fgd, FgdClass};
 use crate::world::{CurrentMap, MapLoaded, MapObject};
 use io::{Connection, EventQueue, FireOutput, InputCall, InputHandlers, IoDebug, Outputs, fire_output};
 use portal2_core::coords::angles_to_quat;
+use portal2_core::entity::BrushBounds;
 pub use portal2_core::entity::{EntityRegistry, MapEntity};
 use portal2_core::vfs::GameFs;
 
@@ -236,7 +237,13 @@ pub(crate) fn insert_entity(
     let me = MapEntity { index, classname: classname.to_owned(), targetname: targetname.clone(), keyvalues, defaults };
     let transform = Transform::from_translation(me.origin()).with_rotation(angles_to_quat(me.angles()));
     let name = format!("{classname} {}", targetname.as_deref().unwrap_or(""));
+    let bounds = me
+        .brush_model()
+        .and_then(|i| world.get_resource::<CurrentMap>()?.bsp.models.get(i).map(|m| BrushBounds { mins: m.mins, maxs: m.maxs }));
     let e = world.spawn((Name::new(name), me, outputs, transform, Visibility::Visible, MapObject, id)).id();
+    if let Some(bounds) = bounds {
+        world.entity_mut(e).insert(bounds);
+    }
     world.resource_mut::<EntityRegistry>().insert(e, classname, targetname.as_deref());
     e
 }

@@ -6,14 +6,10 @@
 //! have none) and hand the resulting speaker gains and pitch to the mixer on
 //! the audio thread. See `docs/re/audio_runtime.md`.
 
-pub mod ambient;
 pub mod cache;
 pub mod device;
-pub mod footsteps;
 pub mod mixer;
-pub mod motion;
 pub mod ops;
-pub mod soundscape;
 
 use portal2_core::rng::random_range;
 use std::collections::HashMap;
@@ -24,13 +20,14 @@ use bevy::transform::TransformSystems;
 use bevy::window::PrimaryWindow;
 use source_formats::soundscript::{SoundChars, SoundEntry, SoundScripts, WaveName};
 
-use crate::world::CurrentMap;
 use cache::{Pcm, SoundCache};
 use device::{MixHandle, OutputStream, Voice};
 use ops::{Chan, Env, Instance, Library, Listener, Other, Stack, StackKind};
+use portal2_core::LoadedMap;
 use portal2_core::args::Args;
 use portal2_core::console::{CommandArgs, Console};
-use portal2_core::entity::{EntityRegistry, MapEntity};
+use portal2_core::entity::{BrushBounds, EntityRegistry, MapEntity};
+use portal2_core::events::CaptionRequest;
 use portal2_core::vfs::GameFs;
 use portal2_core::view::MainCamera;
 
@@ -43,17 +40,27 @@ const DEFAULT_UPDATE: &str = "update_default";
 
 pub struct AudioPlugin;
 
+/// Order of the sound work after transforms propagate (`PostUpdate`).
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum AudioSet {
+    /// A new map stops the old map's sounds and loads its sound overrides.
+    MapChange,
+    /// Sound entities start the sounds they were asked to play.
+    Start,
+    /// [`SoundRequest`]s, then every channel's update stack and the mix.
+    Mix,
+}
+
 impl Plugin for AudioPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, init_sounds)
             .add_message::<SoundRequest>()
+            .configure_sets(PostUpdate, (AudioSet::MapChange, AudioSet::Start, AudioSet::Mix).chain().after(TransformSystems::Propagate))
             .add_systems(
                 PostUpdate,
-                (map_changed, ambient::start_pending, handle_requests, update_channels).chain().after(TransformSystems::Propagate),
+                (map_changed.in_set(AudioSet::MapChange), (handle_requests, update_channels).chain().in_set(AudioSet::Mix)),
             )
-            .add_systems(Update, (soundscape::update_soundscapes, footsteps::player_footsteps, motion::motion_sounds, write_recording));
-        ambient::register(app);
-        soundscape::register(app);
+            .add_systems(Update, write_recording);
         let mut console = app.world_mut().resource_mut::<Console>();
         for (name, default) in [
             ("volume", "1.0"),
@@ -205,7 +212,8 @@ pub struct Sounds {
     opvars: HashMap<String, f32>,
     output: Option<MixHandle>,
     map: String,
-    listener: Listener,
+    /// Where the player hears from, updated every frame.
+    pub listener: Listener,
     /// Host time, seconds.
     now: f64,
 }
@@ -269,7 +277,7 @@ fn init_sounds(world: &mut World) {
 /// On a new map: stop everything, apply the map's sound overrides and load
 /// its soundscapes.
 fn map_changed(world: &mut World) {
-    let Some(name) = world.get_resource::<CurrentMap>().map(|m| m.name.clone()) else { return };
+    let Some(name) = world.get_resource::<LoadedMap>().map(|m| m.name.clone()).filter(|n| !n.is_empty()) else { return };
     let Some(fs) = world.get_resource::<GameFs>().map(|f| f.0.clone()) else { return };
     let Some(mut sounds) = world.get_resource_mut::<Sounds>() else { return };
     if sounds.map == name {
@@ -303,11 +311,8 @@ fn stop_all_inner(sounds: &mut Sounds) {
 /// otherwise the entity origin.
 pub fn sound_origin(world: &World, e: Entity) -> Option<Vec3> {
     let gt = world.get::<GlobalTransform>(e)?;
-    if let Some(me) = world.get::<MapEntity>(e)
-        && let Some(i) = me.brush_model()
-        && let Some(m) = world.get_resource::<CurrentMap>().and_then(|m| m.bsp.models.get(i))
-    {
-        return Some(gt.transform_point((m.mins + m.maxs) * 0.5));
+    if let Some(b) = world.get::<BrushBounds>(e) {
+        return Some(gt.transform_point((b.mins + b.maxs) * 0.5));
     }
     if world.resource::<EntityRegistry>().player == Some(e) {
         return Some(gt.translation() + Vec3::Z * 36.0);
@@ -330,7 +335,8 @@ pub fn emit(world: &mut World, name: &str, params: Emit) -> Option<u64> {
     // Sound entries with a caption show it while they play.
     if let Some(entry) = entry.filter(|_| !no_caption) {
         let length = sounds.channels.iter().find(|c| c.id == id).map_or(0.0, |c| c.chan.duration / c.pitch.max(0.01));
-        crate::captions::emit(world, &entry, length, local_player);
+        let time = world.resource::<portal2_core::clock::GameClock>().curtime;
+        world.write_message(CaptionRequest { token: entry, duration: length, from_player: local_player, time });
     }
     Some(id)
 }

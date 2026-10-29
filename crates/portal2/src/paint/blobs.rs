@@ -14,11 +14,11 @@ use bevy::render::render_resource::{AsBindGroup, ShaderType};
 use bevy::shader::ShaderRef;
 
 use super::{PaintMap, PaintType, SplatSettings};
-use crate::audio::SoundRequest;
 use crate::collision::{Physics, mask};
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
 use crate::world::CurrentMap;
+use portal2_audio::SoundRequest;
 use portal2_core::console::Console;
 use portal2_core::entity::MapEntity;
 use portal2_core::sets::ThinkSet;

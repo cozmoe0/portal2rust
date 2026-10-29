@@ -11,11 +11,11 @@ use portal2_core::rng::random_range;
 use source_formats::soundscape::{Position, Soundscapes};
 use source_formats::soundscript::{Interval, WaveName};
 
-use super::{Emit, Sounds};
 use crate::collision::Physics;
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
 use crate::world::CurrentMap;
+use portal2_audio::{Emit, Sounds};
 use portal2_core::entity::{EntityRegistry, MapEntity};
 
 /// Seconds between soundscape choices.
@@ -213,7 +213,7 @@ fn start_loop(world: &mut World, l: &Loop) -> Option<u64> {
         Place::At(p) => p,
         _ => listener,
     };
-    super::emit(
+    portal2_audio::emit(
         world,
         &l.wave.raw,
         Emit { origin: Some(origin), volume: Some(l.volume), pitch: Some(l.pitch), soundlevel: Some(l.level), slot: Some(6), ..default() },
@@ -237,12 +237,12 @@ pub fn update_soundscapes(world: &mut World) {
     for p in state.loops.iter_mut() {
         if p.fade != p.target {
             p.fade = if p.rate > 0.0 { (p.fade + p.rate * dt).min(p.target) } else { (p.fade + p.rate * dt).max(p.target) };
-            super::adjust(world, p.channel, Some(p.fade), None);
+            portal2_audio::adjust(world, p.channel, Some(p.fade), None);
         }
     }
     let dead: Vec<u64> = state.loops.iter().filter(|p| p.target <= 0.0 && p.fade <= 0.0).map(|p| p.channel).collect();
     for id in &dead {
-        super::stop_channel(world, *id);
+        portal2_audio::stop_channel(world, *id);
     }
     state.loops.retain(|p| !dead.contains(&p.channel));
     // Random sounds.
@@ -262,7 +262,7 @@ pub fn update_soundscapes(world: &mut World) {
             Place::Ambient => listener,
         };
         let level = if r.place == Place::Ambient { 0.0 } else { random_range(r.level.start, r.level.end) };
-        super::emit(
+        portal2_audio::emit(
             world,
             &wave.raw,
             Emit {
@@ -346,7 +346,7 @@ fn choose(world: &mut World, state: &mut SoundscapeState, now: f64) {
             continue;
         }
         if let Some(id) = start_loop(world, l) {
-            super::adjust(world, id, Some(0.0), None);
+            portal2_audio::adjust(world, id, Some(0.0), None);
             state.loops.push(Playing { wave: key, place: l.place, channel: id, volume: l.volume, fade: 0.0, target: 1.0, rate });
             keep.push(true);
         }

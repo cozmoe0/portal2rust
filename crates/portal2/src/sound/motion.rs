@@ -7,9 +7,9 @@
 
 use bevy::prelude::*;
 
-use super::Emit;
 use crate::entities::movers::{Mover, MoverState};
 use crate::entities::trains::Train;
+use portal2_audio::Emit;
 use portal2_core::entity::MapEntity;
 
 const TRAIN_MAX_SPEED: f32 = 1000.0;
@@ -43,21 +43,21 @@ pub fn motion_sounds(world: &mut World) {
         match (was, moving) {
             (false, true) => {
                 if let Some(s) = key(&me, "startsound") {
-                    super::emit(world, &s, Emit { entity: Some(e), ..default() });
+                    portal2_audio::emit(world, &s, Emit { entity: Some(e), ..default() });
                 }
-                let id =
-                    key(&me, "movesound").and_then(|s| super::emit(world, &s, Emit { entity: Some(e), pitch: Some(pitch), ..default() }));
+                let id = key(&me, "movesound")
+                    .and_then(|s| portal2_audio::emit(world, &s, Emit { entity: Some(e), pitch: Some(pitch), ..default() }));
                 set_channel(world, e, id);
             }
             (true, true) => {
                 if let Some(id) = world.get::<MotionSound>(e).and_then(|m| m.channel) {
-                    super::adjust(world, id, None, Some(pitch));
+                    portal2_audio::adjust(world, id, None, Some(pitch));
                 }
             }
             (true, false) => {
                 stop_channel(world, e);
                 if let Some(s) = key(&me, "stopsound") {
-                    super::emit(world, &s, Emit { entity: Some(e), ..default() });
+                    portal2_audio::emit(world, &s, Emit { entity: Some(e), ..default() });
                 }
             }
             _ => {}
@@ -68,14 +68,14 @@ pub fn motion_sounds(world: &mut World) {
         match (transition(world, e, moving), moving) {
             (false, true) => {
                 stop_channel(world, e);
-                let id = key(&me, "noise1").and_then(|s| super::emit(world, &s, Emit { entity: Some(e), ..default() }));
+                let id = key(&me, "noise1").and_then(|s| portal2_audio::emit(world, &s, Emit { entity: Some(e), ..default() }));
                 let looping = me.get_f32("loopmovesound").unwrap_or(0.0) != 0.0;
                 set_channel(world, e, if looping { id } else { None });
             }
             (true, false) => {
                 stop_channel(world, e);
                 if let Some(s) = key(&me, "noise2") {
-                    super::emit(world, &s, Emit { entity: Some(e), ..default() });
+                    portal2_audio::emit(world, &s, Emit { entity: Some(e), ..default() });
                 }
             }
             _ => {}
@@ -103,6 +103,6 @@ fn set_channel(world: &mut World, e: Entity, id: Option<u64>) {
 
 fn stop_channel(world: &mut World, e: Entity) {
     if let Some(id) = world.get_mut::<MotionSound>(e).and_then(|mut m| m.channel.take()) {
-        super::stop_channel(world, id);
+        portal2_audio::stop_channel(world, id);
     }
 }

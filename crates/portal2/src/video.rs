@@ -164,7 +164,7 @@ fn update_videos(world: &mut World) {
     let now = world.resource::<Time<Real>>().elapsed_secs_f64();
     let audio = std::mem::take(&mut world.resource_mut::<Videos>().audio);
     for (name, rate, channels, samples) in audio {
-        crate::audio::register_pcm(world, &format!("sound/{name}"), rate, channels, samples);
+        portal2_audio::register_pcm(world, &format!("sound/{name}"), rate, channels, samples);
     }
     let mut start_audio = Vec::new();
     {
@@ -227,6 +227,6 @@ fn update_videos(world: &mut World) {
         let _ = images.insert(id, crate::vgui::surface::rgba_image(w, h, rgba, false));
     }
     for name in start_audio {
-        crate::audio::emit(world, &name, crate::audio::Emit { soundlevel: Some(0.0), ..default() });
+        portal2_audio::emit(world, &name, portal2_audio::Emit { soundlevel: Some(0.0), ..default() });
     }
 }

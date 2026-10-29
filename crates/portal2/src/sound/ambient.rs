@@ -8,9 +8,9 @@
 
 use bevy::prelude::*;
 
-use super::{Emit, Sounds};
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
+use portal2_audio::{Emit, Sounds};
 use portal2_core::entity::{EntityRegistry, MapEntity};
 
 const SF_EVERYWHERE: u32 = 1;
@@ -104,16 +104,16 @@ fn play(world: &mut World, e: Entity) -> Option<u64> {
         params.pitch = Some(pitch);
         params.soundlevel = Some(level);
     }
-    let id = super::emit(world, &sound, params)?;
+    let id = portal2_audio::emit(world, &sound, params)?;
     if !scripted || volume < 1.0 || fade < 1.0 {
-        super::adjust(world, id, Some(if scripted { volume * fade } else { fade }), None);
+        portal2_audio::adjust(world, id, Some(if scripted { volume * fade } else { fade }), None);
     }
     Some(id)
 }
 
 fn stop(world: &mut World, e: Entity) {
     if let Some(id) = world.get_mut::<Ambient>(e).and_then(|mut a| a.channel.take()) {
-        super::stop_channel(world, id);
+        portal2_audio::stop_channel(world, id);
     }
 }
 
@@ -160,7 +160,7 @@ fn input(world: &mut World, call: &InputCall) -> bool {
                 a.volume = v;
             }
             if let Some(id) = channel {
-                super::adjust(world, id, Some(v), None);
+                portal2_audio::adjust(world, id, Some(v), None);
             }
         }
         "pitch" => {
@@ -169,7 +169,7 @@ fn input(world: &mut World, call: &InputCall) -> bool {
                 a.pitch = p;
             }
             if let Some(id) = channel {
-                super::adjust(world, id, None, Some(p));
+                portal2_audio::adjust(world, id, None, Some(p));
             }
         }
         "fadein" => {
@@ -207,7 +207,7 @@ fn fade_ambients(world: &mut World) {
     }
     for (e, channel, scale, done_out) in changes {
         if let Some(id) = channel {
-            super::adjust(world, id, Some(scale), None);
+            portal2_audio::adjust(world, id, Some(scale), None);
         }
         if done_out {
             stop(world, e);

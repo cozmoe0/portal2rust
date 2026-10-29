@@ -177,7 +177,7 @@ fn fizzle_props(
     mut holding: ResMut<Holding>,
     mut registry: ResMut<portal2_core::entity::EntityRegistry>,
     mut out: MessageWriter<FireOutput>,
-    mut sounds: MessageWriter<crate::audio::SoundRequest>,
+    mut sounds: MessageWriter<portal2_audio::SoundRequest>,
     mut commands: Commands,
 ) {
     for (te, trig) in &cleansers {
@@ -202,7 +202,7 @@ fn fizzle_props(
             }
             out.write(FireOutput::new(pe, "OnFizzled"));
             out.write(FireOutput::new(te, "OnDissolve").with_activator(Some(pe)));
-            sounds.write(crate::audio::SoundRequest::at("Prop.Fizzled", center));
+            sounds.write(portal2_audio::SoundRequest::at("Prop.Fizzled", center));
             lin.0 = drift * 0.5;
             ang.0 += Vec3::Z * 20f32.to_radians();
             registry.remove(pe);

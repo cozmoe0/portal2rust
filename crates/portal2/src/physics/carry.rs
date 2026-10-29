@@ -67,7 +67,7 @@ fn use_or_grab(
     mut out: MessageWriter<FireOutput>,
     mut commands: Commands,
     mut auto: ResMut<crate::player::autopilot::AutoUse>,
-    mut sounds: MessageWriter<crate::audio::SoundRequest>,
+    mut sounds: MessageWriter<portal2_audio::SoundRequest>,
     mut events: MessageWriter<GameEvent>,
 ) {
     let pressed = buttons.just_pressed("use") || std::mem::take(&mut auto.0);
@@ -80,7 +80,7 @@ fn use_or_grab(
         GameEvent::new(name).with("userid", EventValue::Entity(Some(pe))).with("entity", EventValue::Entity(Some(e)))
     };
     if let Some(held) = holding.entity.take() {
-        sounds.write(crate::audio::SoundRequest::stop("Weapon_Portalgun.HoldSound", pe));
+        sounds.write(portal2_audio::SoundRequest::stop("Weapon_Portalgun.HoldSound", pe));
         release(&mut commands, held);
         out.write(FireOutput::new(held, "OnPhysGunDrop").with_activator(Some(pe)));
         events.write(event("player_drop", held));
@@ -97,7 +97,7 @@ fn use_or_grab(
         tr.entity.map(|e| props.get(e).map(|p| *p.2))
     );
     let Some(target) = tr.entity else {
-        sounds.write(crate::audio::SoundRequest::on("PortalPlayer.UseDeny", pe));
+        sounds.write(portal2_audio::SoundRequest::on("PortalPlayer.UseDeny", pe));
         return;
     };
     events.write(event("player_use", target));
@@ -111,7 +111,7 @@ fn use_or_grab(
             holding.error = 0.0;
             holding.lift = 0.0;
             commands.entity(target).insert((GravityScale(0.0), layers_for(layers::HELD, layers::WORLD | layers::PROP | layers::MOVER)));
-            sounds.write(crate::audio::SoundRequest::on("Weapon_Portalgun.HoldSound", pe));
+            sounds.write(portal2_audio::SoundRequest::on("Weapon_Portalgun.HoldSound", pe));
             out.write(FireOutput::new(target, "OnPlayerPickup").with_activator(Some(pe)));
             out.write(FireOutput::new(target, "OnPhysGunPickup").with_activator(Some(pe)));
         }
@@ -134,7 +134,7 @@ pub fn resume_hold(world: &mut World, prop: Entity) {
     }
     holding.cube = cube;
     if let Some(p) = world.resource::<portal2_core::entity::EntityRegistry>().player {
-        world.write_message(crate::audio::SoundRequest::on("Weapon_Portalgun.HoldSound", p));
+        world.write_message(portal2_audio::SoundRequest::on("Weapon_Portalgun.HoldSound", p));
     }
 }
 

@@ -3,7 +3,6 @@
 //! Requires a local Portal 2 installation; all game content (maps, models,
 //! textures, sounds, scripts) is read from it at runtime.
 
-mod audio;
 mod camera;
 mod captions;
 mod chain;
@@ -26,6 +25,7 @@ mod screenshot;
 mod script;
 mod shots;
 mod smoke;
+mod sound;
 mod vgui;
 mod video;
 mod visuals;
@@ -55,7 +55,7 @@ fn main() {
                     filter: std::env::var("PORTAL2_LOG").unwrap_or_else(|_| "wgpu=error,naga=warn,bevy_render=info,portal2=info".into()),
                     ..default()
                 })
-                // Sound has its own mixer (crate::audio).
+                // Sound has its own mixer (portal2_audio).
                 .disable::<bevy::audio::AudioPlugin>(),
         )
         .insert_resource(entities::io::IoDebug(args.io_debug))
@@ -74,7 +74,8 @@ fn main() {
                 visuals::spotlights::SpotlightPlugin,
                 visuals::movies::MoviePlugin,
                 visuals::tonemap::TonemapPlugin,
-                audio::AudioPlugin,
+                portal2_audio::AudioPlugin,
+                sound::SoundEntitiesPlugin,
                 captions::CaptionsPlugin,
             ),
             (

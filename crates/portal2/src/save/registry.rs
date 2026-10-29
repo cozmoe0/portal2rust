@@ -13,9 +13,9 @@ use portal2_render::models::StudioAnimator;
 use portal2_render::models::animation::Layer;
 
 pub fn register_all(r: &mut SaveRegistry) {
-    use crate::audio::{ambient, soundscape};
     use crate::devices::{bridge, catapult, funnel, laser, security_camera, turret};
     use crate::entities::{buttons, detectors, movers, props, scenes, templates, trains, transition, triggers};
+    use crate::sound::{ambient, soundscape};
 
     r.component::<logic::LogicRelay>("logic_relay");
     r.component::<logic::LogicTimer>("logic_timer");

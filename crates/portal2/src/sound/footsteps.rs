@@ -11,10 +11,10 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 use source_formats::kv;
 
-use super::Emit;
 use crate::collision::Physics;
 use crate::player::Player;
 use crate::world::CurrentMap;
+use portal2_audio::Emit;
 use portal2_core::entity::EntityRegistry;
 use portal2_core::vfs::GameFs;
 
@@ -147,5 +147,9 @@ pub fn player_footsteps(world: &mut World, mut state: Local<FootstepState>) {
     let sounds = state.props.as_mut().unwrap().sounds(&prop);
     state.left = !state.left;
     let Some(name) = (if state.left { sounds.step_left } else { sounds.step_right }) else { return };
-    super::emit(world, &name, Emit { entity: Some(player), origin: Some(s.origin), volume: Some(volume), slot: Some(4), ..default() });
+    portal2_audio::emit(
+        world,
+        &name,
+        Emit { entity: Some(player), origin: Some(s.origin), volume: Some(volume), slot: Some(4), ..default() },
+    );
 }

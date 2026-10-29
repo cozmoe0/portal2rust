@@ -24,24 +24,28 @@ pub mod view;
 
 use bevy::prelude::*;
 
-/// Counts map loads, so code waiting for a map can tell a new one from the
-/// current one. `current` is 0 while no map is loaded.
+/// Which map is loaded: its name, and a generation that changes with every
+/// load so code waiting for a map can tell a new one from the current one
+/// (0 and an empty name while no map is loaded).
 #[derive(Resource, Default, Debug)]
-pub struct MapGeneration {
-    pub current: u64,
+pub struct LoadedMap {
+    pub generation: u64,
+    pub name: String,
     last: u64,
 }
 
-impl MapGeneration {
+impl LoadedMap {
     /// A map has been loaded.
-    pub fn loaded(&mut self) {
+    pub fn loaded(&mut self, name: &str) {
         self.last += 1;
-        self.current = self.last;
+        self.generation = self.last;
+        self.name = name.to_owned();
     }
 
     /// The map has been unloaded.
     pub fn unloaded(&mut self) {
-        self.current = 0;
+        self.generation = 0;
+        self.name.clear();
     }
 }
 
@@ -51,7 +55,7 @@ pub struct CorePlugin;
 
 impl Plugin for CorePlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<MapGeneration>()
+        app.init_resource::<LoadedMap>()
             .init_resource::<entity::EntityRegistry>()
             .init_resource::<view::UiFocus>()
             .add_message::<events::GameEvent>()

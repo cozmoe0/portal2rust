@@ -172,7 +172,7 @@ fn player_tick(
     portals: Option<Res<crate::portals::Portals>>,
     portal_query: Query<&crate::portals::Portal>,
     mut players: Query<(Entity, &mut Player, &mut Transform)>,
-    (paint, mut sounds): (Option<Res<crate::paint::PaintMap>>, MessageWriter<crate::audio::SoundRequest>),
+    (paint, mut sounds): (Option<Res<crate::paint::PaintMap>>, MessageWriter<portal2_audio::SoundRequest>),
 ) {
     let speed_scale = speed_mod.map(|s| s.0).unwrap_or(1.0);
     let gel_settings = crate::paint::power::GelSettings::from_console(&console);
@@ -227,7 +227,7 @@ fn player_tick(
             let flow = crate::devices::funnel::player_flow(&pull, center, wish);
             mover.funnel_move(&mut state, &move_input, flow, dt);
         } else if mover.step(&mut state, &move_input, dt) {
-            sounds.write(crate::audio::SoundRequest::on("Player.JumpPowerUse", e));
+            sounds.write(portal2_audio::SoundRequest::on("Player.JumpPowerUse", e));
         }
         p.state = state;
         p.ground_ref = state.ground_entity.and_then(|g| placements.get(g).ok().map(|gt| (g, gt.affine())));

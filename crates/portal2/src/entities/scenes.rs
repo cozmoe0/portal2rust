@@ -192,7 +192,7 @@ fn input(world: &mut World, call: &InputCall) -> bool {
                 None => Vec::new(),
             };
             for id in speech {
-                crate::audio::adjust(world, id, None, Some(p * 100.0));
+                portal2_audio::adjust(world, id, None, Some(p * 100.0));
             }
         }
         "reload" => {
@@ -227,7 +227,7 @@ fn input(world: &mut World, call: &InputCall) -> bool {
 fn stop_speech(world: &mut World, e: Entity) {
     let speech = world.get_mut::<ChoreoScene>(e).map(|mut s| std::mem::take(&mut s.speech)).unwrap_or_default();
     for id in speech {
-        crate::audio::stop_channel(world, id);
+        portal2_audio::stop_channel(world, id);
     }
 }
 
@@ -271,7 +271,7 @@ pub fn active_scenes(world: &mut World, who: Entity) -> Vec<Entity> {
 /// caption for the rest of the line.
 fn speak(world: &mut World, e: Entity, who: Entity, ev: &source_formats::vcd::Event, pitch: f32, offset: f32) {
     let level = ev.param2.trim().trim_end_matches(|c: char| c.is_ascii_alphabetic()).parse::<f32>().ok();
-    let params = crate::audio::Emit {
+    let params = portal2_audio::Emit {
         entity: Some(who),
         pitch: Some(pitch * 100.0),
         soundlevel: level,
@@ -280,7 +280,7 @@ fn speak(world: &mut World, e: Entity, who: Entity, ev: &source_formats::vcd::Ev
         delay: -offset,
         ..default()
     };
-    if let Some(id) = crate::audio::emit(world, &ev.param, params)
+    if let Some(id) = portal2_audio::emit(world, &ev.param, params)
         && let Some(mut s) = world.get_mut::<ChoreoScene>(e)
     {
         s.speech.push(id);

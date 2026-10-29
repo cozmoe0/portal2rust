@@ -22,6 +22,7 @@ squirrel = { path = "crates/squirrel" }
 bink = { path = "crates/bink" }
 portal2_core = { path = "crates/portal2_core" }
 portal2_render = { path = "crates/portal2_render" }
+portal2_audio = { path = "crates/portal2_audio" }
 
 # Engine crates build fast in dev; dependencies (Bevy, wgpu, physics) get full
 # optimisation so the game stays playable in debug builds.

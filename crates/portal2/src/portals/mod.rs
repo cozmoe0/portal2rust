@@ -329,7 +329,7 @@ fn apply_placements(
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<PortalMaterial>>,
-    mut sounds: MessageWriter<crate::audio::SoundRequest>,
+    mut sounds: MessageWriter<portal2_audio::SoundRequest>,
     mut fx: MessageWriter<PortalFx>,
     (fs, mut textures, physics): (
         Res<portal2_core::vfs::GameFs>,
@@ -345,11 +345,11 @@ fn apply_placements(
         let rotation = req.frame.rotation();
         fx.write(PortalFx::Opened { slot: req.slot, frame: req.frame });
         let open = if req.slot == 0 { "Portal.open_blue" } else { "Portal.open_red" };
-        sounds.write(crate::audio::SoundRequest::at(open, req.frame.center));
+        sounds.write(portal2_audio::SoundRequest::at(open, req.frame.center));
         if let Some(e) = portals.entities[req.slot]
             && let Ok(mut p) = existing.get_mut(e)
         {
-            sounds.write(crate::audio::SoundRequest::at("Portal.fizzle_moved", p.frame.center));
+            sounds.write(portal2_audio::SoundRequest::at("Portal.fizzle_moved", p.frame.center));
             fx.write(PortalFx::Closed { slot: req.slot, frame: p.frame });
             p.frame = req.frame;
             p.opened_at = time.elapsed_secs_f64();
@@ -438,7 +438,7 @@ fn apply_placements(
             .add_children(&[surface, inner_surface, end_surface])
             .id();
         portals.entities[req.slot] = Some(e);
-        sounds.write(crate::audio::SoundRequest::on("Portal.ambient_loop", e));
+        sounds.write(portal2_audio::SoundRequest::on("Portal.ambient_loop", e));
     }
 }
 
@@ -447,7 +447,7 @@ fn fizzle_portals(
     mut requests: MessageReader<FizzlePortals>,
     mut portals: ResMut<Portals>,
     query: Query<&Portal>,
-    mut sounds: MessageWriter<crate::audio::SoundRequest>,
+    mut sounds: MessageWriter<portal2_audio::SoundRequest>,
     mut fx: MessageWriter<PortalFx>,
 ) {
     for req in requests.read() {
@@ -460,7 +460,7 @@ fn fizzle_portals(
                     commands.entity(p.camera).despawn();
                     commands.entity(p.inner_camera).despawn();
                     let close = if slot == 0 { "Portal.close_blue" } else { "Portal.close_red" };
-                    sounds.write(crate::audio::SoundRequest::at(close, p.frame.center));
+                    sounds.write(portal2_audio::SoundRequest::at(close, p.frame.center));
                     fx.write(PortalFx::Closed { slot, frame: p.frame });
                 }
                 commands.entity(e).despawn();
@@ -759,7 +759,7 @@ fn portal_sounds(
     query: Query<&Portal>,
     players: Query<(Entity, &Player)>,
     mut env: ResMut<PortalEnvironment>,
-    mut sounds: MessageWriter<crate::audio::SoundRequest>,
+    mut sounds: MessageWriter<portal2_audio::SoundRequest>,
 ) {
     let Ok((pe, p)) = players.single() else { return };
     let frames = linked_frames(&portals, &query).filter(|_| !p.noclip);
@@ -773,7 +773,7 @@ fn portal_sounds(
     });
     let speed = p.state.velocity.length();
     let mut play = |name: &str| {
-        let mut r = crate::audio::SoundRequest::on(name, pe);
+        let mut r = portal2_audio::SoundRequest::on(name, pe);
         r.params.volume = Some((0.3 + speed * 0.00075).min(1.0));
         r.params.pitch = Some((80.0 + speed * 0.03).trunc());
         sounds.write(r);

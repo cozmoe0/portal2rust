@@ -148,8 +148,8 @@ fn physics_prop_input(world: &mut World, call: &InputCall) -> bool {
     {
         holding.entity = None;
     }
-    if let Some(at) = crate::audio::sound_origin(world, e) {
-        crate::audio::emit(world, "Prop.Fizzled", crate::audio::Emit { origin: Some(at), ..default() });
+    if let Some(at) = portal2_audio::sound_origin(world, e) {
+        portal2_audio::emit(world, "Prop.Fizzled", portal2_audio::Emit { origin: Some(at), ..default() });
     }
     fire_output(world, e, "OnFizzled", call.activator, None);
     super::despawn_entity(world, e);
@@ -280,7 +280,7 @@ fn animation_event(world: &mut World, ev: &AnimationEvent) {
     }
     match ev.name.as_str() {
         "AE_CL_PLAYSOUND" | "AE_SV_PLAYSOUND" => {
-            crate::audio::emit(world, ev.options.trim(), crate::audio::Emit { entity: Some(e), ..default() });
+            portal2_audio::emit(world, ev.options.trim(), portal2_audio::Emit { entity: Some(e), ..default() });
         }
         "AE_CL_CREATE_PARTICLE_EFFECT" => {
             let mut parts = ev.options.split_whitespace();
@@ -385,11 +385,11 @@ fn pedestal_button_input(world: &mut World, call: &InputCall) -> bool {
             if let Some(mut anim) = world.get_mut::<StudioAnimator>(e) {
                 anim.set_sequence("down");
             }
-            crate::audio::emit(world, "Portal.button_down", crate::audio::Emit { entity: Some(e), ..default() });
+            portal2_audio::emit(world, "Portal.button_down", portal2_audio::Emit { entity: Some(e), ..default() });
             fire_output(world, e, "OnPressed", call.activator, None);
         }
         "press" if locked && !busy => {
-            crate::audio::emit(world, "Portal.button_locked", crate::audio::Emit { entity: Some(e), ..default() });
+            portal2_audio::emit(world, "Portal.button_locked", portal2_audio::Emit { entity: Some(e), ..default() });
         }
         "press" => {}
         "lock" | "unlock" => {
@@ -413,7 +413,7 @@ fn button_timers(
     mut doors: Query<(Entity, &PendingDoorReport, &StudioAnimator), Without<PedestalButton>>,
     mut commands: Commands,
     mut out: MessageWriter<FireOutput>,
-    mut sounds: MessageWriter<crate::audio::SoundRequest>,
+    mut sounds: MessageWriter<portal2_audio::SoundRequest>,
 ) {
     for (e, mut b, anim) in &mut buttons {
         if b.pressed_until.is_some_and(|t| clock.due(t)) {
@@ -421,7 +421,7 @@ fn button_timers(
             if let Some(mut anim) = anim {
                 anim.set_sequence("up");
             }
-            sounds.write(crate::audio::SoundRequest::on("Portal.button_up", e));
+            sounds.write(portal2_audio::SoundRequest::on("Portal.button_up", e));
             out.write(FireOutput::new(e, "OnButtonReset"));
         }
     }
@@ -471,10 +471,10 @@ pub fn set_floor_button(world: &mut World, e: Entity, pressed: bool, activator: 
     if let Some(mut anim) = world.get_mut::<StudioAnimator>(e) {
         anim.set_sequence(if pressed { "down" } else { "up" });
     }
-    crate::audio::emit(
+    portal2_audio::emit(
         world,
         if pressed { "Portal.button_down" } else { "Portal.button_up" },
-        crate::audio::Emit { entity: Some(e), ..default() },
+        portal2_audio::Emit { entity: Some(e), ..default() },
     );
     fire_output(world, e, if pressed { "OnPressed" } else { "OnUnPressed" }, activator, None);
 }

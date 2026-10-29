@@ -15,7 +15,7 @@ use std::collections::{HashMap, VecDeque};
 
 use bevy::prelude::*;
 
-use crate::MapGeneration;
+use crate::LoadedMap;
 pub use crate::sets::ConsoleSet;
 use crate::sets::LoadMapSet;
 use crate::vfs::GameFs;
@@ -201,7 +201,7 @@ fn queue_startup(mut console: ResMut<Console>, fs: Res<GameFs>, args: Res<crate:
 }
 
 fn map_identity(world: &World) -> u64 {
-    world.get_resource::<MapGeneration>().map_or(0, |g| g.current)
+    world.get_resource::<LoadedMap>().map_or(0, |m| m.generation)
 }
 
 /// Runs buffered commands until the buffer is empty, a `wait`, or a map load.

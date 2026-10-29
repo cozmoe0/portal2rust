@@ -17,7 +17,7 @@ use source_formats::bsp::{Bsp, Entity as MapEntity};
 use source_formats::zip::ZipArchive;
 
 use bsp_mesh::{MeshBatch, build_world_geometry};
-use portal2_core::MapGeneration;
+use portal2_core::LoadedMap;
 use portal2_core::args::Args;
 use portal2_core::console::Console;
 use portal2_core::sets::LoadMapSet;
@@ -293,8 +293,9 @@ fn load_map_system(
         started.elapsed()
     );
     commands.insert_resource(start);
+    let loaded_name = map.name.clone();
     commands.insert_resource(map);
-    commands.queue(|world: &mut World| world.resource_mut::<MapGeneration>().loaded());
+    commands.queue(move |world: &mut World| world.resource_mut::<LoadedMap>().loaded(&loaded_name));
     loaded.write(MapLoaded(name));
 }
 
@@ -316,7 +317,7 @@ pub fn unload_map(world: &mut World) {
         r.player = None;
     }
     world.remove_resource::<CurrentMap>();
-    world.resource_mut::<MapGeneration>().unloaded();
+    world.resource_mut::<LoadedMap>().unloaded();
     world.remove_resource::<PlayerStart>();
 }
 

@@ -124,7 +124,7 @@ fn knock_off(
     portal_query: Query<&crate::portals::Portal>,
     fs: Res<portal2_core::vfs::GameFs>,
     mut cameras: Query<(Entity, &mut SecurityCamera, &GlobalTransform, &crate::collision::Collider, &MapEntity)>,
-    mut sounds: MessageWriter<crate::audio::SoundRequest>,
+    mut sounds: MessageWriter<portal2_audio::SoundRequest>,
     mut commands: Commands,
 ) {
     let Some(frames) = crate::portals::linked_frames(&portals, &portal_query) else { return };
@@ -149,7 +149,7 @@ fn knock_off(
         }
         c.mounted = false;
         c.mode = Mode::Idle;
-        sounds.write(crate::audio::SoundRequest::at("SecurityCamera.Detachment", t.translation));
+        sounds.write(portal2_audio::SoundRequest::at("SecurityCamera.Detachment", t.translation));
         if let Some(collider) = crate::physics::collider_for(&col.shape) {
             let mass = me.studio_model().and_then(|p| crate::physics::model_mass(&fs, &p)).unwrap_or(10.0);
             commands.entity(e).insert(crate::entities::props::PhysicsProp);

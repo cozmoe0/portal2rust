@@ -12,7 +12,6 @@ use source_formats::bsp::contents;
 
 use super::EffectMaterial;
 use super::laser::LaserHitTurret;
-use crate::audio::SoundRequest;
 use crate::collision::{Physics, mask};
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{FireOutput, InputCall, InputHandlers};
@@ -21,6 +20,7 @@ use crate::entities::spawner::{ModelOptions, attach_studio_model};
 use crate::player::Player;
 use crate::player::health::DamagePlayer;
 use crate::world::MapObject;
+use portal2_audio::SoundRequest;
 use portal2_core::clock::GameClock;
 use portal2_core::entity::MapEntity;
 use portal2_core::sets::ThinkSet;

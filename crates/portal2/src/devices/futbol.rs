@@ -9,11 +9,11 @@
 use avian3d::prelude::LinearVelocity;
 use bevy::prelude::*;
 
-use crate::audio::SoundRequest;
 use crate::collision::{Physics, mask};
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{FireOutput, InputCall, InputHandlers, resolve_targets};
 use crate::player::Player;
+use portal2_audio::SoundRequest;
 use portal2_core::entity::{EntityRegistry, MapEntity};
 use portal2_core::sets::ThinkSet;
 

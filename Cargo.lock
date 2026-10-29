@@ -4974,18 +4974,28 @@ dependencies = [
  "bink",
  "bytemuck",
  "ciborium",
- "cpal",
  "flate2",
  "half",
  "log",
+ "portal2_audio",
  "portal2_core",
  "portal2_render",
  "serde",
  "serde_derive",
  "source_formats",
  "squirrel",
- "symphonia",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "portal2_audio"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "cpal",
+ "portal2_core",
+ "source_formats",
+ "symphonia",
 ]
 
 [[package]]

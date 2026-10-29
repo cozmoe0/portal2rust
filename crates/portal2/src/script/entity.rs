@@ -545,7 +545,7 @@ fn emit_sound(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
     let sound = arg_string(ctx, args, 1)?;
     let (vm, world) = parts(ctx);
     let e = this_entity(vm, world, args)?;
-    crate::audio::emit(world, &sound, crate::audio::Emit { entity: Some(e), ..Default::default() });
+    portal2_audio::emit(world, &sound, portal2_audio::Emit { entity: Some(e), ..Default::default() });
     Ok(Value::Null)
 }
 
@@ -553,7 +553,7 @@ fn stop_sound(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
     let sound = arg_string(ctx, args, 1)?;
     let (vm, world) = parts(ctx);
     let e = this_entity(vm, world, args)?;
-    crate::audio::stop(world, Some(e), &sound);
+    portal2_audio::stop(world, Some(e), &sound);
     Ok(Value::Null)
 }
 
@@ -561,7 +561,7 @@ fn stop_sound(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
 fn sound_duration(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
     let sound = arg_string(ctx, args, 1)?;
     let (_, world) = parts(ctx);
-    Ok(Value::Float(crate::audio::duration(world, &sound)))
+    Ok(Value::Float(portal2_audio::duration(world, &sound)))
 }
 
 /// `ConnectOutput(output, function)`: an output connection that calls the
