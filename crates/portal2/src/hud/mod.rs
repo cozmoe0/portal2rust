@@ -1,6 +1,7 @@
 //! The in-game HUD: elements placed by `scripts/hudlayout.res` and drawn
 //! with the interface painter.
 
+pub mod credits;
 pub mod crosshair;
 
 use bevy::prelude::*;
@@ -18,6 +19,7 @@ impl Plugin for HudPlugin {
         app.init_resource::<HudLayout>().add_systems(First, load_layout.after(crate::vgui::TrackScreen));
         app.world_mut().resource_mut::<Console>().register_cvar("cl_drawhud", "1", 0);
         crosshair::build(app);
+        credits::build(app);
     }
 }
 

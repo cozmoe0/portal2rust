@@ -1,0 +1,4 @@
+# The ending credits (sp_a5_credits starts them at map spawn; they are a
+# HUD element, so the HUD stays on). Capture with --map-settle 14 and
+# again with 40 for a later frame (shots named by the run).
+credits sp_a5_credits 0 0 0 0 0 0 cl_drawhud 1
