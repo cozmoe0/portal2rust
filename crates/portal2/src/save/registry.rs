@@ -102,6 +102,7 @@ pub fn register_all(r: &mut SaveRegistry) {
     props::register_save(r);
     buttons::register_save(r);
     r.component::<detectors::PortalDetector>("portal_detector");
+    crate::entities::script_conditions::register_save(r);
     r.component::<triggers::Trigger>("trigger");
     r.component::<trains::Train>("train");
     r.component::<trains::PathTrack>("path_track");

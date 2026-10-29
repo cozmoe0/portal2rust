@@ -9,6 +9,7 @@ use crate::collision::{Collider as TraceCollider, Physics, mask};
 use crate::coords::{angles_forward, quat_to_angles};
 use crate::entities::io::{EventQueue, EventTarget, FireOutput};
 use crate::entities::props::PhysicsProp;
+use crate::hud::instructor::{EventValue, GameEvent};
 use crate::player::{Player, PlayerInput, PlayerMoveSet};
 
 /// Horizontal radius of the player's hull, part of the hold distance.
@@ -66,16 +67,20 @@ fn use_or_grab(
     mut commands: Commands,
     mut auto: ResMut<crate::player::autopilot::AutoUse>,
     mut sounds: MessageWriter<crate::audio::SoundRequest>,
+    mut events: MessageWriter<GameEvent>,
 ) {
     let pressed = buttons.just_pressed("use") || std::mem::take(&mut auto.0);
     if !pressed {
         return;
     }
     let Ok((pe, p)) = players.single() else { return };
+    // `player_use` / `player_drop` for the instructor's carry lessons.
+    let event = |name: &str, e: Entity| GameEvent::new(name).with("userid", EventValue::Entity(Some(pe))).with("entity", EventValue::Entity(Some(e)));
     if let Some(held) = holding.entity.take() {
         sounds.write(crate::audio::SoundRequest::stop("Weapon_Portalgun.HoldSound", pe));
         release(&mut commands, held);
         out.write(FireOutput::new(held, "OnPhysGunDrop").with_activator(Some(pe)));
+        events.write(event("player_drop", held));
         return;
     }
     let eye = p.state.origin + Vec3::Z * p.state.eye_offset();
@@ -87,6 +92,7 @@ fn use_or_grab(
         sounds.write(crate::audio::SoundRequest::on("PortalPlayer.UseDeny", pe));
         return;
     };
+    events.write(event("player_use", target));
     match props.get(target) {
         Ok((col, gt, body, me)) if *body == RigidBody::Dynamic => {
             let prop_yaw = quat_to_angles(gt.compute_transform().rotation).y;

@@ -3,11 +3,13 @@
 
 pub mod buttons;
 pub mod detectors;
+pub mod hints;
 pub mod io;
 pub mod logic;
 pub mod movers;
 pub mod props;
 pub mod scenes;
+pub mod script_conditions;
 pub mod spawner;
 pub mod templates;
 pub mod texturetoggle;
@@ -48,6 +50,8 @@ impl Plugin for EntitiesPlugin {
         texturetoggle::register(app);
         buttons::register(app);
         scenes::register(app);
+        script_conditions::register(app);
+        hints::register(app);
         trains::register(app);
         transition::register(app);
         props::register(app);

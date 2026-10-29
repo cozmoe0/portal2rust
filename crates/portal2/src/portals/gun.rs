@@ -22,6 +22,7 @@ use crate::coords::{angles_forward, angles_to_quat};
 use crate::entities::io::InputCall;
 use crate::entities::io::InputHandlers;
 use crate::entities::{EntityRegistry, MapEntity, SpawnHandlers};
+use crate::hud::instructor::{EventValue, GameEvent};
 use crate::models::lighting;
 use crate::models::{ModelCache, SpawnModel, StudioAnimator, spawn_model_parts};
 use crate::player::{Player, PlayerCameraSet, PlayerInput};
@@ -141,12 +142,13 @@ fn reset_gun_on_map(
 
 fn pick_up_gun(
     mut gun: ResMut<PortalGun>,
-    players: Query<&Player>,
+    players: Query<(Entity, &Player)>,
     entities: Query<(&MapEntity, &GlobalTransform)>,
     mut commands: Commands,
+    mut events: MessageWriter<GameEvent>,
 ) {
     let Some(pickup) = gun.pickup else { return };
-    let Ok(p) = players.single() else { return };
+    let Ok((pe, p)) = players.single() else { return };
     let Ok((me, gt)) = entities.get(pickup) else { return };
     let center = p.state.origin + Vec3::Z * 36.0;
     if center.distance(gt.translation()) > 48.0 {
@@ -154,10 +156,33 @@ fn pick_up_gun(
     }
     let one = me.get_i32("canfireportal1").unwrap_or(1) != 0;
     let two = me.get_i32("canfireportal2").unwrap_or(1) != 0;
+    for slot in newly_enabled(&gun, [one, two]) {
+        events.write(portal_enabled(Some(pe), slot));
+    }
     gun.can_fire = [gun.can_fire[0] || one, gun.can_fire[1] || two];
     gun.pickup = None;
     commands.entity(pickup).insert(Visibility::Hidden);
     info!("picked up the portal gun ({one}, {two})");
+}
+
+fn newly_enabled(gun: &PortalGun, slots: [bool; 2]) -> Vec<usize> {
+    (0..2).filter(|&s| slots[s] && !gun.can_fire[s]).collect()
+}
+
+/// The `portal_enabled` event the instructor's portal lessons open on.
+fn portal_enabled(player: Option<Entity>, slot: usize) -> GameEvent {
+    GameEvent::new("portal_enabled").with("userid", EventValue::Entity(player)).with("leftportal", EventValue::Int((slot == 0) as i32))
+}
+
+/// Lets the gun place more portals (`give_portalgun`, the upgrade).
+pub fn enable_portals(world: &mut World, slots: [bool; 2]) {
+    let player = world.resource::<EntityRegistry>().player;
+    let newly = newly_enabled(world.resource::<PortalGun>(), slots);
+    let mut gun = world.resource_mut::<PortalGun>();
+    gun.can_fire = [gun.can_fire[0] || slots[0], gun.can_fire[1] || slots[1]];
+    for slot in newly {
+        world.write_message(portal_enabled(player, slot));
+    }
 }
 
 /// Whether portals may be placed on a surface (texinfo index from a trace):
@@ -200,7 +225,7 @@ fn fire_gun(
     ),
     mut animators: Query<&mut StudioAnimator>,
     mut auto: ResMut<crate::player::autopilot::AutoFire>,
-    (paint, console): (Option<Res<crate::paint::PaintMap>>, Res<crate::console::Console>),
+    (paint, console, mut events): (Option<Res<crate::paint::PaintMap>>, Res<crate::console::Console>, MessageWriter<GameEvent>),
 ) {
     let slot = if let Some(slot) = auto.0.take() {
         slot
@@ -217,6 +242,7 @@ fn fire_gun(
     }
     let (Ok((pe, p)), Some(map)) = (players.single(), map) else { return };
     gun.next_fire = now + FIRE_DELAY;
+    events.write(GameEvent::new("portal_fired").with("userid", EventValue::Entity(Some(pe))).with("leftportal", EventValue::Int((slot == 0) as i32)));
     sounds.write(crate::audio::SoundRequest::on(if slot == 0 { "Weapon_Portalgun.fire_blue" } else { "Weapon_Portalgun.fire_red" }, pe));
     if let Some(vm) = gun.viewmodel
         && let Ok(mut a) = animators.get_mut(vm)

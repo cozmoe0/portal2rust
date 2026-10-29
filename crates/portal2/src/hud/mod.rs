@@ -3,6 +3,7 @@
 
 pub mod credits;
 pub mod crosshair;
+pub mod instructor;
 
 use bevy::prelude::*;
 use source_formats::kv::KeyValues;
@@ -20,6 +21,7 @@ impl Plugin for HudPlugin {
         app.world_mut().resource_mut::<Console>().register_cvar("cl_drawhud", "1", 0);
         crosshair::build(app);
         credits::build(app);
+        instructor::build(app);
     }
 }
 

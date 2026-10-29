@@ -78,7 +78,6 @@ pub fn register(app: &mut App) {
         "info_overlay_accessor",
         "vgui_screen",
         "point_viewcontrol",
-        "env_instructor_hint",
         "move_rope",
         "keyframe_rope",
     ] {

@@ -1,4 +1,4 @@
-wa//! Paint bombs (`prop_paint_bomb`): physics balls of gel that burst when
+//! Paint bombs (`prop_paint_bomb`): physics balls of gel that burst when
 //! they hit something. The burst traces the `paintbomb_*_angle_split`
 //! directions out to `paintbomb_explosion_radius` and paints where they
 //! land; a ring of short-lived streaking blobs shows the splash. The ball

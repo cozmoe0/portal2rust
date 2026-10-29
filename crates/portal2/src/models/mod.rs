@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use bevy::asset::RenderAssetUsages;
+use bevy::camera::visibility::DynamicSkinnedMeshBounds;
 use bevy::mesh::skinning::{SkinnedMesh, SkinnedMeshInverseBindposes};
 use bevy::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 use bevy::prelude::*;
@@ -172,6 +173,11 @@ fn studio_mesh(m: &StudioMesh, pose: Option<&[Mat4]>) -> Mesh {
     if pose.is_none() {
         mesh.insert_attribute(Mesh::ATTRIBUTE_JOINT_INDEX, VertexAttributeValues::Uint16x4(joints));
         mesh.insert_attribute(Mesh::ATTRIBUTE_JOINT_WEIGHT, weights);
+        // Per-joint bounds, so culling follows the animated pose rather than
+        // the reference pose (sequences may move geometry far from it).
+        if let Err(e) = mesh.generate_skinned_mesh_bounds() {
+            warn!("skinned mesh bounds: {e}");
+        }
     }
     mesh
 }
@@ -322,7 +328,10 @@ pub fn spawn_model_parts(
             (None, None) => continue,
         };
         if spec.animated {
-            e.insert(SkinnedMesh { inverse_bindposes: model.inverse_bindposes.clone(), joints: joints.clone() });
+            e.insert((
+                SkinnedMesh { inverse_bindposes: model.inverse_bindposes.clone(), joints: joints.clone() },
+                DynamicSkinnedMeshBounds,
+            ));
         }
         let id = e.id();
         commands.entity(root).add_child(id);

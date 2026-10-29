@@ -150,13 +150,13 @@ fn zero_float(_ctx: &mut Ctx, _args: &[Value]) -> Result<Value> {
 
 fn give_portalgun(ctx: &mut Ctx, _args: &[Value]) -> Result<Value> {
     let (_, world) = parts(ctx);
-    world.resource_mut::<crate::portals::gun::PortalGun>().can_fire[0] = true;
+    crate::portals::gun::enable_portals(world, [true, false]);
     Ok(Value::Null)
 }
 
 fn upgrade_portalgun(ctx: &mut Ctx, _args: &[Value]) -> Result<Value> {
     let (_, world) = parts(ctx);
-    world.resource_mut::<crate::portals::gun::PortalGun>().can_fire = [true, true];
+    crate::portals::gun::enable_portals(world, [true, true]);
     Ok(Value::Null)
 }
 
