@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureViewDescriptor, TextureViewDimension};
 use source_formats::vtf::{self, Vtf, VtfFormat};
 
-use crate::vfs::GameFs;
+use portal2_core::vfs::GameFs;
 
 #[derive(Clone, Debug)]
 pub struct TextureInfo {

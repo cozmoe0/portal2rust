@@ -13,8 +13,8 @@ use crate::models::{LoadedModel, ModelCache, SpawnModel, StudioAnimator, spawn_m
 use crate::render::materials::{MaterialCache, MaterialContext};
 use crate::render::source_material::{ModelMaterial, RefractMaterial};
 use crate::render::textures::TextureCache;
-use crate::vfs::GameFs;
 use crate::world::{CurrentMap, is_invisible_brush_class, spawn_model_meshes};
+use portal2_core::vfs::GameFs;
 
 /// Adds brush geometry for `model "*N"` entities whose class is drawn.
 pub fn attach_brush_model(world: &mut World, e: Entity) {

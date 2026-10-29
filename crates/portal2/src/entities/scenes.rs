@@ -22,8 +22,9 @@ use source_formats::vcd::{EventKind, Scene};
 
 use super::io::{InputCall, InputHandlers, fire_output};
 use super::{EntityRegistry, MapEntity, SpawnHandlers};
-use crate::clock::{GameClock, ThinkSet};
-use crate::vfs::GameFs;
+use portal2_core::clock::GameClock;
+use portal2_core::sets::ThinkSet;
+use portal2_core::vfs::GameFs;
 
 pub fn register(app: &mut App) {
     app.init_resource::<SceneLibrary>().add_systems(FixedUpdate, run_scenes.in_set(ThinkSet));
@@ -91,13 +92,13 @@ pub struct ChoreoScene {
     /// Game time the scene last started (orders an actor's scenes).
     #[serde(default)]
     started: f64,
-    #[serde(with = "crate::save::ids::opt_entity")]
+    #[serde(with = "portal2_core::save::ids::opt_entity")]
     activator: Option<Entity>,
     /// Sound channels started by this scene's speak events.
     #[serde(skip)]
     speech: Vec<u64>,
     /// Actors this scene layers gestures on.
-    #[serde(with = "crate::save::ids::entities")]
+    #[serde(with = "portal2_core::save::ids::entities")]
     layered: Vec<Entity>,
 }
 
@@ -494,13 +495,13 @@ mod census {
     }
 }
 
-impl crate::save::Restore for ChoreoScene {
+impl portal2_core::save::Restore for ChoreoScene {
     fn keep(&mut self, live: Self) {
         self.loaded = live.loaded;
     }
 }
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<ChoreoScene>("choreo_scene");
 }
 

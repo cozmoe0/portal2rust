@@ -21,11 +21,12 @@ use bevy::shader::ShaderRef;
 use serde::{Deserialize, Serialize};
 
 use super::sprites::{SourceSprite, SpriteMaterial, SpriteParams, load_sprite_source, sprite_quad};
-use crate::camera::MainCamera;
+use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::entities::{MapEntity, SpawnHandlers};
 use crate::render::textures::TextureCache;
-use crate::vfs::GameFs;
+use portal2_core::entity::MapEntity;
+use portal2_core::vfs::GameFs;
+use portal2_core::view::MainCamera;
 
 pub const BEAM_SHADER: &str = "embedded://portal2/render/shaders/beam.wesl";
 const BEAM_MATERIAL: &str = "sprites/glow_test02.vmt";
@@ -97,14 +98,14 @@ pub struct Spotlight {
     pub halo: Option<Entity>,
 }
 
-impl crate::save::Restore for Spotlight {
+impl portal2_core::save::Restore for Spotlight {
     fn keep(&mut self, live: Self) {
         self.beam = live.beam;
         self.halo = live.halo;
     }
 }
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<Spotlight>("spotlight");
 }
 

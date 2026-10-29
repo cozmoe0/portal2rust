@@ -15,9 +15,9 @@ use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use bevy::time::TimeUpdateStrategy;
 
-use crate::args::Args;
-use crate::clock::GameClock;
 use crate::world::CurrentMap;
+use portal2_core::args::Args;
+use portal2_core::clock::GameClock;
 
 pub struct RecordPlugin;
 

@@ -14,20 +14,20 @@ use bevy::camera::visibility::{NoFrustumCulling, RenderLayers};
 use bevy::ecs::system::SystemState;
 use bevy::mesh::skinning::SkinnedMeshInverseBindposes;
 use bevy::prelude::*;
+use portal2_core::layers::PLAYER_BODY_LAYER;
 
-use super::{Player, PlayerCameraSet, PlayerInput};
-use crate::coords::angles_to_quat;
+use super::{Player, PlayerInput};
 use crate::models::animation::Layer;
 use crate::models::{ModelCache, SpawnModel, StudioAnimator, lighting, spawn_model_parts};
 use crate::render::materials::{MaterialCache, MaterialContext};
 use crate::render::source_material::{ModelMaterial, RefractMaterial};
 use crate::render::textures::TextureCache;
-use crate::vfs::GameFs;
 use crate::world::{CurrentMap, MapObject};
+use portal2_core::coords::angles_to_quat;
+use portal2_core::sets::PlayerCameraSet;
+use portal2_core::vfs::GameFs;
 
 pub const BODY_MODEL: &str = "models/player/chell/player.mdl";
-/// Render layer of the player's body (seen by the portal views only).
-pub const PLAYER_BODY_LAYER: usize = 7;
 /// Below this speed the body stands idle.
 const MOVING_SPEED: f32 = 10.0;
 

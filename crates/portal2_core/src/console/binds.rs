@@ -231,7 +231,7 @@ impl Buttons {
 pub fn process_binds(world: &mut World) {
     world.resource_mut::<Buttons>().begin_frame();
     // Menus and the console take the keyboard: only releases get through.
-    let focused = world.get_resource::<crate::gameui::UiFocus>().is_some_and(|f| f.0);
+    let focused = world.get_resource::<crate::view::UiFocus>().is_some_and(|f| f.0);
     let mut events: Vec<(&'static str, bool)> = Vec::new();
     {
         let keys = world.resource::<ButtonInput<KeyCode>>();

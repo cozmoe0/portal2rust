@@ -16,6 +16,7 @@
 //! (`rope_min_pixel_diameter`), lit by the average of the ambient light
 //! cube at each point.
 
+use portal2_core::layers::SKYBOX_LAYER;
 use std::collections::HashMap;
 
 use bevy::asset::RenderAssetUsages;
@@ -27,11 +28,12 @@ use bevy::render::render_resource::{AsBindGroup, RenderPipelineDescriptor, Shade
 use bevy::shader::ShaderRef;
 use source_formats::bsp::{Bsp, Entity as MapEntity};
 
-use super::sky::{SKYBOX_LAYER, SkyChecked, Skybox3d};
-use super::{CurrentMap, LoadMapSet, MapLoaded, MapObject};
+use super::sky::{SkyChecked, Skybox3d};
+use super::{CurrentMap, MapLoaded, MapObject};
 use crate::render::materials::load_vmt;
 use crate::render::textures::TextureCache;
-use crate::vfs::GameFs;
+use portal2_core::sets::LoadMapSet;
+use portal2_core::vfs::GameFs;
 
 pub const ROPE_SHADER: &str = "embedded://portal2/render/shaders/rope.wesl";
 

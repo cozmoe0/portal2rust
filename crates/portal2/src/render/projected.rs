@@ -35,11 +35,12 @@ use bevy::render::view::Tonemapping;
 use serde::{Deserialize, Serialize};
 use source_formats::vtf::Vtf;
 
-use crate::camera::MainCamera;
-use crate::coords::camera_rotation;
+use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::entities::{EntityRegistry, MapEntity, SpawnHandlers};
-use crate::vfs::GameFs;
+use portal2_core::coords::camera_rotation;
+use portal2_core::entity::{EntityRegistry, MapEntity};
+use portal2_core::vfs::GameFs;
+use portal2_core::view::MainCamera;
 
 pub const MAX_LIGHTS: usize = 8;
 pub const MAX_SHADOWS: usize = 4;
@@ -92,9 +93,9 @@ pub struct ProjectedTexture {
     pub target: Option<String>,
 }
 
-impl crate::save::Restore for ProjectedTexture {}
+impl portal2_core::save::Restore for ProjectedTexture {}
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<ProjectedTexture>("projected_texture");
 }
 
@@ -353,7 +354,7 @@ fn update_lights(
     main: Query<&GlobalTransform, With<MainCamera>>,
     mut cameras: Query<(&ShadowCamera, &mut Camera, &mut Transform, &mut Projection), Without<ProjectedTexture>>,
     mut last_count: Local<usize>,
-    console: Option<Res<crate::console::Console>>,
+    console: Option<Res<portal2_core::console::Console>>,
 ) {
     let eye = main.single().map(|t| t.translation()).unwrap_or_default();
     let flashlight_scale = console.map_or(0.25, |c| c.f32("r_flashlightbrightness")) * SRGB_BLEND_SCALE;

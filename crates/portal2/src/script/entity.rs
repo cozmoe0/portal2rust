@@ -7,9 +7,10 @@ use squirrel::{Ctx, Error, ObjRef, Result, Value, Vm};
 
 use super::api::{arg, arg_f32, arg_string, arg_vec, make_vec, parts};
 use super::{ScriptClasses, ScriptScope};
-use crate::coords::{angles_forward, angles_to_quat, quat_to_angles};
 use crate::entities::io::{Connection, Outputs};
-use crate::entities::{EntityRegistry, MapEntity, world_transform};
+use crate::entities::world_transform;
+use portal2_core::coords::{angles_forward, angles_to_quat, quat_to_angles};
+use portal2_core::entity::{EntityRegistry, MapEntity};
 
 pub const ENTITY_TAG: u32 = 0x454e_5449;
 

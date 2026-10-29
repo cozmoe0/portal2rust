@@ -3,15 +3,12 @@
 //! Requires a local Portal 2 installation; all game content (maps, models,
 //! textures, sounds, scripts) is read from it at runtime.
 
-mod args;
 mod audio;
 mod camera;
 mod captions;
 mod chain;
-mod clock;
 mod collision;
-mod console;
-mod coords;
+mod commands;
 mod devices;
 mod entities;
 mod gameui;
@@ -31,7 +28,6 @@ mod screenshot;
 mod script;
 mod shots;
 mod smoke;
-mod vfs;
 mod vgui;
 mod video;
 mod world;
@@ -40,7 +36,8 @@ use bevy::prelude::*;
 use bevy::window::{PresentMode, WindowResolution};
 
 fn main() {
-    let args = args::Args::from_env();
+    let mut args = portal2_core::args::Args::from_env();
+    shots::start_on_first_shot(&mut args);
     App::new()
         .add_plugins(
             DefaultPlugins
@@ -65,7 +62,7 @@ fn main() {
         .insert_resource(entities::io::IoDebug(args.io_debug))
         .insert_resource(args)
         .add_plugins((
-            (clock::ClockPlugin, vfs::VfsPlugin, console::ConsolePlugin),
+            (portal2_core::CorePlugin, commands::GameCommandsPlugin),
             (render::RenderSetupPlugin, world::WorldPlugin, models::ModelsPlugin, collision::CollisionPlugin),
             (entities::EntitiesPlugin, script::ScriptPlugin, player::PlayerPlugin, physics::GamePhysicsPlugin),
             (

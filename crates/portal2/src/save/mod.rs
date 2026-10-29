@@ -14,7 +14,6 @@
 //! kept (`quick01.sav`, `autosave01.sav`).
 
 mod autosave;
-pub mod ids;
 mod registry;
 mod roundtrip;
 
@@ -23,18 +22,18 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 
 use bevy::prelude::*;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize};
 
-use crate::clock::GameClock;
-use crate::console::{CommandArgs, Console};
+use crate::entities::EntityDefinitions;
 use crate::entities::io::{Connection, EventQueue, Outputs};
-use crate::entities::{EntityDefinitions, EntityRegistry, MapEntity};
 use crate::models::StudioAnimator;
 use crate::player::Player;
 use crate::world::{CurrentMap, LoadMap, MapLoadType};
-pub use autosave::AutosaveRequest;
-use ids::{PLAYER_ID, SaveId};
-pub use registry::{Restore, SaveRegistry};
+use portal2_core::clock::GameClock;
+use portal2_core::console::{CommandArgs, Console};
+use portal2_core::entity::{EntityRegistry, MapEntity};
+use portal2_core::save::ids::{self, PLAYER_ID, SaveId};
+use portal2_core::save::{SaveRegistry, decode, encode};
 
 const VERSION: u32 = 1;
 
@@ -44,7 +43,7 @@ impl Plugin for SavePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ids::NextSaveId>()
             .init_resource::<SaveState>()
-            .add_systems(PreUpdate, finish_restore.after(crate::entities::transition::TransitionSet))
+            .add_systems(PreUpdate, finish_restore.after(portal2_core::sets::TransitionSet))
             .add_systems(Update, registry::place_saved_portals.after(crate::portals::clear_on_map_load))
             .add_systems(Startup, save_info)
             .add_plugins((roundtrip::RoundTripPlugin, autosave::AutosavePlugin));
@@ -120,16 +119,6 @@ pub struct SavedPlayer {
     pub angles: Vec3,
     pub noclip: bool,
     pub health: Option<crate::player::health::Health>,
-}
-
-pub fn encode<T: Serialize>(v: &T) -> Result<Vec<u8>, String> {
-    let mut out = Vec::new();
-    ciborium::into_writer(v, &mut out).map_err(|e| e.to_string())?;
-    Ok(out)
-}
-
-pub fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, String> {
-    ciborium::from_reader(bytes).map_err(|e| e.to_string())
 }
 
 /// Our save folder: `%LOCALAPPDATA%/portal2rust/save` (or the XDG data
@@ -530,7 +519,7 @@ fn finish_restore(world: &mut World) {
 
 /// `--save-info <name>`: what a saved game holds, then quits.
 fn save_info(world: &mut World) {
-    let Some(name) = world.resource::<crate::args::Args>().save_info.clone() else { return };
+    let Some(name) = world.resource::<portal2_core::args::Args>().save_info.clone() else { return };
     match read_file(&name) {
         Ok(f) => {
             println!(

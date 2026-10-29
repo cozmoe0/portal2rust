@@ -19,12 +19,14 @@ use avian3d::prelude::{AngularVelocity, LinearVelocity, RigidBody};
 use bevy::prelude::*;
 
 use crate::collision::{Collider as TraceCollider, Physics};
-use crate::coords::angles_forward;
+use crate::entities::SpawnHandlers;
 use crate::entities::io::{FireOutput, InputCall, InputHandlers};
 use crate::entities::props::PhysicsProp;
-use crate::entities::{EntityRegistry, MapEntity, SpawnHandlers};
+use crate::player::Player;
 use crate::player::movement::GRAVITY;
-use crate::player::{Player, PlayerMoveSet};
+use portal2_core::coords::angles_forward;
+use portal2_core::entity::{EntityRegistry, MapEntity};
+use portal2_core::sets::PlayerMoveSet;
 
 pub struct CatapultPlugin;
 
@@ -420,4 +422,4 @@ mod tests {
     }
 }
 
-impl crate::save::Restore for Catapult {}
+impl portal2_core::save::Restore for Catapult {}

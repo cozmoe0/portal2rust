@@ -23,11 +23,11 @@ use bevy::prelude::*;
 
 use super::{ParticleEffect, spawn_effect};
 use crate::devices::laser::{LaserEmitter, LaserReceiver};
-use crate::entities::MapEntity;
 use crate::entities::triggers::{Trigger, TriggerKind};
 use crate::models::StudioAnimator;
 use crate::portals::PortalFx;
 use crate::world::{CurrentMap, MapObject};
+use portal2_core::entity::MapEntity;
 
 /// `cl_portal_projectile_delay_sp`.
 const PROJECTILE_DELAY: f32 = 0.1;

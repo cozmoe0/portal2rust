@@ -10,11 +10,12 @@ use avian3d::prelude::LinearVelocity;
 use bevy::prelude::*;
 
 use crate::audio::SoundRequest;
-use crate::clock::ThinkSet;
 use crate::collision::{Physics, mask};
+use crate::entities::SpawnHandlers;
 use crate::entities::io::{FireOutput, InputCall, InputHandlers, resolve_targets};
-use crate::entities::{EntityRegistry, MapEntity, SpawnHandlers};
 use crate::player::Player;
+use portal2_core::entity::{EntityRegistry, MapEntity};
+use portal2_core::sets::ThinkSet;
 
 const TICK: f32 = 1.0 / 60.0;
 const MODEL: &str = "models/props/futbol.mdl";
@@ -48,18 +49,18 @@ pub struct ExplodingFutbol {
     burst: bool,
 }
 
-impl crate::save::Restore for ExplodingFutbol {}
+impl portal2_core::save::Restore for ExplodingFutbol {}
 
 #[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct FutbolShooter {
-    #[serde(with = "crate::save::ids::opt_entity")]
+    #[serde(with = "portal2_core::save::ids::opt_entity")]
     target: Option<Entity>,
     speed: f32,
 }
 
-impl crate::save::Restore for FutbolShooter {}
+impl portal2_core::save::Restore for FutbolShooter {}
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<ExplodingFutbol>("exploding_futbol");
     r.component::<FutbolShooter>("futbol_shooter");
 }
@@ -129,7 +130,7 @@ fn shooter_input(world: &mut World, call: &InputCall) -> bool {
                 }
             });
             let Some(to) = to else { return true };
-            let gravity = world.resource::<crate::console::Console>().f32("sv_gravity");
+            let gravity = world.resource::<portal2_core::console::Console>().f32("sv_gravity");
             let velocity = launch_velocity(from, to, speed, gravity);
             let origin = format!("{} {} {}", from.x, from.y, from.z);
             let ball = crate::entities::spawn_runtime_entity(

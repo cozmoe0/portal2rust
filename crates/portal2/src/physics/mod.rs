@@ -15,12 +15,12 @@ use bevy::prelude::*;
 
 use crate::collision::volume::{ConvexVolume, polytope_vertices};
 use crate::collision::{Collider as TraceCollider, CollisionWorld, Shape};
-use crate::entities::MapEntity;
 use crate::entities::props::PhysicsProp;
 use crate::player::Player;
 use crate::portals::PortalHoles;
-use crate::vfs::GameFs;
 use crate::world::{CurrentMap, MapLoaded, MapObject};
+use portal2_core::entity::MapEntity;
+use portal2_core::vfs::GameFs;
 
 /// Inches per metre: Avian scales its tolerances by this.
 pub const LENGTH_UNIT: f32 = 39.37;
@@ -39,7 +39,10 @@ impl Plugin for GamePhysicsPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(PhysicsPlugins::default().with_length_unit(LENGTH_UNIT).with_collision_hooks::<PortalContactHooks>())
             .insert_resource(Gravity(Vec3::NEG_Z * crate::player::movement::GRAVITY))
-            .add_systems(PreUpdate, build_static_world.after(crate::collision::rebuild_on_map_load).before(crate::entities::EntitySpawnSet))
+            .add_systems(
+                PreUpdate,
+                build_static_world.after(crate::collision::rebuild_on_map_load).before(portal2_core::sets::EntitySpawnSet),
+            )
             .add_systems(Update, (attach_bodies, attach_player_body, sync_portal_slabs))
             .add_plugins((carry::CarryPlugin, portal_travel::PortalTravelPlugin));
         inputs::register(app);

@@ -14,13 +14,15 @@
 use bevy::prelude::*;
 use source_formats::bsp::contents;
 
-use crate::clock::{GameClock, ThinkSet};
 use crate::collision::Physics;
+use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
 use crate::entities::spawner::{ModelOptions, attach_studio_model};
-use crate::entities::{MapEntity, SpawnHandlers};
 use crate::models::StudioAnimator;
 use crate::player::Player;
+use portal2_core::clock::GameClock;
+use portal2_core::entity::MapEntity;
+use portal2_core::sets::ThinkSet;
 
 const MODEL: &str = "models/props/security_camera.mdl";
 const THINK_INTERVAL: f64 = 0.1;
@@ -101,7 +103,7 @@ fn spawn_camera(world: &mut World, e: Entity) {
     world.entity_mut(e).insert(SecurityCamera {
         mode: if autostart { Mode::Searching } else { Mode::Idle },
         // The first think comes 0.1 to 0.3 s after spawning.
-        next_think: now + crate::audio::ops::random_range(0.1, 0.3) as f64,
+        next_think: now + portal2_core::rng::random_range(0.1, 0.3) as f64,
         goal: Vec2::ZERO,
         aim: Vec2::ZERO,
         previous_aim: Vec2::ZERO,
@@ -120,7 +122,7 @@ fn spawn_camera(world: &mut World, e: Entity) {
 fn knock_off(
     portals: Res<crate::portals::Portals>,
     portal_query: Query<&crate::portals::Portal>,
-    fs: Res<crate::vfs::GameFs>,
+    fs: Res<portal2_core::vfs::GameFs>,
     mut cameras: Query<(Entity, &mut SecurityCamera, &GlobalTransform, &crate::collision::Collider, &MapEntity)>,
     mut sounds: MessageWriter<crate::audio::SoundRequest>,
     mut commands: Commands,
@@ -222,7 +224,7 @@ fn think(
                 let distance = target.map_or(f32::MAX, |(_, origin, _)| origin.distance(eye));
                 c.jitter_thinks -= 1;
                 if c.jitter_thinks <= 0 && distance < JITTER_RANGE {
-                    let r = crate::audio::ops::random_range;
+                    let r = portal2_core::rng::random_range;
                     c.jitter = Vec3::new(r(-8.0, 8.0), r(-8.0, 8.0), r(0.0, 32.0));
                     c.jitter_thinks = 5 + (r(0.0, 26.0) as i32).min(25);
                 }
@@ -342,8 +344,8 @@ mod tests {
     }
 }
 
-impl crate::save::Restore for SecurityCamera {}
+impl portal2_core::save::Restore for SecurityCamera {}
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<SecurityCamera>("security_camera");
 }

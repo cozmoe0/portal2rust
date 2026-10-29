@@ -13,13 +13,14 @@ use bevy::prelude::*;
 
 use super::io::{InputCall, InputHandlers};
 use super::{EntityRegistry, MapEntity, SpawnHandlers, world_transform};
-use crate::clock::GameClock;
-use crate::coords::{angles_to_quat, quat_to_angles};
-use crate::player::{Player, PlayerCameraSet, PlayerInput};
+use crate::player::{Player, PlayerInput};
+use portal2_core::clock::GameClock;
+use portal2_core::coords::{angles_to_quat, quat_to_angles};
+use portal2_core::sets::PlayerCameraSet;
 
 pub fn register(app: &mut App) {
     app.init_resource::<ActiveView>()
-        .add_systems(FixedUpdate, update_proxies.after(crate::player::PlayerMoveSet))
+        .add_systems(FixedUpdate, update_proxies.after(portal2_core::sets::PlayerMoveSet))
         .add_systems(PostUpdate, track_proxy_motion.before(TransformSystems::Propagate))
         .add_systems(
             PostUpdate,
@@ -36,7 +37,7 @@ pub fn register(app: &mut App) {
     h.register("point_viewproxy", proxy_input);
 }
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<ViewControl>("view_control");
     r.component::<ViewProxy>("view_proxy");
     r.resource::<ActiveView>("active_view");
@@ -44,9 +45,9 @@ pub fn register_save(r: &mut crate::save::SaveRegistry) {
 
 /// The entity the player sees from, if not their own eyes.
 #[derive(Resource, Default, serde::Serialize, serde::Deserialize)]
-pub struct ActiveView(#[serde(with = "crate::save::ids::opt_entity")] pub Option<Entity>);
+pub struct ActiveView(#[serde(with = "portal2_core::save::ids::opt_entity")] pub Option<Entity>);
 
-impl crate::save::Restore for ActiveView {}
+impl portal2_core::save::Restore for ActiveView {}
 
 /// `point_viewcontrol` spawnflags: hold the player still.
 const SF_FREEZE: u32 = 4;
@@ -56,7 +57,7 @@ pub struct ViewControl {
     flags: u32,
 }
 
-impl crate::save::Restore for ViewControl {}
+impl portal2_core::save::Restore for ViewControl {}
 
 #[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct ViewProxy {
@@ -89,7 +90,7 @@ pub struct ViewProxy {
     pending_accel: Vec3,
 }
 
-impl crate::save::Restore for ViewProxy {}
+impl portal2_core::save::Restore for ViewProxy {}
 
 fn spawn_control(world: &mut World, e: Entity) {
     let Some(me) = world.get::<MapEntity>(e) else { return };
@@ -329,7 +330,7 @@ fn apply_view(world: &mut World) {
     };
     let angles = quat_to_angles(t.rotation);
     debug!("view {:.2} at {:.1?} angles {:.1?}", world.resource::<GameClock>().curtime, t.translation, angles);
-    let mut cams = world.query_filtered::<&mut crate::camera::ViewAngles, With<crate::camera::MainCamera>>();
+    let mut cams = world.query_filtered::<&mut portal2_core::view::ViewAngles, With<portal2_core::view::MainCamera>>();
     for mut v in cams.iter_mut(world) {
         v.origin = t.translation;
         v.angles = angles;

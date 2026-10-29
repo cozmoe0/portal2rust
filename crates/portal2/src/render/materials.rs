@@ -12,7 +12,7 @@ use source_formats::vtf;
 
 use super::source_material::{DECAL_DEPTH_BIAS, ModelMaterial, RefractMaterial, WorldMaterial, model_flags, refract_flags, world_flags};
 use super::textures::{TextureCache, TextureInfo};
-use crate::vfs::GameFs;
+use portal2_core::vfs::GameFs;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Blend {

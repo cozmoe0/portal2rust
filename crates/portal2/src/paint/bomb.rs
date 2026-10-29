@@ -14,11 +14,12 @@ use bevy::prelude::*;
 use super::blobs::{Blob, Blobs};
 use super::{PaintMap, PaintType, SplatSettings};
 use crate::audio::SoundRequest;
-use crate::clock::ThinkSet;
 use crate::collision::{Physics, mask};
-use crate::console::Console;
+use crate::entities::SpawnHandlers;
 use crate::entities::io::FireOutput;
-use crate::entities::{MapEntity, SpawnHandlers};
+use portal2_core::console::Console;
+use portal2_core::entity::MapEntity;
+use portal2_core::sets::ThinkSet;
 
 const TICK: f32 = 1.0 / 60.0;
 /// The ball's size for impact tests and drawing.
@@ -52,9 +53,9 @@ pub struct PaintBomb {
     burst: bool,
 }
 
-impl crate::save::Restore for PaintBomb {}
+impl portal2_core::save::Restore for PaintBomb {}
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<PaintBomb>("paint_bomb");
 }
 

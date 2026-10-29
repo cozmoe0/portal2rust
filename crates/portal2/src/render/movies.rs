@@ -19,12 +19,13 @@ use bevy::prelude::*;
 use bevy::render::render_resource::Face;
 use serde::{Deserialize, Serialize};
 
+use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::entities::{MapEntity, SpawnHandlers};
 use crate::render::source_material::{WorldMaterial, world_flags};
-use crate::vfs::GameFs;
 use crate::vgui::Surface;
 use crate::video::{VideoId, Videos};
+use portal2_core::entity::MapEntity;
+use portal2_core::vfs::GameFs;
 
 #[derive(Component, Clone, Debug, Serialize, Deserialize)]
 pub struct MovieDisplay {
@@ -45,14 +46,14 @@ pub struct MovieDisplay {
     shown: Option<(String, [f32; 4])>,
 }
 
-impl crate::save::Restore for MovieDisplay {
+impl portal2_core::save::Restore for MovieDisplay {
     fn keep(&mut self, live: Self) {
         self.quad = live.quad;
         self.material = live.material;
     }
 }
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<MovieDisplay>("movie_display");
 }
 

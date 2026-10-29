@@ -7,13 +7,15 @@ use source_formats::bsp::contents;
 
 use super::{BeamSegment, EffectMaterial, linked_frames, segment_transform, trace_beam, tube_mesh, with_ancestors};
 use crate::collision::{Collider as TraceCollider, Physics};
+use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
 use crate::entities::props::PhysicsProp;
 use crate::entities::spawner::{ModelOptions, attach_studio_model};
-use crate::entities::{MapEntity, SpawnHandlers};
-use crate::player::{Player, PlayerMoveSet};
+use crate::player::Player;
 use crate::portals::{Portal, Portals};
 use crate::world::MapObject;
+use portal2_core::entity::MapEntity;
+use portal2_core::sets::PlayerMoveSet;
 
 const FUNNEL_MASK: u32 = contents::SOLID | contents::MOVEABLE | contents::WINDOW;
 const DEFAULT_RADIUS: f32 = 54.0;
@@ -223,7 +225,7 @@ fn draw_funnels(
     }
 }
 
-impl crate::save::Restore for Funnel {
+impl portal2_core::save::Restore for Funnel {
     fn keep(&mut self, live: Self) {
         self.segments = live.segments;
         self.tubes = live.tubes;

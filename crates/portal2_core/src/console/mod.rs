@@ -15,8 +15,10 @@ use std::collections::{HashMap, VecDeque};
 
 use bevy::prelude::*;
 
+use crate::MapGeneration;
+pub use crate::sets::ConsoleSet;
+use crate::sets::LoadMapSet;
 use crate::vfs::GameFs;
-use crate::world::CurrentMap;
 use binds::Buttons;
 pub use cvars::Cvar;
 use cvars::flags;
@@ -42,7 +44,7 @@ pub struct Console {
     wait: u32,
     /// The buffer holds until a requested map has loaded.
     waiting_for_map: bool,
-    map_identity: usize,
+    map_identity: u64,
     /// Command line `+commands`, run by `stuffcmds`.
     pub startup_commands: Vec<String>,
     /// Console output, newest last.
@@ -170,20 +172,17 @@ impl Console {
 
 pub struct ConsolePlugin;
 
-/// Running the command buffer, before map loading in `PreUpdate`.
-#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ConsoleSet;
-
 impl Plugin for ConsolePlugin {
     fn build(&self, app: &mut App) {
-        let mut console = Console::default();
+        // Plugins added earlier may have registered commands already.
+        let mut console = app.world_mut().remove_resource::<Console>().unwrap_or_default();
         for (name, default, f) in cvars::DEFAULTS {
             console.register_cvar(name, default, *f);
         }
         commands::register(&mut console);
         app.insert_resource(console)
             .init_resource::<Buttons>()
-            .configure_sets(PreUpdate, ConsoleSet.before(crate::world::LoadMapSet))
+            .configure_sets(PreUpdate, ConsoleSet.before(LoadMapSet))
             .add_systems(Startup, queue_startup)
             .add_systems(PreUpdate, (binds::process_binds, run_buffer).chain().in_set(ConsoleSet));
     }
@@ -201,8 +200,8 @@ fn queue_startup(mut console: ResMut<Console>, fs: Res<GameFs>, args: Res<crate:
     }
 }
 
-fn map_identity(world: &World) -> usize {
-    world.get_resource::<CurrentMap>().map(|m| std::sync::Arc::as_ptr(&m.bsp) as usize).unwrap_or(0)
+fn map_identity(world: &World) -> u64 {
+    world.get_resource::<MapGeneration>().map_or(0, |g| g.current)
 }
 
 /// Runs buffered commands until the buffer is empty, a `wait`, or a map load.

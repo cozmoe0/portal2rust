@@ -6,11 +6,12 @@ use bevy::prelude::*;
 
 use super::{layers, layers_for};
 use crate::collision::{Collider as TraceCollider, Physics, mask};
-use crate::coords::{angles_forward, quat_to_angles};
 use crate::entities::io::{EventQueue, EventTarget, FireOutput};
 use crate::entities::props::PhysicsProp;
-use crate::hud::instructor::{EventValue, GameEvent};
-use crate::player::{Player, PlayerInput, PlayerMoveSet};
+use crate::player::{Player, PlayerInput};
+use portal2_core::coords::{angles_forward, quat_to_angles};
+use portal2_core::events::{EventValue, GameEvent};
+use portal2_core::sets::PlayerMoveSet;
 
 /// Horizontal radius of the player's hull, part of the hold distance.
 const PLAYER_RADIUS: f32 = 22.627_417;
@@ -32,7 +33,7 @@ impl Plugin for CarryPlugin {
 
 #[derive(Resource, Default, serde::Serialize, serde::Deserialize)]
 pub struct Holding {
-    #[serde(with = "crate::save::ids::opt_entity")]
+    #[serde(with = "portal2_core::save::ids::opt_entity")]
     pub entity: Option<Entity>,
     /// Prop yaw relative to the player's view when picked up (degrees).
     pub yaw_offset: f32,
@@ -56,12 +57,12 @@ fn prop_radius(col: &TraceCollider) -> f32 {
 
 #[allow(clippy::too_many_arguments)]
 fn use_or_grab(
-    buttons: Res<crate::console::binds::Buttons>,
+    buttons: Res<portal2_core::console::binds::Buttons>,
     mut holding: ResMut<Holding>,
     physics: Physics,
     players: Query<(Entity, &Player)>,
     input: Res<PlayerInput>,
-    props: Query<(&TraceCollider, &GlobalTransform, &RigidBody, &crate::entities::MapEntity), With<PhysicsProp>>,
+    props: Query<(&TraceCollider, &GlobalTransform, &RigidBody, &portal2_core::entity::MapEntity), With<PhysicsProp>>,
     mut queue: ResMut<EventQueue>,
     mut out: MessageWriter<FireOutput>,
     mut commands: Commands,
@@ -126,13 +127,13 @@ pub fn resume_hold(world: &mut World, prop: Entity) {
     }
     // Saves from before the radius was kept stored a hold distance instead.
     let radius = world.get::<TraceCollider>(prop).map(prop_radius);
-    let cube = world.get::<crate::entities::MapEntity>(prop).is_some_and(|me| me.classname == "prop_weighted_cube");
+    let cube = world.get::<portal2_core::entity::MapEntity>(prop).is_some_and(|me| me.classname == "prop_weighted_cube");
     let mut holding = world.resource_mut::<Holding>();
     if let Some(r) = radius {
         holding.radius = r;
     }
     holding.cube = cube;
-    if let Some(p) = world.resource::<crate::entities::EntityRegistry>().player {
+    if let Some(p) = world.resource::<portal2_core::entity::EntityRegistry>().player {
         world.write_message(crate::audio::SoundRequest::on("Weapon_Portalgun.HoldSound", p));
     }
 }
@@ -154,7 +155,7 @@ pub fn release(commands: &mut Commands, prop: Entity) {
 fn hold_point(
     physics: &Physics,
     ignore: &[Entity],
-    console: &crate::console::Console,
+    console: &portal2_core::console::Console,
     holding: &mut Holding,
     player: &crate::player::movement::MoveState,
     view: Vec3,
@@ -162,7 +163,7 @@ fn hold_point(
     let eye = player.origin + Vec3::Z * player.eye_offset();
     let mut view = view;
     view.x = view.x.clamp(-75.0, 75.0);
-    let q = crate::coords::angles_to_quat(view);
+    let q = portal2_core::coords::angles_to_quat(view);
     let (forward, up) = (q * Vec3::X, q * Vec3::Z);
     let gap = console.f32("player_held_object_distance");
     let radii = holding.radius + PLAYER_RADIUS;
@@ -206,7 +207,7 @@ fn hold_held(
     time: Res<Time<Fixed>>,
     mut holding: ResMut<Holding>,
     physics: Physics,
-    console: Res<crate::console::Console>,
+    console: Res<portal2_core::console::Console>,
     players: Query<(Entity, &Player)>,
     input: Res<PlayerInput>,
     mut props: Query<(&Position, &Rotation, &mut LinearVelocity, &mut AngularVelocity)>,
@@ -282,4 +283,4 @@ fn push_props(
     }
 }
 
-impl crate::save::Restore for Holding {}
+impl portal2_core::save::Restore for Holding {}

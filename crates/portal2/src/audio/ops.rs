@@ -8,6 +8,7 @@
 //! literal or `@operator.output` of an earlier operator. Operator semantics
 //! (defaults, formulas) are described in `docs/re/audio_runtime.md`.
 
+use portal2_core::rng::rand_unit;
 use std::collections::HashMap;
 
 use bevy::prelude::*;
@@ -790,7 +791,7 @@ impl Stack {
                 Kind::ViewInfo => {
                     let l = env.listener;
                     out[0] = [l.origin.x, l.origin.y, l.origin.z, 0.0, 0.0, 0.0];
-                    let a = crate::coords::quat_to_angles(Quat::from_rotation_arc(Vec3::X, l.forward.normalize_or(Vec3::X)));
+                    let a = portal2_core::coords::quat_to_angles(Quat::from_rotation_arc(Vec3::X, l.forward.normalize_or(Vec3::X)));
                     out[1] = [a.x, a.y, a.z, 0.0, 0.0, 0.0];
                     out[2][0] = l.velocity.length();
                     out[3] = [l.velocity.x, l.velocity.y, l.velocity.z, 0.0, 0.0, 0.0];
@@ -798,7 +799,7 @@ impl Stack {
                 Kind::Facing => {
                     // 1 when the source faces the listener, 0 facing away.
                     let a = input("input_angles", [0.0; 6], inst);
-                    let fwd = crate::coords::angles_forward(Vec3::new(a[0], a[1], a[2]));
+                    let fwd = portal2_core::coords::angles_forward(Vec3::new(a[0], a[1], a[2]));
                     let to = (env.listener.origin - chan.position.unwrap_or(chan.origin)).normalize_or_zero();
                     out[0][0] = (fwd.dot(to) + 1.0) * 0.5;
                 }
@@ -915,23 +916,6 @@ fn matching(op: &Op, chan: &Chan, env: &Env) -> Vec<(u64, f64)> {
         })
         .map(|o| (o.id, o.started))
         .collect()
-}
-
-fn rand_unit() -> f32 {
-    use std::cell::Cell;
-    thread_local!(static SEED: Cell<u64> = const { Cell::new(0x9E37_79B9_7F4A_7C15) });
-    SEED.with(|s| {
-        let mut x = s.get();
-        x ^= x << 13;
-        x ^= x >> 7;
-        x ^= x << 17;
-        s.set(x);
-        (x >> 40) as f32 / (1u64 << 24) as f32
-    })
-}
-
-pub fn random_range(lo: f32, hi: f32) -> f32 {
-    lo + rand_unit() * (hi - lo)
 }
 
 #[cfg(test)]

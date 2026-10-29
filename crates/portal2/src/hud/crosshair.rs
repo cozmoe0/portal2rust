@@ -11,15 +11,15 @@
 
 use bevy::prelude::*;
 
-use crate::console::Console;
 use crate::portals::Portals;
 use crate::portals::gun::PortalGun;
 use crate::screen::ScreenFade;
 use crate::vgui::{Surface, VguiPaint, layer};
+use portal2_core::console::Console;
 
 pub fn build(app: &mut App) {
     app.add_systems(PostUpdate, paint.in_set(VguiPaint));
-    app.world_mut().resource_mut::<Console>().register_cvar("hud_quickinfo", "1", crate::console::cvars::flags::ARCHIVE);
+    app.world_mut().resource_mut::<Console>().register_cvar("hud_quickinfo", "1", portal2_core::console::cvars::flags::ARCHIVE);
 }
 
 /// Pixel rectangles in the sprite sheet.
@@ -40,7 +40,7 @@ fn paint(
     gun: Option<Res<PortalGun>>,
     portals: Option<Res<Portals>>,
     fade: Res<ScreenFade>,
-    clock: Res<crate::clock::GameClock>,
+    clock: Res<portal2_core::clock::GameClock>,
     ui: Res<crate::gameui::GameUi>,
     map: Option<Res<crate::world::CurrentMap>>,
     mut surface: ResMut<Surface>,

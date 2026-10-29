@@ -11,12 +11,13 @@ use source_formats::bsp::contents;
 
 use super::io::{InputCall, InputHandlers};
 use super::{EntityRegistry, MapEntity, SpawnHandlers};
-use crate::clock::{GameClock, ThinkSet};
 use crate::collision::Physics;
-use crate::console::Console;
-use crate::coords::angles_forward;
-use crate::hud::instructor::{EventValue, GameEvent};
 use crate::player::{Player, PlayerInput};
+use portal2_core::clock::GameClock;
+use portal2_core::console::Console;
+use portal2_core::coords::angles_forward;
+use portal2_core::events::{EventValue, GameEvent};
+use portal2_core::sets::ThinkSet;
 
 pub fn register(app: &mut App) {
     app.add_message::<GameEvent>().add_systems(FixedUpdate, (watch_new, poll_visibility).chain().in_set(ThinkSet));
@@ -35,8 +36,8 @@ pub fn register(app: &mut App) {
     let mut console = world.resource_mut::<Console>();
     console.register_cvar("sv_portal2_pickup_hint_range", "350.0", 0);
     console.register_cvar("sv_portal2_button_hint_range", "350.0", 0);
-    console.register_cvar("vismon_poll_frequency", ".5", crate::console::cvars::flags::CHEAT);
-    console.register_cvar("vismon_trace_limit", "12", crate::console::cvars::flags::CHEAT);
+    console.register_cvar("vismon_poll_frequency", ".5", portal2_core::console::cvars::flags::CHEAT);
+    console.register_cvar("vismon_trace_limit", "12", portal2_core::console::cvars::flags::CHEAT);
 }
 
 /// `env_instructor_hint` spawnflags/keys folded into the locator flags the

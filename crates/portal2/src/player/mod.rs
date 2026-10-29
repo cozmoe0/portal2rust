@@ -9,15 +9,17 @@ pub mod shake;
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
+use portal2_core::sets::{PlayerCameraSet, PlayerMoveSet, PlayerSpawnSet};
 
-use crate::args::Args;
-use crate::camera::{FlyCamera, MainCamera, ViewAngles};
+use crate::camera::FlyCamera;
 use crate::collision::Physics;
-use crate::console::Console;
-use crate::console::binds::Buttons;
-use crate::entities::EntityRegistry;
 use crate::world::PlayerStart;
 use movement::{MoveInput, MoveState, Mover};
+use portal2_core::args::Args;
+use portal2_core::console::Console;
+use portal2_core::console::binds::Buttons;
+use portal2_core::entity::EntityRegistry;
+use portal2_core::view::{MainCamera, ViewAngles};
 
 pub struct PlayerPlugin;
 
@@ -26,23 +28,12 @@ impl Plugin for PlayerPlugin {
         app.add_plugins((autopilot::AutopilotPlugin, body::BodyPlugin, health::HealthPlugin, shake::ShakePlugin))
             .init_resource::<PlayerInput>()
             // Placed during level load, before the new map's first tick.
-            .add_systems(PreUpdate, spawn_or_reset_player.in_set(PlayerSpawnSet).after(crate::entities::EntitySpawnSet))
+            .add_systems(PreUpdate, spawn_or_reset_player.in_set(PlayerSpawnSet).after(portal2_core::sets::EntitySpawnSet))
             .add_systems(Update, gather_input)
             .add_systems(FixedUpdate, player_tick.in_set(PlayerMoveSet))
             .add_systems(PostUpdate, place_camera.in_set(PlayerCameraSet).before(TransformSystems::Propagate));
     }
 }
-
-#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct PlayerMoveSet;
-
-/// Creating the player or putting them at the start of a new map.
-#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct PlayerSpawnSet;
-
-/// Placement of the main camera at the player's eye.
-#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct PlayerCameraSet;
 
 #[derive(Component)]
 pub struct Player {
@@ -136,7 +127,7 @@ fn gather_input(
     cursor: Query<&CursorOptions, With<PrimaryWindow>>,
     mut input: ResMut<PlayerInput>,
     mut players: Query<&mut Player>,
-    focus: Option<Res<crate::gameui::UiFocus>>,
+    focus: Option<Res<portal2_core::view::UiFocus>>,
 ) {
     let grabbed = cursor.single().is_ok_and(|c| c.grab_mode != CursorGrabMode::None);
     if input.frozen {
@@ -230,7 +221,7 @@ fn player_tick(
         } else if let Some(pull) = pull {
             let (mins, maxs) = state.hull();
             let center = state.origin + (mins + maxs) * 0.5;
-            let q = crate::coords::angles_to_quat(move_input.angles);
+            let q = portal2_core::coords::angles_to_quat(move_input.angles);
             let steer = if move_input.steer_suppressed { 0.0 } else { 1.0 };
             let wish = (q * Vec3::X * move_input.forward - q * Vec3::Y * move_input.right) * steer;
             let flow = crate::devices::funnel::player_flow(&pull, center, wish);
@@ -270,11 +261,11 @@ pub fn place_camera(
                 }
                 _ => (4.0, Vec2::new(4.0, 3.0)),
             };
-            let rot = crate::coords::angles_to_quat(view.angles);
+            let rot = portal2_core::coords::angles_to_quat(view.angles);
             let (eye, rot) = crate::portals::view_through_portals(frames, view.origin, rot, near, near_half);
             if eye != view.origin {
                 view.origin = eye;
-                view.angles = crate::coords::quat_to_angles(rot);
+                view.angles = portal2_core::coords::quat_to_angles(rot);
             }
         }
     }

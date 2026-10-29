@@ -23,10 +23,10 @@ use std::time::Instant;
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 
-use crate::args::Args;
-use crate::entities::EntityRegistry;
 use crate::player::{Player, PlayerInput};
 use crate::world::{CurrentMap, LoadMap, MapLoadType};
+use portal2_core::args::Args;
+use portal2_core::entity::EntityRegistry;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Shot {
@@ -56,6 +56,14 @@ pub fn parse_shots(text: &str) -> Vec<Shot> {
             })
         })
         .collect()
+}
+
+/// Starts on the first view's map rather than loading the default one.
+pub fn start_on_first_shot(args: &mut Args) {
+    let list = args.shots.as_deref().or(args.bench.as_deref());
+    if let Some(first) = list.and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| parse_shots(&t).into_iter().next()) {
+        args.map = first.map;
+    }
 }
 
 pub struct ShotsPlugin;
@@ -199,9 +207,9 @@ fn run_shots(world: &mut World) {
                 hold_view(world, &shot);
                 Phase::Next
             } else if loaded {
-                crate::console::execute_now(world, "sv_cheats 1; r_drawviewmodel 0; cl_drawhud 0; crosshair 0");
+                portal2_core::console::execute_now(world, "sv_cheats 1; r_drawviewmodel 0; cl_drawhud 0; crosshair 0");
                 if !shot.commands.is_empty() {
-                    crate::console::execute_now(world, &shot.commands);
+                    portal2_core::console::execute_now(world, &shot.commands);
                 }
                 hold_view(world, &shot);
                 let mut runner = world.resource_mut::<ShotRunner>();

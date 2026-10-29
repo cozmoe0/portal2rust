@@ -20,13 +20,14 @@ use bevy::render::render_resource::{AsBindGroup, CompareFunction, RenderPipeline
 use bevy::shader::ShaderRef;
 use serde::{Deserialize, Serialize};
 
-use crate::camera::MainCamera;
 use crate::collision::Physics;
+use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::entities::{MapEntity, SpawnHandlers};
 use crate::render::materials::load_vmt;
 use crate::render::textures::TextureCache;
-use crate::vfs::GameFs;
+use portal2_core::entity::MapEntity;
+use portal2_core::vfs::GameFs;
+use portal2_core::view::MainCamera;
 
 pub const SPRITE_SHADER: &str = "embedded://portal2/render/shaders/sprite.wesl";
 
@@ -119,14 +120,14 @@ pub struct SourceSprite {
     pub quad: Option<Entity>,
 }
 
-impl crate::save::Restore for SourceSprite {
+impl portal2_core::save::Restore for SourceSprite {
     fn keep(&mut self, live: Self) {
         self.material = live.material;
         self.quad = live.quad;
     }
 }
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<SourceSprite>("sprite");
 }
 

@@ -13,10 +13,11 @@
 use bevy::pbr::{DistanceFog, FogFalloff};
 use bevy::prelude::*;
 
-use crate::clock::GameClock;
+use crate::entities::SpawnHandlers;
 use crate::entities::detectors::PlayerFog;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::entities::{EntityRegistry, MapEntity, SpawnHandlers};
+use portal2_core::clock::GameClock;
+use portal2_core::entity::{EntityRegistry, MapEntity};
 
 pub struct FogPlugin;
 
@@ -87,7 +88,11 @@ fn spawn_controller(world: &mut World, e: Entity) {
         start: me.get_f32("fogstart").unwrap_or(500.0),
         end: me.get_f32("fogend").unwrap_or(2000.0),
     };
-    let dir = if me.get_bool("use_angles") { crate::coords::angles_forward(me.angles()) } else { me.get_vec3("fogdir").unwrap_or(Vec3::X) };
+    let dir = if me.get_bool("use_angles") {
+        portal2_core::coords::angles_forward(me.angles())
+    } else {
+        me.get_vec3("fogdir").unwrap_or(Vec3::X)
+    };
     let controller = FogController {
         enabled: me.get_bool("fogenable"),
         blend: me.get_bool("fogblend"),
@@ -118,7 +123,7 @@ fn controller_input(world: &mut World, call: &InputCall) -> bool {
         "setangles" => {
             let a: Vec<f32> = call.param.split_whitespace().filter_map(|p| p.parse().ok()).collect();
             if let [p, y, r, ..] = a.as_slice() {
-                c.dir = crate::coords::angles_forward(Vec3::new(*p, *y, *r));
+                c.dir = portal2_core::coords::angles_forward(Vec3::new(*p, *y, *r));
             }
         }
         "setcolorlerpto" => c.lerp_to.color = parse_color(&call.param),
@@ -206,8 +211,8 @@ fn apply_fog(world: &mut World) {
     }
 }
 
-impl crate::save::Restore for FogController {}
+impl portal2_core::save::Restore for FogController {}
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<FogController>("fog_controller");
 }

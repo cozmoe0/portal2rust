@@ -10,13 +10,14 @@ use source_formats::bsp::contents;
 use super::{EffectMaterial, linked_frames, with_ancestors};
 use crate::collision::volume::ConvexVolume;
 use crate::collision::{Collider as TraceCollider, Physics, Shape};
+use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
 use crate::entities::spawner::{ModelOptions, attach_studio_model};
-use crate::entities::{MapEntity, SpawnHandlers};
 use crate::physics::layers;
 use crate::portals::placement::transfer;
 use crate::portals::{Portal, Portals};
 use crate::world::MapObject;
+use portal2_core::entity::MapEntity;
 
 /// Bridges stop at walls and glass.
 const BRIDGE_MASK: u32 = contents::SOLID | contents::MOVEABLE | contents::WINDOW;
@@ -199,7 +200,7 @@ fn update_bridges(
     }
 }
 
-impl crate::save::Restore for LightBridge {
+impl portal2_core::save::Restore for LightBridge {
     fn keep(&mut self, live: Self) {
         self.pieces = live.pieces;
         self.entities = live.entities;

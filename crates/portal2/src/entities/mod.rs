@@ -18,16 +18,18 @@ pub mod transition;
 pub mod triggers;
 pub mod viewcontrol;
 
+use portal2_core::sets::{EntitySpawnSet, IoSet};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use bevy::prelude::*;
 use source_formats::fgd::{Fgd, FgdClass};
 
-use crate::coords::angles_to_quat;
-use crate::vfs::GameFs;
 use crate::world::{CurrentMap, MapLoaded, MapObject};
 use io::{Connection, EventQueue, FireOutput, InputCall, InputHandlers, IoDebug, Outputs, fire_output};
+use portal2_core::coords::angles_to_quat;
+pub use portal2_core::entity::{EntityRegistry, MapEntity};
+use portal2_core::vfs::GameFs;
 
 pub struct EntitiesPlugin;
 
@@ -41,7 +43,8 @@ impl Plugin for EntitiesPlugin {
             .init_resource::<io::IoStats>()
             .add_message::<FireOutput>()
             .add_systems(Startup, load_entity_definitions)
-            .add_systems(PreUpdate, spawn_on_map_load.in_set(EntitySpawnSet).after(crate::world::LoadMapSet))
+            .add_systems(PreUpdate, spawn_on_map_load.in_set(EntitySpawnSet).after(portal2_core::sets::LoadMapSet))
+            .add_systems(FixedFirst, sync_queue_time.after(portal2_core::clock::advance))
             .add_systems(FixedLast, io::service_events.in_set(IoSet));
         app.world_mut().resource_mut::<InputHandlers>().register_generic(generic_inputs);
         logic::register(app);
@@ -61,141 +64,9 @@ impl Plugin for EntitiesPlugin {
     }
 }
 
-/// Spawning of map entities; collision is rebuilt before it.
-#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct EntitySpawnSet;
-
-/// Servicing of the event queue, at the end of each tick (`FixedLast`):
-/// outputs fired during a tick are delivered before the next one starts.
-#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct IoSet;
-
-/// Common data of every map entity.
-#[derive(Component, Clone, Debug)]
-pub struct MapEntity {
-    /// Index in the BSP entity lump (usize::MAX for runtime spawned entities).
-    pub index: usize,
-    pub classname: String,
-    pub targetname: Option<String>,
-    /// Keyvalues with lowercase keys, outputs excluded.
-    pub keyvalues: Vec<(String, String)>,
-    /// Class defaults from the installed entity definitions.
-    pub defaults: Option<Arc<FgdClass>>,
-}
-
-impl MapEntity {
-    pub fn get(&self, key: &str) -> Option<&str> {
-        let key = key.to_ascii_lowercase();
-        self.keyvalues
-            .iter()
-            .find(|(k, _)| *k == key)
-            .map(|(_, v)| v.as_str())
-            .or_else(|| self.defaults.as_ref().and_then(|d| d.defaults.get(&key)).map(|s| s.as_str()))
-    }
-
-    pub fn get_f32(&self, key: &str) -> Option<f32> {
-        self.get(key).map(source_formats::kv::parse_f32_lenient)
-    }
-
-    pub fn get_i32(&self, key: &str) -> Option<i32> {
-        self.get(key).map(source_formats::kv::parse_i32_lenient)
-    }
-
-    pub fn get_bool(&self, key: &str) -> bool {
-        self.get_i32(key).unwrap_or(0) != 0
-    }
-
-    pub fn get_vec3(&self, key: &str) -> Option<Vec3> {
-        self.get(key).and_then(source_formats::kv::parse_vec3)
-    }
-
-    pub fn spawnflags(&self) -> u32 {
-        match self.keyvalues.iter().find(|(k, _)| k == "spawnflags") {
-            Some((_, v)) => source_formats::kv::parse_i32_lenient(v) as u32,
-            None => self.defaults.as_ref().map(|d| d.default_spawnflags).unwrap_or(0),
-        }
-    }
-
-    pub fn has_flag(&self, bit: u32) -> bool {
-        self.spawnflags() & bit != 0
-    }
-
-    pub fn origin(&self) -> Vec3 {
-        self.get_vec3("origin").unwrap_or(Vec3::ZERO)
-    }
-
-    pub fn angles(&self) -> Vec3 {
-        let mut a = self.get_vec3("angles").unwrap_or(Vec3::ZERO);
-        if let Some(p) = self.keyvalues.iter().find(|(k, _)| k == "pitch") {
-            a.x = source_formats::kv::parse_f32_lenient(&p.1);
-        }
-        a
-    }
-
-    /// Brush model index for `model "*N"` entities.
-    pub fn brush_model(&self) -> Option<usize> {
-        self.get("model").and_then(|m| m.strip_prefix('*')).and_then(|m| m.parse().ok())
-    }
-
-    /// Studio model path from the keyvalue or the class's editor model.
-    pub fn studio_model(&self) -> Option<String> {
-        self.get("model")
-            .filter(|m| m.to_ascii_lowercase().ends_with(".mdl"))
-            .map(str::to_owned)
-            .or_else(|| self.defaults.as_ref().and_then(|d| d.studio_model.clone()))
-    }
-
-    pub fn set(&mut self, key: &str, value: &str) {
-        let key = key.to_ascii_lowercase();
-        match self.keyvalues.iter_mut().find(|(k, _)| *k == key) {
-            Some(kv) => kv.1 = value.to_owned(),
-            None => self.keyvalues.push((key, value.to_owned())),
-        }
-    }
-}
-
-/// Lookup tables for output targets.
-#[derive(Resource, Default)]
-pub struct EntityRegistry {
-    pub by_name: HashMap<String, Vec<Entity>>,
-    pub by_class: HashMap<String, Vec<Entity>>,
-    pub player: Option<Entity>,
-}
-
-impl EntityRegistry {
-    pub fn insert(&mut self, entity: Entity, classname: &str, targetname: Option<&str>) {
-        self.by_class.entry(classname.to_owned()).or_default().push(entity);
-        if let Some(n) = targetname {
-            self.by_name.entry(n.to_owned()).or_default().push(entity);
-        }
-    }
-
-    pub fn remove(&mut self, entity: Entity) {
-        for list in self.by_name.values_mut().chain(self.by_class.values_mut()) {
-            list.retain(|e| *e != entity);
-        }
-    }
-
-    pub fn rename(&mut self, entity: Entity, old: Option<&str>, new: Option<&str>) {
-        if let Some(o) = old
-            && let Some(list) = self.by_name.get_mut(o)
-        {
-            list.retain(|e| *e != entity);
-        }
-        if let Some(n) = new {
-            self.by_name.entry(n.to_owned()).or_default().push(entity);
-        }
-    }
-
-    pub fn first_named(&self, name: &str) -> Option<Entity> {
-        self.by_name.get(&name.to_ascii_lowercase()).and_then(|l| l.first().copied())
-    }
-
-    /// Forgets map entities; the player carries over between maps.
-    pub fn clear(&mut self) {
-        self.by_name.clear();
-        self.by_class.clear();
-    }
+/// Events queued during a tick are timed from its start.
+fn sync_queue_time(clock: Res<portal2_core::clock::GameClock>, mut queue: ResMut<EventQueue>) {
+    queue.now = clock.curtime;
 }
 
 /// Installed entity definitions (`bin/portal2.fgd` and its includes).
@@ -262,7 +133,7 @@ fn spawn_on_map_load(world: &mut World) {
     let Some(map) = world.get_resource::<CurrentMap>().cloned() else { return };
     world.resource_mut::<EntityRegistry>().clear();
     world.resource_mut::<EventQueue>().clear();
-    world.resource_mut::<crate::clock::GameClock>().reset();
+    world.resource_mut::<portal2_core::clock::GameClock>().reset();
     world.resource_mut::<EventQueue>().now = 0.0;
     // A saved game brings its own entities and script VM.
     if crate::save::restore_map_entities(world) {
@@ -291,7 +162,7 @@ fn spawn_on_map_load(world: &mut World) {
     transition::ensure_stats_controller(world);
 
     // Debug spawns requested on the command line.
-    let requests = world.resource::<crate::args::Args>().spawn.clone();
+    let requests = world.resource::<portal2_core::args::Args>().spawn.clone();
     for req in requests {
         let mut parts = req.split('@');
         let (Some(class), Some(at)) = (parts.next(), parts.next()) else { continue };
@@ -303,7 +174,7 @@ fn spawn_on_map_load(world: &mut World) {
     }
 
     // Debug inputs: `class.input[=param][@delay]`.
-    let fires = world.resource::<crate::args::Args>().fire.clone();
+    let fires = world.resource::<portal2_core::args::Args>().fire.clone();
     for spec in &fires {
         let (head, delay) = match spec.rsplit_once('@') {
             Some((h, d)) => (h, d.parse().unwrap_or(0.0)),
@@ -344,7 +215,7 @@ fn create_entity(world: &mut World, index: usize, pairs: &[(String, String)]) ->
     }
     let targetname =
         pairs.iter().find(|(k, _)| k.eq_ignore_ascii_case("targetname")).map(|(_, v)| v.to_ascii_lowercase()).filter(|s| !s.is_empty());
-    let id = crate::save::ids::assign(world, index);
+    let id = portal2_core::save::ids::assign(world, index);
     let e = insert_entity(world, index, id, &classname, targetname, keyvalues, outputs, defaults);
     Some((e, classname))
 }
@@ -355,7 +226,7 @@ fn create_entity(world: &mut World, index: usize, pairs: &[(String, String)]) ->
 pub(crate) fn insert_entity(
     world: &mut World,
     index: usize,
-    id: crate::save::ids::SaveId,
+    id: portal2_core::save::ids::SaveId,
     classname: &str,
     targetname: Option<String>,
     keyvalues: Vec<(String, String)>,
@@ -429,7 +300,7 @@ pub(crate) fn map_parent(world: &World, e: Entity) -> Option<Entity> {
 #[derive(Component, Default, serde::Serialize, serde::Deserialize)]
 pub struct RidesAttachment;
 
-impl crate::save::Restore for RidesAttachment {}
+impl portal2_core::save::Restore for RidesAttachment {}
 
 /// World placement of the named attachment on an entity's model.
 pub fn attachment_world(world: &World, e: Entity, name: &str) -> Option<Transform> {

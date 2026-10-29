@@ -15,6 +15,7 @@ pub mod motion;
 pub mod ops;
 pub mod soundscape;
 
+use portal2_core::rng::random_range;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -23,15 +24,15 @@ use bevy::transform::TransformSystems;
 use bevy::window::PrimaryWindow;
 use source_formats::soundscript::{SoundChars, SoundEntry, SoundScripts, WaveName};
 
-use crate::args::Args;
-use crate::camera::MainCamera;
-use crate::console::Console;
-use crate::entities::{EntityRegistry, MapEntity};
-use crate::vfs::GameFs;
 use crate::world::CurrentMap;
 use cache::{Pcm, SoundCache};
 use device::{MixHandle, OutputStream, Voice};
 use ops::{Chan, Env, Instance, Library, Listener, Other, Stack, StackKind};
+use portal2_core::args::Args;
+use portal2_core::console::{CommandArgs, Console};
+use portal2_core::entity::{EntityRegistry, MapEntity};
+use portal2_core::vfs::GameFs;
+use portal2_core::view::MainCamera;
 
 /// `CHAN_AUTO`, `CHAN_STATIC`: channels that never replace each other.
 const CHAN_AUTO: i32 = 0;
@@ -72,9 +73,34 @@ impl Plugin for AudioPlugin {
             ("snd_mute_losefocus", "1"),
             ("dsp_volume", "0.8"),
         ] {
-            console.register_cvar(name, default, crate::console::cvars::flags::ARCHIVE);
+            console.register_cvar(name, default, portal2_core::console::cvars::flags::ARCHIVE);
         }
+        console.register_command("snd_list", snd_list_command);
+        console.register_command("play", play_command);
+        console.register_command("playvol", play_command);
     }
+}
+
+/// Development aid: lists the solid static volumes and entities the player's
+/// hull overlaps.
+/// Lists the playing sound channels.
+fn snd_list_command(world: &mut World, _args: &CommandArgs) {
+    let lines = list(world);
+    portal2_core::console::commands::print(world, format!("{} channels", lines.len()));
+    for l in lines {
+        portal2_core::console::commands::print(world, l);
+    }
+}
+
+/// `play <sound>` / `playvol <sound> <volume>`: plays a sound without
+/// spatialisation.
+fn play_command(world: &mut World, args: &CommandArgs) {
+    let name = args.arg(1).to_owned();
+    if name.is_empty() {
+        return;
+    }
+    let volume = Some(args.arg(2)).filter(|v| !v.is_empty()).map(source_formats::kv::parse_f32_lenient);
+    emit(world, &name, Emit { volume, soundlevel: Some(0.0), ..Default::default() });
 }
 
 /// A sound to start (or stop) from an ordinary system; handled before the
@@ -397,11 +423,11 @@ impl Sounds {
                 let wave = match e.waves.len() {
                     0 => return None,
                     1 => e.waves[0].clone(),
-                    n => e.waves[(ops::random_range(0.0, n as f32) as usize).min(n - 1)].clone(),
+                    n => e.waves[(random_range(0.0, n as f32) as usize).min(n - 1)].clone(),
                 };
-                let v = ops::random_range(e.volume.start, e.volume.end);
-                let p = ops::random_range(e.pitch.start, e.pitch.end);
-                let l = ops::random_range(e.soundlevel.start, e.soundlevel.end);
+                let v = random_range(e.volume.start, e.volume.end);
+                let p = random_range(e.pitch.start, e.pitch.end);
+                let l = random_range(e.soundlevel.start, e.soundlevel.end);
                 (wave, v, p, l, e.channel.index(), e.delay_msec)
             }
             None if name.contains('/') || name.contains('.') => (WaveName::parse(name), 1.0, 100.0, 75.0, CHAN_AUTO, 0),

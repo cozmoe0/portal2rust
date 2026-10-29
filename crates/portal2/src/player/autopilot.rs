@@ -9,8 +9,9 @@
 
 use bevy::prelude::*;
 
-use super::{Player, PlayerInput, PlayerMoveSet};
-use crate::args::Args;
+use super::{Player, PlayerInput};
+use portal2_core::args::Args;
+use portal2_core::sets::PlayerMoveSet;
 
 pub struct AutopilotPlugin;
 
@@ -109,8 +110,8 @@ pub struct AutoUse(pub bool);
 #[allow(clippy::too_many_arguments)]
 fn drive(
     time: Res<Time<Fixed>>,
-    clock: Res<crate::clock::GameClock>,
-    mut console: ResMut<crate::console::Console>,
+    clock: Res<portal2_core::clock::GameClock>,
+    mut console: ResMut<portal2_core::console::Console>,
     ap: Option<ResMut<Autopilot>>,
     mut input: ResMut<PlayerInput>,
     mut fire: ResMut<AutoFire>,
@@ -178,8 +179,8 @@ fn log_state(
     players: Query<(Entity, &Player)>,
     input: Res<PlayerInput>,
     physics: crate::collision::Physics,
-    entities: Query<&crate::entities::MapEntity>,
-    props: Query<(&crate::entities::MapEntity, &GlobalTransform), With<crate::entities::props::PhysicsProp>>,
+    entities: Query<&portal2_core::entity::MapEntity>,
+    props: Query<(&portal2_core::entity::MapEntity, &GlobalTransform), With<crate::entities::props::PhysicsProp>>,
     holding: Option<Res<crate::physics::carry::Holding>>,
 ) {
     let Some(mut ap) = ap else { return };

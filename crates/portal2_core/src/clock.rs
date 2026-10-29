@@ -7,6 +7,9 @@
 
 use bevy::prelude::*;
 
+use crate::sets::PlayerMoveSet;
+pub use crate::sets::ThinkSet;
+
 /// Ticks per second of the single-player server.
 pub const TICK_RATE: f64 = 60.0;
 pub const TICK_INTERVAL: f64 = 1.0 / TICK_RATE;
@@ -41,19 +44,13 @@ pub fn time_to_ticks(time: f64) -> i64 {
     (0.5 + time / TICK_INTERVAL).floor() as i64
 }
 
-/// Order of work inside one tick, following the original server frame:
-/// player movement, then entity thinks, then physics (avian runs in
-/// `FixedPostUpdate`), then the event queue in `FixedLast`.
-#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ThinkSet;
-
 pub struct ClockPlugin;
 
 impl Plugin for ClockPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Time::<Fixed>::from_hz(TICK_RATE))
             .init_resource::<GameClock>()
-            .configure_sets(FixedUpdate, ThinkSet.after(crate::player::PlayerMoveSet))
+            .configure_sets(FixedUpdate, ThinkSet.after(PlayerMoveSet))
             .add_systems(FixedFirst, advance)
             // Children of moving entities (elevator floors, attached
             // triggers) follow their parents every tick, as in the original,
@@ -70,11 +67,8 @@ impl Plugin for ClockPlugin {
     }
 }
 
-fn advance(mut clock: ResMut<GameClock>, queue: Option<ResMut<crate::entities::io::EventQueue>>) {
+/// Starts the next tick (`FixedFirst`).
+pub fn advance(mut clock: ResMut<GameClock>) {
     clock.tick += 1;
     clock.curtime = clock.tick as f64 * TICK_INTERVAL;
-    // Events queued during the tick are timed from its start.
-    if let Some(mut q) = queue {
-        q.now = clock.curtime;
-    }
 }

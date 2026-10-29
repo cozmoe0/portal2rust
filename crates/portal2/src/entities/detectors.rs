@@ -6,10 +6,10 @@ use bevy::prelude::*;
 
 use super::io::{FireOutput, InputCall, InputHandlers};
 use super::{MapEntity, SpawnHandlers};
-use crate::clock::ThinkSet;
 use crate::collision::Physics;
 use crate::player::Player;
 use crate::portals::{Portal, Portals};
+use portal2_core::sets::ThinkSet;
 
 pub fn register(app: &mut App) {
     app.init_resource::<SpeedMod>()
@@ -189,8 +189,8 @@ fn player_input(world: &mut World, call: &InputCall) -> bool {
     }
 }
 
-impl crate::save::Restore for PortalDetector {}
+impl portal2_core::save::Restore for PortalDetector {}
 
-impl crate::save::Restore for SpeedMod {}
+impl portal2_core::save::Restore for SpeedMod {}
 
-impl crate::save::Restore for PlayerFog {}
+impl portal2_core::save::Restore for PlayerFog {}

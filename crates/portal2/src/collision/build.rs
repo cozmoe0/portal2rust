@@ -11,7 +11,7 @@ use source_formats::phy::Phy;
 use source_formats::text::strip_extension;
 
 use super::volume::{ConvexVolume, Plane};
-use crate::coords::angles_to_quat;
+use portal2_core::coords::angles_to_quat;
 
 /// Brush indices reachable from a model's head node.
 pub fn model_brushes(bsp: &Bsp, model: usize) -> Vec<usize> {

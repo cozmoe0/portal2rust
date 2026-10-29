@@ -17,10 +17,11 @@ use std::any::Any;
 use bevy::prelude::*;
 use squirrel::{ObjRef, Value, Vm};
 
-use crate::clock::{GameClock, ThinkSet};
-use crate::entities::MapEntity;
 use crate::entities::io::{EventQueue, EventTarget, InputCall, InputHandlers};
-use crate::vfs::GameFs;
+use portal2_core::clock::GameClock;
+use portal2_core::entity::MapEntity;
+use portal2_core::sets::ThinkSet;
+use portal2_core::vfs::GameFs;
 
 /// `sv_script_think_interval`.
 pub const THINK_INTERVAL: f64 = 0.1;
@@ -32,7 +33,7 @@ impl Plugin for ScriptPlugin {
         app.init_resource::<ScriptHandles>()
             .init_resource::<api::GladosSpokenFlags>()
             .add_systems(FixedUpdate, (bind_player_global, run_thinks).chain().in_set(ThinkSet))
-            .add_systems(FixedLast, collect_garbage.after(crate::entities::IoSet));
+            .add_systems(FixedLast, collect_garbage.after(portal2_core::sets::IoSet));
         app.world_mut().resource_mut::<InputHandlers>().register_generic(script_inputs);
     }
 }
@@ -77,7 +78,7 @@ pub struct ScriptScope {
 /// Prints script output to the console.
 fn print_to_console(host: &mut dyn Any, text: &str) {
     if let Some(world) = host.downcast_mut::<World>() {
-        let mut console = world.resource_mut::<crate::console::Console>();
+        let mut console = world.resource_mut::<portal2_core::console::Console>();
         for line in text.trim_end_matches('\n').split('\n') {
             console.print(line.to_owned());
         }
@@ -86,7 +87,7 @@ fn print_to_console(host: &mut dyn Any, text: &str) {
 
 /// Reports a script error the way the original does.
 pub fn report(world: &mut World, e: &squirrel::Error) {
-    let mut console = world.resource_mut::<crate::console::Console>();
+    let mut console = world.resource_mut::<portal2_core::console::Console>();
     match e {
         squirrel::Error::Compile { .. } => console.print(format!("Script compile error: {e}")),
         squirrel::Error::Runtime { message, stack, .. } => {
@@ -131,7 +132,7 @@ pub fn load_script(world: &World, name: &str) -> Option<Vec<u8>> {
 pub fn run_file(world: &mut World, name: &str, scope: &Value) -> bool {
     let Some(src) = load_script(world, name) else {
         let msg = format!("Script not found (scripts/vscripts/{name})");
-        world.resource_mut::<crate::console::Console>().print(msg);
+        world.resource_mut::<portal2_core::console::Console>().print(msg);
         return false;
     };
     run_source(world, &src, name, scope)
@@ -398,7 +399,7 @@ fn script_inputs(world: &mut World, c: &InputCall) -> bool {
 
 /// The single-player VM has a global `player` (the player's handle).
 fn bind_player_global(world: &mut World) {
-    let Some(p) = world.resource::<crate::entities::EntityRegistry>().player else { return };
+    let Some(p) = world.resource::<portal2_core::entity::EntityRegistry>().player else { return };
     let h = handle(world, p);
     with_vm(world, |_, vm| {
         let root = vm.root_value();

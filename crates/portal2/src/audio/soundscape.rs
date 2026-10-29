@@ -7,14 +7,16 @@
 //! `soundmixer` (or `Default_Mix`) becomes the active mixer.
 
 use bevy::prelude::*;
+use portal2_core::rng::random_range;
 use source_formats::soundscape::{Position, Soundscapes};
 use source_formats::soundscript::{Interval, WaveName};
 
-use super::{Emit, Sounds, ops};
+use super::{Emit, Sounds};
 use crate::collision::Physics;
+use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::entities::{EntityRegistry, MapEntity, SpawnHandlers};
 use crate::world::CurrentMap;
+use portal2_core::entity::{EntityRegistry, MapEntity};
 
 /// Seconds between soundscape choices.
 const CHECK_PERIOD: f64 = 0.25;
@@ -158,12 +160,12 @@ fn flatten(
     for l in &s.looping {
         let Some(wave) = l.wave.clone() else { continue };
         let Some(v) = l.volume else { continue };
-        let v = ops::random_range(v.start, v.end) * volume;
+        let v = random_range(v.start, v.end) * volume;
         if v <= 0.0 {
             continue;
         }
-        let pitch = l.pitch.map_or(100.0, |p| ops::random_range(p.start, p.end));
-        let level = l.soundlevel.map_or(source_formats::soundscape::LOOPING_DEFAULT_SOUNDLEVEL, |p| ops::random_range(p.start, p.end));
+        let pitch = l.pitch.map_or(100.0, |p| random_range(p.start, p.end));
+        let level = l.soundlevel.map_or(source_formats::soundscape::LOOPING_DEFAULT_SOUNDLEVEL, |p| random_range(p.start, p.end));
         let place = place_of(l.position, l.origin);
         loops.push(Loop { wave, volume: v, pitch, level: if place == Place::Ambient { 0.0 } else { level }, place });
     }
@@ -183,7 +185,7 @@ fn flatten(
         });
     }
     for n in &s.nested {
-        let v = n.volume.map_or(1.0, |v| ops::random_range(v.start, v.end)) * volume;
+        let v = n.volume.map_or(1.0, |v| random_range(v.start, v.end)) * volume;
         let over = override_pos.or(n.position_override);
         let amb = match (n.ambient_position_override, n.ambient_origin_override) {
             (Some(i), _) => Some(index_place(ctx, i)),
@@ -249,24 +251,24 @@ pub fn update_soundscapes(world: &mut World) {
         if now < r.next {
             continue;
         }
-        r.next = now + ops::random_range(r.time.start, r.time.end).max(0.05) as f64;
-        let wave = &r.waves[(ops::random_range(0.0, r.waves.len() as f32) as usize).min(r.waves.len() - 1)];
+        r.next = now + random_range(r.time.start, r.time.end).max(0.05) as f64;
+        let wave = &r.waves[(random_range(0.0, r.waves.len() as f32) as usize).min(r.waves.len() - 1)];
         let origin = match r.place {
             Place::At(p) => p,
             Place::Random => {
-                let a = ops::random_range(0.0, std::f32::consts::TAU);
-                listener + Vec3::new(a.cos(), a.sin(), 0.0) * ops::random_range(RANDOM_DISTANCE.0, RANDOM_DISTANCE.1)
+                let a = random_range(0.0, std::f32::consts::TAU);
+                listener + Vec3::new(a.cos(), a.sin(), 0.0) * random_range(RANDOM_DISTANCE.0, RANDOM_DISTANCE.1)
             }
             Place::Ambient => listener,
         };
-        let level = if r.place == Place::Ambient { 0.0 } else { ops::random_range(r.level.start, r.level.end) };
+        let level = if r.place == Place::Ambient { 0.0 } else { random_range(r.level.start, r.level.end) };
         super::emit(
             world,
             &wave.raw,
             Emit {
                 origin: Some(origin),
-                volume: Some(ops::random_range(r.volume.start, r.volume.end)),
-                pitch: Some(ops::random_range(r.pitch.start, r.pitch.end)),
+                volume: Some(random_range(r.volume.start, r.volume.end)),
+                pitch: Some(random_range(r.pitch.start, r.pitch.end)),
                 soundlevel: Some(level),
                 ..default()
             },
@@ -356,9 +358,9 @@ fn choose(world: &mut World, state: &mut SoundscapeState, now: f64) {
         }
     }
     for r in randoms.iter_mut() {
-        r.next = now + ops::random_range(r.time.start, r.time.end) as f64;
+        r.next = now + random_range(r.time.start, r.time.end) as f64;
     }
     state.randoms = randoms;
 }
 
-impl crate::save::Restore for SoundscapeEnt {}
+impl portal2_core::save::Restore for SoundscapeEnt {}

@@ -7,9 +7,9 @@ use squirrel::value::NativeFn;
 use squirrel::{Ctx, Error, Result, Value, Vm};
 
 use super::{ScriptClasses, entity, vector};
-use crate::clock::GameClock;
 use crate::entities::io::{EventQueue, EventTarget};
-use crate::entities::{EntityRegistry, MapEntity};
+use portal2_core::clock::GameClock;
+use portal2_core::entity::{EntityRegistry, MapEntity};
 
 /// Persistent GLaDOS dialogue flags (`AddGladosSpokenFlags`), kept across
 /// maps.
@@ -259,7 +259,7 @@ fn include_into(ctx: &mut Ctx, name: &str, scope: Value) -> Result<Value> {
     let scope = if scope.is_null() { vm.root_value() } else { scope };
     let Some(src) = super::load_script(world, name) else {
         let msg = format!("Script not found (scripts/vscripts/{name})");
-        world.resource_mut::<crate::console::Console>().print(msg);
+        world.resource_mut::<portal2_core::console::Console>().print(msg);
         return Ok(Value::Bool(false));
     };
     match vm.run_script(world, &src, name, &scope) {
@@ -308,7 +308,7 @@ fn trace_line(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
 fn send_to_console(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
     let cmd = arg_string(ctx, args, 1)?;
     let (_, world) = parts(ctx);
-    crate::console::queue_trusted(world, &cmd);
+    portal2_core::console::queue_trusted(world, &cmd);
     Ok(Value::Null)
 }
 
@@ -321,13 +321,13 @@ fn get_map_name(ctx: &mut Ctx, _args: &[Value]) -> Result<Value> {
 fn show_message(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
     let text = arg_string(ctx, args, 1)?;
     let (_, world) = parts(ctx);
-    world.resource_mut::<crate::console::Console>().print(format!("(message) {text}"));
+    world.resource_mut::<portal2_core::console::Console>().print(format!("(message) {text}"));
     Ok(Value::Null)
 }
 
 fn get_developer_level(ctx: &mut Ctx, _args: &[Value]) -> Result<Value> {
     let (_, world) = parts(ctx);
-    Ok(Value::Int(world.resource::<crate::console::Console>().i32("developer")))
+    Ok(Value::Int(world.resource::<portal2_core::console::Console>().i32("developer")))
 }
 
 fn record_achievement_event(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
@@ -433,4 +433,4 @@ pub fn describe(world: &World, e: Entity) -> String {
     world.get::<MapEntity>(e).map(|m| format!("{} ({})", m.targetname.as_deref().unwrap_or(""), m.classname)).unwrap_or_default()
 }
 
-impl crate::save::Restore for GladosSpokenFlags {}
+impl portal2_core::save::Restore for GladosSpokenFlags {}

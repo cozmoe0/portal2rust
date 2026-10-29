@@ -24,7 +24,7 @@ use super::defs::{RendererKind, field};
 use super::sim::Collection;
 use crate::render::materials::load_vmt;
 use crate::render::textures::TextureCache;
-use crate::vfs::GameFs;
+use portal2_core::vfs::GameFs;
 
 pub const PARTICLE_SHADER: &str = "embedded://portal2/render/shaders/particle.wesl";
 

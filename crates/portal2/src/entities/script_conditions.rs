@@ -12,10 +12,11 @@ use source_formats::bsp::contents;
 
 use super::io::{FireOutput, InputCall, InputHandlers};
 use super::{EntityRegistry, MapEntity, SpawnHandlers};
-use crate::clock::{GameClock, ThinkSet};
 use crate::collision::Physics;
-use crate::coords::angles_forward;
 use crate::player::{Player, PlayerInput};
+use portal2_core::clock::GameClock;
+use portal2_core::coords::angles_forward;
+use portal2_core::sets::ThinkSet;
 
 pub fn register(app: &mut App) {
     app.add_systems(FixedUpdate, evaluate.in_set(ThinkSet));
@@ -24,7 +25,7 @@ pub fn register(app: &mut App) {
     world.resource_mut::<InputHandlers>().register("ai_script_conditions", input);
 }
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<ScriptConditions>("script_conditions");
 }
 
@@ -67,7 +68,7 @@ pub struct ScriptConditions {
     next_think: f64,
     watches: Vec<Watch>,
     target_name: Option<String>,
-    #[serde(with = "crate::save::ids::opt_entity")]
+    #[serde(with = "portal2_core::save::ids::opt_entity")]
     target: Option<Entity>,
     required_time: f32,
     min_timeout: f32,
@@ -114,7 +115,7 @@ fn enable(world: &mut World, e: Entity) {
     let Some(mut c) = world.get_mut::<ScriptConditions>(e) else { return };
     c.target = target;
     if c.watches.is_empty() {
-        let timeout = if c.max_timeout > 0.0 { crate::audio::ops::random_range(c.min_timeout, c.max_timeout) } else { c.min_timeout };
+        let timeout = if c.max_timeout > 0.0 { portal2_core::rng::random_range(c.min_timeout, c.max_timeout) } else { c.min_timeout };
         let satisfied_at = if c.required_time > 0.0 { now + c.required_time as f64 } else { -1.0 };
         c.watches.push(Watch { satisfied_at, timeout_at: now + timeout as f64 });
     }
@@ -206,7 +207,7 @@ fn evaluate(
     }
 }
 
-impl crate::save::Restore for ScriptConditions {}
+impl portal2_core::save::Restore for ScriptConditions {}
 
 #[cfg(test)]
 mod tests {

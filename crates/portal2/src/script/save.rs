@@ -11,8 +11,8 @@ use squirrel::snapshot::{HostValue, VmSnapshot};
 
 use super::entity::ENTITY_TAG;
 use super::{ScriptClasses, ScriptHandles, ScriptScope, ScriptVm};
-use crate::save::ids::NO_ID;
-use crate::save::{decode, encode};
+use portal2_core::save::ids::NO_ID;
+use portal2_core::save::{decode, encode};
 
 #[derive(Serialize, Deserialize)]
 struct SavedScripts {

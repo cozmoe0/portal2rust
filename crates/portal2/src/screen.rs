@@ -8,11 +8,12 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 
-use crate::clock::GameClock;
+use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers, fire_output};
-use crate::entities::{MapEntity, SpawnHandlers};
-use crate::vfs::GameFs;
 use crate::vgui::{FontId, Schemes, Surface, VguiPaint, layer};
+use portal2_core::clock::GameClock;
+use portal2_core::entity::MapEntity;
+use portal2_core::vfs::GameFs;
 
 pub struct ScreenPlugin;
 
@@ -242,7 +243,7 @@ fn display(world: &mut World, e: Entity) {
 /// seconds, each flashing from `color2` to `color` over `fxtime`.
 fn draw_messages(
     clock: Res<GameClock>,
-    console: Res<crate::console::Console>,
+    console: Res<portal2_core::console::Console>,
     schemes: Res<Schemes>,
     mut surface: ResMut<Surface>,
     mut messages: ResMut<Messages>,
@@ -353,4 +354,4 @@ fn draw_message(surface: &mut Surface, font: FontId, msg: &Message, time: f32) {
     }
 }
 
-impl crate::save::Restore for ScreenFade {}
+impl portal2_core::save::Restore for ScreenFade {}

@@ -8,11 +8,19 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-bevy = "0.20"
+bevy = { version = "0.20", features = ["serialize"] }
 glam = "0.33"
 thiserror = "2"
 log = "0.4"
 bytemuck = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+ciborium = "0.2"
+
+# Workspace crates.
+source_formats = { path = "crates/source_formats" }
+squirrel = { path = "crates/squirrel" }
+bink = { path = "crates/bink" }
+portal2_core = { path = "crates/portal2_core" }
 
 # Engine crates build fast in dev; dependencies (Bevy, wgpu, physics) get full
 # optimisation so the game stays playable in debug builds.

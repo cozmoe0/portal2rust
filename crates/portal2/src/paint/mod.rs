@@ -20,11 +20,11 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use source_formats::bsp::{Bsp, surf};
 
-use crate::console::Console;
 use crate::render::materials::{PaintTextures, load_vmt};
 use crate::render::textures::TextureCache;
-use crate::vfs::GameFs;
 use crate::world::bsp_mesh::WorldGeometry;
+use portal2_core::console::Console;
+use portal2_core::vfs::GameFs;
 
 pub use upload::PaintUploads;
 

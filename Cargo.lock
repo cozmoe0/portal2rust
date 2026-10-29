@@ -4978,12 +4978,23 @@ dependencies = [
  "flate2",
  "half",
  "log",
+ "portal2_core",
  "serde",
  "serde_derive",
  "source_formats",
  "squirrel",
  "symphonia",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "portal2_core"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "ciborium",
+ "serde",
+ "source_formats",
 ]
 
 [[package]]

@@ -1,9 +1,11 @@
 //! Map loading: BSP geometry, lightmaps, brush entities and static props.
 
 pub mod bsp_mesh;
+mod commands;
 pub mod ropes;
 pub mod sky;
 
+use portal2_core::layers::SKYBOX_LAYER;
 use std::sync::Arc;
 
 use bevy::asset::RenderAssetUsages;
@@ -14,12 +16,15 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use source_formats::bsp::{Bsp, Entity as MapEntity};
 use source_formats::zip::ZipArchive;
 
-use crate::args::Args;
 use crate::render::materials::{MaterialCache, MaterialContext};
 use crate::render::source_material::{WorldMaterial, world_flags};
 use crate::render::textures::TextureCache;
-use crate::vfs::GameFs;
 use bsp_mesh::{MeshBatch, build_world_geometry};
+use portal2_core::MapGeneration;
+use portal2_core::args::Args;
+use portal2_core::console::Console;
+use portal2_core::sets::LoadMapSet;
+use portal2_core::vfs::GameFs;
 
 /// How a map is being entered; `logic_auto` fires the matching output.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -91,6 +96,7 @@ impl Plugin for WorldPlugin {
             .init_resource::<PendingLoad>()
             .add_systems(Startup, request_initial_map)
             .add_systems(PreUpdate, load_map_system.in_set(LoadMapSet));
+        commands::register(&mut app.world_mut().resource_mut::<Console>());
     }
 }
 
@@ -99,10 +105,6 @@ fn request_initial_map(args: Res<Args>, mut writer: MessageWriter<LoadMap>) {
         writer.write(LoadMap::new(args.map.clone(), MapLoadType::NewGame));
     }
 }
-
-/// Map loading; entity spawning runs after it.
-#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct LoadMapSet;
 
 /// Brush entity classes whose geometry is never drawn.
 pub fn is_invisible_brush_class(class: &str) -> bool {
@@ -250,7 +252,7 @@ fn load_map_system(
                 MeshMaterial3d(info.handle.clone()),
                 Transform::IDENTITY,
                 sky::SkyChecked,
-                bevy::camera::visibility::RenderLayers::layer(sky::SKYBOX_LAYER),
+                bevy::camera::visibility::RenderLayers::layer(SKYBOX_LAYER),
             ))
             .id();
         commands.entity(world).add_child(id);
@@ -271,7 +273,7 @@ fn load_map_system(
         let mut overlay =
             commands.spawn((Name::new("overlay"), Mesh3d(mesh), MeshMaterial3d(material), Transform::IDENTITY, sky::SkyChecked));
         if in_skybox {
-            overlay.insert(bevy::camera::visibility::RenderLayers::layer(sky::SKYBOX_LAYER));
+            overlay.insert(bevy::camera::visibility::RenderLayers::layer(SKYBOX_LAYER));
         }
         let id = overlay.id();
         commands.entity(world).add_child(id);
@@ -292,6 +294,7 @@ fn load_map_system(
     );
     commands.insert_resource(start);
     commands.insert_resource(map);
+    commands.queue(|world: &mut World| world.resource_mut::<MapGeneration>().loaded());
     loaded.write(MapLoaded(name));
 }
 
@@ -303,16 +306,17 @@ pub fn unload_map(world: &mut World) {
             e.despawn();
         }
     }
-    let player = world.get_resource::<crate::entities::EntityRegistry>().and_then(|r| r.player);
+    let player = world.get_resource::<portal2_core::entity::EntityRegistry>().and_then(|r| r.player);
     if let Some(p) = player
         && let Ok(e) = world.get_entity_mut(p)
     {
         e.despawn();
     }
-    if let Some(mut r) = world.get_resource_mut::<crate::entities::EntityRegistry>() {
+    if let Some(mut r) = world.get_resource_mut::<portal2_core::entity::EntityRegistry>() {
         r.player = None;
     }
     world.remove_resource::<CurrentMap>();
+    world.resource_mut::<MapGeneration>().unloaded();
     world.remove_resource::<PlayerStart>();
 }
 

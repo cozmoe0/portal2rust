@@ -6,19 +6,10 @@ use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
-use crate::args::Args;
-use crate::coords::{angles_to_quat, camera_rotation};
 use crate::world::PlayerStart;
-
-/// Source-space eye position and view angles (pitch, yaw, roll in degrees).
-#[derive(Component, Clone, Copy, Debug, Default)]
-pub struct ViewAngles {
-    pub origin: Vec3,
-    pub angles: Vec3,
-}
-
-#[derive(Component)]
-pub struct MainCamera;
+use portal2_core::args::Args;
+use portal2_core::coords::{angles_to_quat, camera_rotation};
+pub use portal2_core::view::{MainCamera, ViewAngles};
 
 #[derive(Resource)]
 pub struct FlyCamera {
@@ -53,7 +44,7 @@ fn spawn_camera(mut commands: Commands, args: Res<Args>) {
         // Refract materials read a copy of the opaque pass.
         bevy::pbr::ScreenSpaceTransmission::default(),
         ViewAngles::default(),
-        bevy::camera::visibility::RenderLayers::from_layers(&[0, crate::portals::PORTAL_LAYER]),
+        bevy::camera::visibility::RenderLayers::from_layers(&[0, portal2_core::layers::PORTAL_LAYER]),
         Transform::default(),
     ));
 }
@@ -63,7 +54,7 @@ pub fn vertical_fov(horizontal_4x3_deg: f32) -> f32 {
     2.0 * ((horizontal_4x3_deg.to_radians() * 0.5).tan() * 0.75).atan()
 }
 
-fn apply_fov(console: Res<crate::console::Console>, mut q: Query<&mut Projection, With<MainCamera>>) {
+fn apply_fov(console: Res<portal2_core::console::Console>, mut q: Query<&mut Projection, With<MainCamera>>) {
     let fov = vertical_fov(console.f32("fov_desired").clamp(1.0, 179.0));
     for mut p in &mut q {
         if let Projection::Perspective(pp) = p.as_mut()

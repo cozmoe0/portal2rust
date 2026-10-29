@@ -15,12 +15,12 @@ use std::sync::Arc;
 
 use bevy::prelude::*;
 
-pub use lessons::{EventValue, GameEvent};
 use lessons::{LessonDef, LessonVars, Outcome, ScriptEnv};
+use portal2_core::events::GameEvent;
 
-use crate::console::{CommandArgs, Console};
-use crate::entities::{EntityRegistry, MapEntity};
-use crate::vfs::GameFs;
+use portal2_core::console::{CommandArgs, Console};
+use portal2_core::entity::{EntityRegistry, MapEntity};
+use portal2_core::vfs::GameFs;
 
 pub fn build(app: &mut App) {
     app.add_message::<GameEvent>()
@@ -42,7 +42,7 @@ pub fn build(app: &mut App) {
     ] {
         console.register_cvar(name, value, 0);
     }
-    console.register_cvar("gameinstructor_verbose", "0", crate::console::cvars::flags::CHEAT);
+    console.register_cvar("gameinstructor_verbose", "0", portal2_core::console::cvars::flags::CHEAT);
     console.register_command("gameinstructor_reset_counts", reset_counts);
     console.register_command("gameinstructor_dump_open_lessons", dump_open_lessons);
     locator::build(app);
@@ -167,7 +167,7 @@ fn handle_events(
     console: Res<Console>,
     registry: Res<EntityRegistry>,
     entities: Query<&MapEntity>,
-    clock: Res<crate::clock::GameClock>,
+    clock: Res<portal2_core::clock::GameClock>,
 ) {
     let enabled = console.bool("gameinstructor_enable");
     let classname = |e: Entity| {
@@ -305,7 +305,7 @@ fn run_onopen(lesson: &mut OpenLesson, env: &ScriptEnv) {
 fn update_lessons(
     mut gi: ResMut<GameInstructor>,
     console: Res<Console>,
-    clock: Res<crate::clock::GameClock>,
+    clock: Res<portal2_core::clock::GameClock>,
     registry: Res<EntityRegistry>,
     entities: Query<&MapEntity>,
     transforms: Query<&GlobalTransform>,

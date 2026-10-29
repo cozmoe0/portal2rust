@@ -1,6 +1,7 @@
 //! The portal gun: firing, availability, the first-person viewmodel, and
 //! portals placed by maps (`prop_portal`).
 
+use portal2_core::layers::VIEWMODEL_LAYER;
 use std::collections::HashMap;
 use std::f32::consts::PI;
 
@@ -15,25 +16,25 @@ use source_formats::vmt::material_path;
 
 use super::placement::{Helper, PlacementContext, PortalFrame};
 use super::{FizzlePortals, PlacePortal};
-use crate::args::Args;
-use crate::camera::MainCamera;
 use crate::collision::Physics;
-use crate::coords::{angles_forward, angles_to_quat};
+use crate::entities::SpawnHandlers;
 use crate::entities::io::InputCall;
 use crate::entities::io::InputHandlers;
-use crate::entities::{EntityRegistry, MapEntity, SpawnHandlers};
-use crate::hud::instructor::{EventValue, GameEvent};
 use crate::models::lighting;
 use crate::models::{ModelCache, SpawnModel, StudioAnimator, spawn_model_parts};
-use crate::player::{Player, PlayerCameraSet, PlayerInput};
+use crate::player::{Player, PlayerInput};
 use crate::render::materials::{MaterialCache, MaterialContext, load_vmt};
 use crate::render::source_material::{ModelMaterial, RefractMaterial};
 use crate::render::textures::TextureCache;
-use crate::vfs::GameFs;
 use crate::world::{CurrentMap, PlayerStart};
+use portal2_core::args::Args;
+use portal2_core::coords::{angles_forward, angles_to_quat};
+use portal2_core::entity::{EntityRegistry, MapEntity};
+use portal2_core::events::{EventValue, GameEvent};
+use portal2_core::sets::PlayerCameraSet;
+use portal2_core::vfs::GameFs;
+use portal2_core::view::MainCamera;
 
-/// Render layer of the first-person weapon.
-pub const VIEWMODEL_LAYER: usize = 2;
 /// Seconds between shots (`portalgun_fire_delay`).
 pub const FIRE_DELAY: f64 = 0.2;
 /// Viewmodel field of view in degrees, horizontal at 4:3 (`cl_viewmodelfov`).
@@ -63,7 +64,7 @@ pub struct PortalGun {
     #[serde(skip)]
     pub viewmodel: Option<Entity>,
     /// Map entity to walk into to receive the gun.
-    #[serde(with = "crate::save::ids::opt_entity")]
+    #[serde(with = "portal2_core::save::ids::opt_entity")]
     pub pickup: Option<Entity>,
 }
 
@@ -207,7 +208,7 @@ fn surface_portalable(map: &CurrentMap, fs: &GameFs, surface: i32) -> bool {
 #[allow(clippy::too_many_arguments)]
 fn fire_gun(
     time: Res<Time>,
-    buttons: Res<crate::console::binds::Buttons>,
+    buttons: Res<portal2_core::console::binds::Buttons>,
     mut gun: ResMut<PortalGun>,
     players: Query<(Entity, &Player)>,
     input: Res<PlayerInput>,
@@ -225,7 +226,7 @@ fn fire_gun(
     ),
     mut animators: Query<&mut StudioAnimator>,
     mut auto: ResMut<crate::player::autopilot::AutoFire>,
-    (paint, console, mut events): (Option<Res<crate::paint::PaintMap>>, Res<crate::console::Console>, MessageWriter<GameEvent>),
+    (paint, console, mut events): (Option<Res<crate::paint::PaintMap>>, Res<portal2_core::console::Console>, MessageWriter<GameEvent>),
 ) {
     let slot = if let Some(slot) = auto.0.take() {
         slot
@@ -422,7 +423,7 @@ fn attach_viewmodel(world: &mut World) {
 /// `r_drawviewmodel 0` hides the first-person weapon, as does a scripted
 /// view.
 fn show_viewmodel(
-    console: Res<crate::console::Console>,
+    console: Res<portal2_core::console::Console>,
     view: Res<crate::entities::viewcontrol::ActiveView>,
     mut cams: Query<&mut Camera, With<ViewmodelCamera>>,
 ) {
@@ -555,7 +556,7 @@ fn spawn_map_portal_now(world: &mut World, me: &MapEntity, slot: usize, at: Opti
     world.resource_mut::<Messages<PlacePortal>>().write(PlacePortal { slot, frame, settle: true });
 }
 
-impl crate::save::Restore for PortalGun {
+impl portal2_core::save::Restore for PortalGun {
     fn keep(&mut self, live: Self) {
         self.viewmodel = live.viewmodel;
     }

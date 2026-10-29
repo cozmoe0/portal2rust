@@ -8,40 +8,8 @@
 use std::sync::Arc;
 
 use bevy::prelude::*;
+use portal2_core::events::{EventValue, GameEvent};
 use source_formats::kv::KeyValues;
-
-/// A value carried by a game event.
-#[derive(Clone, Debug, PartialEq)]
-pub enum EventValue {
-    Int(i32),
-    Float(f32),
-    Str(String),
-    /// Players (`userid`) and entities (entity indices) alike.
-    Entity(Option<Entity>),
-}
-
-/// A named game event with its fields, as the server and client code fire
-/// them; the game instructor listens.
-#[derive(Message, Clone, Debug)]
-pub struct GameEvent {
-    pub name: String,
-    pub fields: Vec<(String, EventValue)>,
-}
-
-impl GameEvent {
-    pub fn new(name: &str) -> Self {
-        Self { name: name.to_owned(), fields: Vec::new() }
-    }
-
-    pub fn with(mut self, key: &str, value: EventValue) -> Self {
-        self.fields.push((key.to_owned(), value));
-        self
-    }
-
-    pub fn get(&self, key: &str) -> Option<&EventValue> {
-        self.fields.iter().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| v)
-    }
-}
 
 /// The variables of a lesson instance (the root lesson's settings are the
 /// defaults).

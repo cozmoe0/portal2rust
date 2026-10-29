@@ -25,10 +25,10 @@ impl Plugin for PortalTravelPlugin {
 /// (`sv_props_funnel_into_portals`, props with `allowfunnel`).
 fn funnel_props(
     time: Res<Time<Fixed>>,
-    console: Res<crate::console::Console>,
+    console: Res<portal2_core::console::Console>,
     portals: Res<Portals>,
     portal_query: Query<&Portal>,
-    mut props: Query<(&crate::entities::MapEntity, &Position, &RigidBody, &mut LinearVelocity), With<PhysicsProp>>,
+    mut props: Query<(&portal2_core::entity::MapEntity, &Position, &RigidBody, &mut LinearVelocity), With<PhysicsProp>>,
 ) {
     if !console.bool("sv_props_funnel_into_portals") {
         return;
@@ -168,14 +168,14 @@ pub struct Dissolving {
 /// the vertical, ignores gravity and is gone after 2 seconds.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn fizzle_props(
-    clock: Res<crate::clock::GameClock>,
+    clock: Res<portal2_core::clock::GameClock>,
     physics: Physics,
     cleansers: Query<(Entity, &Trigger)>,
     mut props: Query<(Entity, &TraceCollider, &GlobalTransform, &mut LinearVelocity, &mut AngularVelocity), With<PhysicsProp>>,
     players: Query<&crate::player::Player>,
     input: Res<crate::player::PlayerInput>,
     mut holding: ResMut<Holding>,
-    mut registry: ResMut<crate::entities::EntityRegistry>,
+    mut registry: ResMut<portal2_core::entity::EntityRegistry>,
     mut out: MessageWriter<FireOutput>,
     mut sounds: MessageWriter<crate::audio::SoundRequest>,
     mut commands: Commands,
@@ -196,7 +196,7 @@ fn fizzle_props(
             if holding.entity == Some(pe) {
                 holding.entity = None;
                 if let Ok(p) = players.single() {
-                    let forward = crate::coords::angles_forward(input.input.angles);
+                    let forward = portal2_core::coords::angles_forward(input.input.angles);
                     drift = p.state.velocity + forward * 4.0 - Vec3::Z * 32.0;
                 }
             }
@@ -221,7 +221,7 @@ fn fizzle_props(
 }
 
 fn run_dissolves(
-    clock: Res<crate::clock::GameClock>,
+    clock: Res<portal2_core::clock::GameClock>,
     mut dissolving: Query<(Entity, &Dissolving, &mut Visibility)>,
     mut commands: Commands,
 ) {

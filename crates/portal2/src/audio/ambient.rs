@@ -9,8 +9,9 @@
 use bevy::prelude::*;
 
 use super::{Emit, Sounds};
+use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::entities::{EntityRegistry, MapEntity, SpawnHandlers};
+use portal2_core::entity::{EntityRegistry, MapEntity};
 
 const SF_EVERYWHERE: u32 = 1;
 const SF_START_SILENT: u32 = 16;
@@ -218,7 +219,7 @@ fn fade_ambients(world: &mut World) {
     }
 }
 
-impl crate::save::Restore for Ambient {
+impl portal2_core::save::Restore for Ambient {
     fn keep(&mut self, live: Self) {
         self.channel = live.channel;
         // A looping sound that was playing starts again.
@@ -226,6 +227,6 @@ impl crate::save::Restore for Ambient {
     }
 }
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<Ambient>("ambient");
 }

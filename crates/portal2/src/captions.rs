@@ -21,12 +21,12 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 use source_formats::captions::{Captions, Span, Tag, parse_tags};
 
-use crate::clock::GameClock;
-use crate::console::Console;
 use crate::hud::HudLayout;
-use crate::vfs::GameFs;
 use crate::vgui::layout::Rect;
 use crate::vgui::{FontId, Schemes, Surface, VguiPaint, layer};
+use portal2_core::clock::GameClock;
+use portal2_core::console::Console;
+use portal2_core::vfs::GameFs;
 
 const DEFAULT_COLOR: [u8; 3] = [255, 255, 255];
 /// Text inset inside the panel (pixels, not scaled).
@@ -42,7 +42,7 @@ impl Plugin for CaptionsPlugin {
         for (name, default) in
             [("closecaption", "0"), ("cc_subtitles", "0"), ("cc_lang", ""), ("cc_linger_time", "1.0"), ("cc_predisplay_time", "0.25")]
         {
-            console.register_cvar(name, default, crate::console::cvars::flags::ARCHIVE);
+            console.register_cvar(name, default, portal2_core::console::cvars::flags::ARCHIVE);
         }
     }
 }

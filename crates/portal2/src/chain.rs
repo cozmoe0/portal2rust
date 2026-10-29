@@ -17,17 +17,19 @@ use std::fmt::Write as _;
 use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
 
-use crate::args::Args;
-use crate::clock::GameClock;
 use crate::collision::{Collider, Physics, mask};
-use crate::entities::IoSet;
 use crate::entities::io::Outputs;
-use crate::entities::transition::{PendingTransition, TransitionSet};
+use crate::entities::transition::PendingTransition;
 use crate::entities::triggers::Trigger;
-use crate::entities::{EntityRegistry, MapEntity, world_transform};
+use crate::entities::world_transform;
 use crate::player::Player;
 use crate::player::movement::{HULL_MAXS, HULL_MINS};
 use crate::world::CurrentMap;
+use portal2_core::args::Args;
+use portal2_core::clock::GameClock;
+use portal2_core::entity::{EntityRegistry, MapEntity};
+use portal2_core::sets::IoSet;
+use portal2_core::sets::TransitionSet;
 
 /// Game seconds to let a map start before heading for the exit.
 const SETTLE: f64 = 4.0;

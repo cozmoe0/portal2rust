@@ -7,12 +7,13 @@ use bevy::prelude::*;
 use super::io::{FireOutput, InputCall, InputHandlers, fire_output};
 use super::props::FloorButton;
 use super::{EntityRegistry, MapEntity, SpawnHandlers};
-use crate::clock::GameClock;
 use crate::collision::Physics;
 use crate::models::StudioAnimator;
+use crate::player::Player;
 use crate::player::health::DamagePlayer;
-use crate::player::{Player, PlayerMoveSet};
 use crate::world::CurrentMap;
+use portal2_core::clock::GameClock;
+use portal2_core::sets::PlayerMoveSet;
 
 pub fn register(app: &mut App) {
     app.add_message::<PlayerDied>()
@@ -78,7 +79,7 @@ pub struct Trigger {
     /// Seconds before OnTrigger may fire again (-1 = never again).
     pub wait: f32,
     pub next_allowed: f64,
-    #[serde(with = "crate::save::ids::entities")]
+    #[serde(with = "portal2_core::save::ids::entities")]
     pub touching: Vec<Entity>,
     pub allow_players: bool,
     pub filter: Option<String>,
@@ -104,7 +105,7 @@ fn spawn_trigger(world: &mut World, e: Entity) {
             min_health: me.get_f32("minimumhitpoints").unwrap_or(0.0),
         },
         "trigger_push" => TriggerKind::Push {
-            dir: crate::coords::angles_forward(me.get_vec3("pushdir").unwrap_or(Vec3::ZERO)),
+            dir: portal2_core::coords::angles_forward(me.get_vec3("pushdir").unwrap_or(Vec3::ZERO)),
             speed: me.get_f32("speed").unwrap_or(40.0),
         },
         _ => TriggerKind::Plain,
@@ -236,7 +237,7 @@ fn touch_triggers(
     mut out: MessageWriter<FireOutput>,
     mut hurt: MessageWriter<DamagePlayer>,
     mut fizzle: MessageWriter<crate::portals::FizzlePortals>,
-    mut autosave: MessageWriter<crate::save::AutosaveRequest>,
+    mut autosave: MessageWriter<portal2_core::save::AutosaveRequest>,
 ) {
     let now = clock.curtime;
     let held = holding.and_then(|h| h.entity);
@@ -289,12 +290,12 @@ fn touch_triggers(
                                 // trigger preserves angles; with one both
                                 // carry over.
                                 let reorient = offset.is_none() && flags & SF_PRESERVE_ANGLES == 0;
-                                let angles = reorient.then(|| crate::coords::quat_to_angles(dt.compute_transform().rotation));
+                                let angles = reorient.then(|| portal2_core::coords::quat_to_angles(dt.compute_transform().rotation));
                                 teleport = Some((dt.translation() + offset.unwrap_or(Vec3::ZERO), angles, !reorient));
                             }
                         }
                         TriggerKind::Autosave { dangerous, min_health } => {
-                            autosave.write(crate::save::AutosaveRequest {
+                            autosave.write(portal2_core::save::AutosaveRequest {
                                 dangerous: *dangerous,
                                 min_health: *min_health,
                                 commit_health: 0.0,
@@ -444,7 +445,7 @@ fn respawn_after_death(
     mut deaths: MessageReader<PlayerDied>,
     mut pending: Local<Option<(f64, String)>>,
     map: Option<Res<CurrentMap>>,
-    mut console: ResMut<crate::console::Console>,
+    mut console: ResMut<portal2_core::console::Console>,
 ) {
     let now = time.elapsed_secs_f64();
     let Some(map) = map else { return };
@@ -463,4 +464,4 @@ fn respawn_after_death(
     }
 }
 
-impl crate::save::Restore for Trigger {}
+impl portal2_core::save::Restore for Trigger {}

@@ -166,7 +166,7 @@ pub struct MoveState {
     pub origin: Vec3,
     pub velocity: Vec3,
     pub on_ground: bool,
-    #[serde(with = "crate::save::ids::opt_entity")]
+    #[serde(with = "portal2_core::save::ids::opt_entity")]
     pub ground_entity: Option<Entity>,
     pub ground_normal: Vec3,
     pub ducked: bool,
@@ -341,7 +341,7 @@ impl Mover<'_, '_, '_> {
         let standing = !was_in_air || s.on_ground;
         let (mins, maxs) = s.hull();
         let half = (maxs - mins) * 0.5;
-        let eye_forward = crate::coords::angles_to_quat(input.angles) * Vec3::X;
+        let eye_forward = portal2_core::coords::angles_to_quat(input.angles) * Vec3::X;
         let mut ground_paint = None;
         let mut bounce = None;
         let mut touching = None;
@@ -400,7 +400,7 @@ impl Mover<'_, '_, '_> {
     /// but only rescaled to full length when looking less than 30° up or
     /// down, so steering weakens when looking steeply.
     fn air_wish(&self, s: &mut MoveState, input: &MoveInput, dt: f32) -> Vec3 {
-        let q = crate::coords::angles_to_quat(input.angles);
+        let q = portal2_core::coords::angles_to_quat(input.angles);
         let eye_forward = q * Vec3::X;
         let mut forward = Vec3::new(eye_forward.x, eye_forward.y, 0.0);
         if eye_forward.z.abs() < 0.5 {
@@ -630,7 +630,7 @@ impl Mover<'_, '_, '_> {
 
     /// Free flight without collision (noclip).
     pub fn noclip(&self, s: &mut MoveState, input: &MoveInput, dt: f32, fast: bool) {
-        let q = crate::coords::angles_to_quat(input.angles);
+        let q = portal2_core::coords::angles_to_quat(input.angles);
         let wish = q * Vec3::X * input.forward - q * Vec3::Y * input.right + Vec3::Z * input.up;
         let speed = if fast { 1200.0 } else { 400.0 };
         let target = wish.normalize_or_zero() * speed;

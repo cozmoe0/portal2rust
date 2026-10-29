@@ -16,7 +16,7 @@ use bevy::prelude::*;
 use bevy::render::view::Tonemapping;
 use bevy::window::PrimaryWindow;
 
-use crate::vfs::GameFs;
+use portal2_core::vfs::GameFs;
 pub use scheme::{Scheme, Symbols};
 pub use surface::{FontId, ImageRef, Surface, layer};
 

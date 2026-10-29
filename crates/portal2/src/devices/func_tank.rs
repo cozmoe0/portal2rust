@@ -10,11 +10,13 @@
 
 use bevy::prelude::*;
 
-use crate::clock::{GameClock, ThinkSet};
-use crate::coords::{angles_to_quat, quat_to_angles};
 use crate::entities::io::{InputCall, InputHandlers, resolve_targets};
-use crate::entities::{EntityRegistry, MapEntity, RidesAttachment, SpawnHandlers};
+use crate::entities::{RidesAttachment, SpawnHandlers};
 use crate::player::Player;
+use portal2_core::clock::GameClock;
+use portal2_core::coords::{angles_to_quat, quat_to_angles};
+use portal2_core::entity::{EntityRegistry, MapEntity};
+use portal2_core::sets::ThinkSet;
 
 const ACTIVE: u32 = 1;
 
@@ -32,7 +34,7 @@ impl Plugin for FuncTankPlugin {
 #[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct FuncTank {
     active: bool,
-    #[serde(with = "crate::save::ids::opt_entity")]
+    #[serde(with = "portal2_core::save::ids::opt_entity")]
     target: Option<Entity>,
     /// A fixed point aimed at instead of an entity (`SetTargetPosition`).
     target_point: Option<Vec3>,
@@ -48,9 +50,9 @@ pub struct FuncTank {
     angles: Vec3,
 }
 
-impl crate::save::Restore for FuncTank {}
+impl portal2_core::save::Restore for FuncTank {}
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<FuncTank>("func_tank");
 }
 

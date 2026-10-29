@@ -11,12 +11,12 @@
 use bevy::prelude::*;
 use source_formats::kv::KeyValues;
 
-use crate::console::Console;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::vfs::GameFs;
 use crate::vgui::surface::Rgba;
 use crate::vgui::{FontId, Schemes, Surface, VguiPaint, layer};
 use crate::video::{VideoId, Videos};
+use portal2_core::console::Console;
+use portal2_core::vfs::GameFs;
 
 const FONT: &str = "CreditsOutroText";
 const BACKGROUND: &str = "media/sp_credits_bg.bik";
@@ -200,7 +200,7 @@ fn typed(text: &str, progress: f32, cursor: bool, pad: bool) -> String {
 #[allow(clippy::too_many_arguments)]
 fn paint(
     mut credits: ResMut<Credits>,
-    clock: Res<crate::clock::GameClock>,
+    clock: Res<portal2_core::clock::GameClock>,
     console: Res<Console>,
     schemes: Res<Schemes>,
     fs: Res<GameFs>,
@@ -234,11 +234,11 @@ fn paint(
             surface.draw_image(&img, 0, 0, w, h, [255; 4]);
             if finished && !run.disconnected {
                 run.disconnected = true;
-                commands.queue(|world: &mut World| crate::console::queue_trusted(world, "disconnect"));
+                commands.queue(|world: &mut World| portal2_core::console::queue_trusted(world, "disconnect"));
             }
         } else if !run.disconnected {
             run.disconnected = true;
-            commands.queue(|world: &mut World| crate::console::queue_trusted(world, "disconnect"));
+            commands.queue(|world: &mut World| portal2_core::console::queue_trusted(world, "disconnect"));
         }
         return;
     }
@@ -315,7 +315,7 @@ fn paint(
             run.ending = videos.open(&fs, &mut surface, ENDING, false);
             if run.ending.is_none() {
                 run.disconnected = true;
-                commands.queue(|world: &mut World| crate::console::queue_trusted(world, "disconnect"));
+                commands.queue(|world: &mut World| portal2_core::console::queue_trusted(world, "disconnect"));
             }
         }
     }

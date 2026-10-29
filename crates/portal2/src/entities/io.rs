@@ -69,7 +69,7 @@ pub struct Outputs {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum EventTarget {
     Name(String),
-    Entity(#[serde(with = "crate::save::ids::entity")] Entity),
+    Entity(#[serde(with = "portal2_core::save::ids::entity")] Entity),
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -79,9 +79,9 @@ pub struct QueuedEvent {
     pub target: EventTarget,
     pub input: String,
     pub param: String,
-    #[serde(with = "crate::save::ids::opt_entity")]
+    #[serde(with = "portal2_core::save::ids::opt_entity")]
     pub activator: Option<Entity>,
-    #[serde(with = "crate::save::ids::opt_entity")]
+    #[serde(with = "portal2_core::save::ids::opt_entity")]
     pub caller: Option<Entity>,
 }
 
@@ -270,7 +270,7 @@ pub fn resolve_targets(world: &World, name: &str, activator: Option<Entity>, cal
 /// Services every due event; handlers may queue more zero-delay events,
 /// which are serviced in the same pass (bounded to avoid infinite loops).
 pub fn service_events(world: &mut World) {
-    let now = world.resource::<crate::clock::GameClock>().curtime;
+    let now = world.resource::<portal2_core::clock::GameClock>().curtime;
     world.resource_mut::<EventQueue>().now = now;
 
     // Outputs requested by ordinary systems.
@@ -304,7 +304,7 @@ pub fn service_events(world: &mut World) {
 pub fn dispatch_input(world: &mut World, call: &InputCall) {
     if world.get_resource::<IoDebug>().is_some_and(|d| d.0) {
         let name = world.get::<MapEntity>(call.target).map(|m| m.targetname.clone().unwrap_or_else(|| m.classname.clone()));
-        let now = world.get_resource::<crate::clock::GameClock>().map_or(0.0, |c| c.curtime);
+        let now = world.get_resource::<portal2_core::clock::GameClock>().map_or(0.0, |c| c.curtime);
         info!("io: ({now:.2}) input {}.{}({})", name.unwrap_or_default(), call.input, call.param);
     }
     // Scripted entities see `activator` / `caller` and may veto the input
@@ -358,4 +358,4 @@ pub struct IoStats {
     pub unhandled: HashMap<(String, String), u32>,
 }
 
-impl crate::save::Restore for EventQueue {}
+impl portal2_core::save::Restore for EventQueue {}

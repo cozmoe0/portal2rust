@@ -4,7 +4,7 @@
 
 use bevy::prelude::*;
 
-use crate::console::Console;
+use portal2_core::console::Console;
 
 /// The gel console variables, read once per tick.
 #[derive(Clone, Copy, Debug)]

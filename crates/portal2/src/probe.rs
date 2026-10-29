@@ -5,10 +5,10 @@
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings, RayCastVisibility};
 use bevy::prelude::*;
 
-use crate::args::Args;
-use crate::camera::{MainCamera, ViewAngles};
 use crate::collision::{Physics, mask};
-use crate::coords::angles_forward;
+use portal2_core::args::Args;
+use portal2_core::coords::angles_forward;
+use portal2_core::view::{MainCamera, ViewAngles};
 
 pub struct ProbePlugin;
 

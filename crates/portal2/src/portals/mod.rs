@@ -13,20 +13,20 @@ use bevy::render::render_resource::{AsBindGroup, Extent3d, ShaderType, TextureDi
 use bevy::render::view::Tonemapping;
 use bevy::shader::ShaderRef;
 use bevy::window::PrimaryWindow;
+use portal2_core::layers::{PORTAL_END_LAYER, PORTAL_INNER_LAYER, PORTAL_LAYER};
 
-use crate::args::Args;
-use crate::camera::MainCamera;
 use crate::collision::CollisionWorld;
 use crate::collision::volume::{ConvexVolume, Plane};
-use crate::coords::{angles_forward, quat_to_angles};
-use crate::player::{Player, PlayerInput, PlayerMoveSet};
+use crate::player::{Player, PlayerInput};
 use crate::world::{MapLoaded, MapObject};
 use placement::{HALF_HEIGHT, HALF_WIDTH, PortalFrame, transfer};
+use portal2_core::args::Args;
+use portal2_core::coords::{angles_forward, quat_to_angles};
+use portal2_core::sets::PlayerMoveSet;
+use portal2_core::view::MainCamera;
 use projection::PortalProjection;
 
 pub const PORTAL_SHADER: &str = "embedded://portal2/render/shaders/portal.wesl";
-/// Render layer of portal surfaces (seen by the player camera only).
-pub const PORTAL_LAYER: usize = 1;
 
 pub struct PortalsPlugin;
 
@@ -42,7 +42,7 @@ impl Plugin for PortalsPlugin {
             .add_message::<PortalFx>()
             .add_systems(Update, (apply_placements, fizzle_portals, clear_on_map_load, animate_portals, update_holes).chain())
             .add_systems(FixedUpdate, (teleport_player, portal_sounds).chain().after(PlayerMoveSet))
-            .add_systems(PostUpdate, update_portal_cameras.after(crate::player::PlayerCameraSet).before(TransformSystems::Propagate))
+            .add_systems(PostUpdate, update_portal_cameras.after(portal2_core::sets::PlayerCameraSet).before(TransformSystems::Propagate))
             .add_plugins(gun::GunPlugin);
     }
 }
@@ -122,11 +122,6 @@ pub struct Portal {
     /// Past the last level the portal is drawn full of static.
     pub end_material: Handle<PortalMaterial>,
 }
-
-/// Render layer of portal surfaces seen inside a portal's view.
-pub const PORTAL_INNER_LAYER: usize = 5;
-/// Render layer of portal surfaces at the last level of views.
-pub const PORTAL_END_LAYER: usize = 6;
 
 /// The pair of portals (slot 0 and 1).
 #[derive(Resource, Default)]
@@ -336,7 +331,7 @@ fn apply_placements(
     mut materials: ResMut<Assets<PortalMaterial>>,
     mut sounds: MessageWriter<crate::audio::SoundRequest>,
     mut fx: MessageWriter<PortalFx>,
-    (fs, mut textures, physics): (Res<crate::vfs::GameFs>, ResMut<crate::render::textures::TextureCache>, crate::collision::Physics),
+    (fs, mut textures, physics): (Res<portal2_core::vfs::GameFs>, ResMut<crate::render::textures::TextureCache>, crate::collision::Physics),
 ) {
     for req in requests.read() {
         let mut req = *req;
@@ -397,7 +392,12 @@ fn apply_placements(
                     Msaa::Off,
                     bevy::pbr::ScreenSpaceTransmission::default(),
                     Projection::custom(PortalProjection::new(base.clone())),
-                    RenderLayers::from_layers(&[0, crate::world::sky::SKY2D_LAYER, portal_layer, crate::player::body::PLAYER_BODY_LAYER]),
+                    RenderLayers::from_layers(&[
+                        0,
+                        portal2_core::layers::SKY2D_LAYER,
+                        portal_layer,
+                        portal2_core::layers::PLAYER_BODY_LAYER,
+                    ]),
                     Transform::default(),
                 ))
                 .id()
@@ -620,7 +620,7 @@ fn teleport_player(
     mut input: ResMut<PlayerInput>,
     mut cooldown: Local<u32>,
     mut env: ResMut<PortalEnvironment>,
-    console: Res<crate::console::Console>,
+    console: Res<portal2_core::console::Console>,
 ) {
     let Some(frames) = linked_frames(&portals, &query) else { return };
     let Ok((pe, mut p)) = players.single_mut() else { return };

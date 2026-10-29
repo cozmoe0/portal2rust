@@ -12,21 +12,22 @@ pub mod console_ui;
 pub mod dialog;
 pub mod window;
 
+use portal2_core::view::UiFocus;
 use std::collections::HashMap;
 
 use bevy::app::AppExit;
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
-use crate::args::Args;
-use crate::console::Console;
 use crate::screen::Localization;
-use crate::vfs::GameFs;
 use crate::vgui::layout::ResFile;
 use crate::vgui::scheme::proportional;
 use crate::vgui::{Schemes, Surface, VguiPaint, layer};
 use crate::video::{VideoId, Videos};
 use crate::world::CurrentMap;
+use portal2_core::args::Args;
+use portal2_core::console::Console;
+use portal2_core::vfs::GameFs;
 use window::Window;
 
 /// Single-player maps by chapter, and the act of each (from the game's
@@ -240,11 +241,6 @@ impl GameUi {
     }
 }
 
-/// Whether the menus or the console have the keyboard this frame (key
-/// bindings and the player ignore it then).
-#[derive(Resource, Default)]
-pub struct UiFocus(pub bool);
-
 pub struct GameUiPlugin;
 
 impl Plugin for GameUiPlugin {
@@ -255,7 +251,7 @@ impl Plugin for GameUiPlugin {
             .add_systems(Update, (track_mode, input, apply).chain())
             .add_systems(PostUpdate, paint.in_set(VguiPaint));
         let mut console = app.world_mut().resource_mut::<Console>();
-        console.register_cvar("ui_lastact_played", "0", crate::console::cvars::flags::ARCHIVE);
+        console.register_cvar("ui_lastact_played", "0", portal2_core::console::cvars::flags::ARCHIVE);
         console_ui::build(app);
         let mut console = app.world_mut().resource_mut::<Console>();
         console.register_command("gameui_activate", |world, _| open_pause_menu(world));
@@ -582,7 +578,7 @@ fn apply(world: &mut World) {
             Action::Sound(s) => {
                 crate::audio::emit(world, s, crate::audio::Emit { soundlevel: Some(0.0), ..default() });
             }
-            Action::Console(c) => crate::console::queue(world, &c),
+            Action::Console(c) => portal2_core::console::queue(world, &c),
             Action::Quit => {
                 world.write_message(AppExit::Success);
             }

@@ -21,14 +21,15 @@ use bevy::camera::visibility::NoFrustumCulling;
 use bevy::prelude::*;
 
 use super::render::{self, Batch, Looks, ParticleMaterial};
-use crate::audio::ops::random_range;
-use crate::camera::MainCamera;
 use crate::collision::Physics;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::entities::{MapEntity, SpawnHandlers, world_transform};
+use crate::entities::{SpawnHandlers, world_transform};
 use crate::render::textures::TextureCache;
-use crate::vfs::GameFs;
 use crate::world::MapObject;
+use portal2_core::entity::MapEntity;
+use portal2_core::rng::random_range;
+use portal2_core::vfs::GameFs;
+use portal2_core::view::MainCamera;
 
 const PUFFS: usize = 70;
 const RADIUS: f32 = 240.0;

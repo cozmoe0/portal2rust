@@ -221,7 +221,7 @@ impl PlacementContext<'_, '_, '_> {
         }) {
             frame.center = h.origin - n * (h.origin - tr.end).dot(n);
             if let Some(a) = h.angles {
-                let q = crate::coords::angles_to_quat(a);
+                let q = portal2_core::coords::angles_to_quat(a);
                 let helper_up = q * Vec3::Z;
                 let u = helper_up - n * helper_up.dot(n);
                 if u.length_squared() > 1e-3 {

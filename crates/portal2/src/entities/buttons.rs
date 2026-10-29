@@ -9,11 +9,12 @@ use bevy::prelude::*;
 
 use super::io::{FireOutput, InputCall, InputHandlers, fire_output};
 use super::{EntityRegistry, MapEntity, SpawnHandlers};
-use crate::clock::{GameClock, ThinkSet};
 use crate::collision::Physics;
-use crate::coords::angles_forward;
 use crate::player::Player;
 use crate::world::CurrentMap;
+use portal2_core::clock::GameClock;
+use portal2_core::coords::angles_forward;
+use portal2_core::sets::ThinkSet;
 
 const SF_DONT_MOVE: u32 = 1;
 const SF_TOGGLE: u32 = 32;
@@ -60,7 +61,7 @@ pub struct BrushButton {
     travel: f32,
     speed: f32,
     progress: f32,
-    #[serde(with = "crate::save::ids::opt_entity")]
+    #[serde(with = "portal2_core::save::ids::opt_entity")]
     activator: Option<Entity>,
 }
 
@@ -235,13 +236,13 @@ fn move_buttons(clock: Res<GameClock>, mut buttons: Query<(Entity, &mut BrushBut
     }
 }
 
-impl crate::save::Restore for BrushButton {
+impl portal2_core::save::Restore for BrushButton {
     fn keep(&mut self, live: Self) {
         self.out_pose = live.out_pose;
         self.in_pose = live.in_pose;
     }
 }
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<BrushButton>("brush_button");
 }

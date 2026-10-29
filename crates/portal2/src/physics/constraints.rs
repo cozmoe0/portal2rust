@@ -12,8 +12,9 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::entities::{EntityRegistry, MapEntity, SpawnHandlers, world_transform};
+use crate::entities::{SpawnHandlers, world_transform};
 use crate::world::MapObject;
+use portal2_core::entity::{EntityRegistry, MapEntity};
 
 pub fn register(app: &mut App) {
     app.add_systems(FixedUpdate, (build_hinges, spring_forces));
@@ -26,7 +27,7 @@ pub fn register(app: &mut App) {
     world.resource_mut::<InputHandlers>().register("phys_spring", spring_input);
 }
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<Spring>("phys_spring");
 }
 
@@ -53,7 +54,7 @@ pub struct Spring {
     local: Option<(Vec3, Vec3)>,
 }
 
-impl crate::save::Restore for Spring {}
+impl portal2_core::save::Restore for Spring {}
 
 fn name_of(me: &MapEntity, key: &str) -> Option<String> {
     me.get(key).map(|s| s.trim().to_ascii_lowercase()).filter(|s| !s.is_empty())

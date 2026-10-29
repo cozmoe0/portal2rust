@@ -15,20 +15,17 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError};
 use bevy::render::view::Tonemapping;
 use bevy::shader::ShaderRef;
+use portal2_core::layers::{SKY2D_LAYER, SKYBOX_LAYER};
 use source_formats::bsp::Bsp;
 
-use super::{CurrentMap, LoadMapSet, MapLoaded, MapObject};
-use crate::camera::MainCamera;
+use super::{CurrentMap, MapLoaded, MapObject};
 use crate::render::materials::load_vmt;
 use crate::render::textures::TextureCache;
-use crate::vfs::GameFs;
+use portal2_core::sets::LoadMapSet;
+use portal2_core::vfs::GameFs;
+use portal2_core::view::MainCamera;
 
 pub const SKY_SHADER: &str = "embedded://portal2/render/shaders/sky.wesl";
-
-/// Geometry of the 3D sky box, seen only by its camera.
-pub const SKYBOX_LAYER: usize = 3;
-/// The 2D sky quads.
-pub const SKY2D_LAYER: usize = 4;
 
 /// Side names in the order the engine loads them.
 const SIDES: [&str; 6] = ["rt", "bk", "lf", "ft", "up", "dn"];
@@ -268,7 +265,7 @@ fn update_sky_cameras(
     >,
 ) {
     let Ok((main_t, main_p, main_e, mut main_cam, mut main_layers)) = main.single_mut() else { return };
-    let mut layers = vec![0, crate::portals::PORTAL_LAYER];
+    let mut layers = vec![0, portal2_core::layers::PORTAL_LAYER];
     if sky.is_none() {
         layers.push(SKY2D_LAYER);
     }

@@ -10,8 +10,8 @@ use bevy::prelude::*;
 use ciborium::Value;
 
 use super::{PendingRestore, SaveFile, capture, load_named, write_file};
-use crate::args::Args;
 use crate::world::{CurrentMap, LoadMap, MapLoadType};
+use portal2_core::args::Args;
 
 const FILE: &str = "p2r_roundtrip";
 
@@ -41,7 +41,7 @@ struct RoundTrip {
     failures: usize,
 }
 
-fn setup(mut commands: Commands, args: Res<Args>, fs: Res<crate::vfs::GameFs>) {
+fn setup(mut commands: Commands, args: Res<Args>, fs: Res<portal2_core::vfs::GameFs>) {
     let Some(spec) = &args.save_test else { return };
     let maps = crate::smoke::smoke_maps(spec, &fs);
     info!("save round trip of {} maps", maps.len());

@@ -8,9 +8,9 @@
 use bevy::prelude::*;
 
 use super::Emit;
-use crate::entities::MapEntity;
 use crate::entities::movers::{Mover, MoverState};
 use crate::entities::trains::Train;
+use portal2_core::entity::MapEntity;
 
 const TRAIN_MAX_SPEED: f32 = 1000.0;
 

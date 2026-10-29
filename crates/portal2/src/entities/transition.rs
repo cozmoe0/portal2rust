@@ -10,12 +10,15 @@
 //! (see [`StatsController`]).
 
 use bevy::prelude::*;
+use portal2_core::sets::TransitionSet;
 
 use super::io::{InputCall, InputHandlers, fire_output};
 use super::{EntityRegistry, MapEntity, SpawnHandlers, world_transform};
-use crate::clock::{GameClock, ThinkSet};
-use crate::player::{Player, PlayerInput, PlayerSpawnSet};
+use crate::player::{Player, PlayerInput};
 use crate::world::{CurrentMap, LoadMap, MapLoadType};
+use portal2_core::clock::GameClock;
+use portal2_core::sets::PlayerSpawnSet;
+use portal2_core::sets::ThinkSet;
 
 pub fn register(app: &mut App) {
     app.add_systems(PreUpdate, apply_transition.in_set(TransitionSet).after(PlayerSpawnSet))
@@ -33,11 +36,6 @@ pub fn register(app: &mut App) {
     h.register("trigger_changelevel", changelevel_input);
     h.register("portal_stats_controller", stats_input);
 }
-
-/// Placement of the player relative to the new map's entry landmark (level
-/// load, before the first tick).
-#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct TransitionSet;
 
 /// Player state carried into the next map.
 #[derive(Resource, Clone, Debug)]
@@ -57,8 +55,8 @@ fn first_of_class(world: &World, class: &str) -> Option<Entity> {
 /// Starts a transition to `map` from the current one.
 pub fn change_level(world: &mut World, map: &str) {
     let map = map.trim().trim_end_matches(".bsp").to_ascii_lowercase();
-    if map.is_empty() || !world.resource::<crate::vfs::GameFs>().exists(&format!("maps/{map}.bsp")) {
-        world.resource_mut::<crate::console::Console>().print(format!("changelevel failed: {map} not found"));
+    if map.is_empty() || !world.resource::<portal2_core::vfs::GameFs>().exists(&format!("maps/{map}.bsp")) {
+        world.resource_mut::<portal2_core::console::Console>().print(format!("changelevel failed: {map} not found"));
         return;
     }
     let player = world.resource::<EntityRegistry>().player;
@@ -115,8 +113,8 @@ fn apply_transition(world: &mut World) {
     world.resource_mut::<PlayerInput>().input.angles = pending.angles;
     world.remove_resource::<PendingTransition>();
     // `sv_autosave`: entering a level by transition autosaves.
-    if world.resource::<crate::console::Console>().bool("sv_autosave") {
-        crate::console::queue(world, "autosave");
+    if world.resource::<portal2_core::console::Console>().bool("sv_autosave") {
+        portal2_core::console::queue(world, "autosave");
     }
 }
 
@@ -201,8 +199,8 @@ fn stats_think(world: &mut World) {
     }
 }
 
-impl crate::save::Restore for StatsController {}
+impl portal2_core::save::Restore for StatsController {}
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<StatsController>("stats_controller");
 }

@@ -35,10 +35,10 @@ use bevy::render::view::ViewTarget;
 use bevy::render::{RenderApp, RenderStartup};
 use serde::{Deserialize, Serialize};
 
-use crate::camera::MainCamera;
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
 use crate::vgui::render::VguiComposite;
+use portal2_core::view::MainCamera;
 
 pub const HISTOGRAM_SHADER: &str = "embedded://portal2/render/shaders/tonemap_histogram.wesl";
 
@@ -96,9 +96,9 @@ impl Tonemap {
     }
 }
 
-impl crate::save::Restore for Tonemap {}
+impl portal2_core::save::Restore for Tonemap {}
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.resource::<Tonemap>("tonemap");
 }
 
@@ -119,7 +119,7 @@ impl Plugin for TonemapPlugin {
             .add_plugins(ExtractResourcePlugin::<HistogramBuffer>::default())
             .add_systems(Startup, start_readback)
             .add_systems(PostUpdate, update_scale.before(crate::camera::sync_camera_transform))
-            .add_systems(PreUpdate, reset_on_load.after(crate::world::LoadMapSet));
+            .add_systems(PreUpdate, reset_on_load.after(portal2_core::sets::LoadMapSet));
         let world = app.world_mut();
         world.resource_mut::<SpawnHandlers>().register("env_tonemap_controller", |_, _| {});
         world.resource_mut::<InputHandlers>().register("env_tonemap_controller", tonemap_input);
@@ -222,8 +222,8 @@ pub fn target_scale(h: &[u32; BUCKETS], s: &TonemapSettings, current: f32) -> f3
 
 fn update_scale(
     time: Res<Time>,
-    console: Res<crate::console::Console>,
-    args: Res<crate::args::Args>,
+    console: Res<portal2_core::console::Console>,
+    args: Res<portal2_core::args::Args>,
     mut tonemap: ResMut<Tonemap>,
     mut main: Query<&mut bevy::camera::Exposure, With<MainCamera>>,
 ) {

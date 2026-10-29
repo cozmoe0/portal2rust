@@ -17,7 +17,7 @@ use source_formats::vhv::Vhv;
 
 use crate::render::materials::{MaterialCache, MaterialContext};
 use crate::render::source_material::{ModelMaterial, RefractMaterial, model_flags};
-use crate::vfs::GameFs;
+use portal2_core::vfs::GameFs;
 
 pub use animation::StudioAnimator;
 

@@ -15,14 +15,15 @@ use bevy::shader::ShaderRef;
 
 use super::{PaintMap, PaintType, SplatSettings};
 use crate::audio::SoundRequest;
-use crate::clock::ThinkSet;
 use crate::collision::{Physics, mask};
-use crate::console::Console;
+use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::entities::{MapEntity, SpawnHandlers};
 use crate::render::textures::TextureCache;
-use crate::vfs::GameFs;
 use crate::world::CurrentMap;
+use portal2_core::console::Console;
+use portal2_core::entity::MapEntity;
+use portal2_core::sets::ThinkSet;
+use portal2_core::vfs::GameFs;
 
 pub const BLOB_SHADER: &str = "embedded://portal2/paint/paint_blob.wesl";
 const TICK: f32 = 1.0 / 60.0;
@@ -42,7 +43,7 @@ impl Plugin for BlobPlugin {
         bevy::asset::embedded_asset!(app, "paint_blob.wesl");
         app.add_plugins(MaterialPlugin::<PaintBlobMaterial>::default())
             .init_resource::<Blobs>()
-            .add_systems(PreUpdate, clear_on_map_load.after(crate::world::LoadMapSet))
+            .add_systems(PreUpdate, clear_on_map_load.after(portal2_core::sets::LoadMapSet))
             .add_systems(FixedUpdate, (spray, move_blobs).chain().in_set(ThinkSet))
             .add_systems(PostUpdate, draw_blobs);
         let world = app.world_mut();
@@ -113,7 +114,7 @@ pub struct PaintSprayer {
     drawn: usize,
 }
 
-impl crate::save::Restore for PaintSprayer {
+impl portal2_core::save::Restore for PaintSprayer {
     fn keep(&mut self, live: Self) {
         self.ambient = live.ambient;
         self.draw = live.draw;
@@ -121,17 +122,17 @@ impl crate::save::Restore for PaintSprayer {
     }
 }
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<PaintSprayer>("paint_sprayer");
     r.custom_resource("paint_map", save_paint, load_paint);
 }
 
 fn save_paint(world: &World) -> Option<Result<Vec<u8>, String>> {
-    world.get_resource::<PaintMap>().map(|m| crate::save::encode(&m.snapshot()))
+    world.get_resource::<PaintMap>().map(|m| portal2_core::save::encode(&m.snapshot()))
 }
 
 fn load_paint(world: &mut World, bytes: &[u8]) -> Result<(), String> {
-    let saved: Vec<(usize, Vec<u8>)> = crate::save::decode(bytes)?;
+    let saved: Vec<(usize, Vec<u8>)> = portal2_core::save::decode(bytes)?;
     if let Some(mut map) = world.get_resource_mut::<PaintMap>() {
         map.restore(&saved);
     }

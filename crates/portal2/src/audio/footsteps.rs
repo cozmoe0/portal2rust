@@ -13,10 +13,10 @@ use source_formats::kv;
 
 use super::Emit;
 use crate::collision::Physics;
-use crate::entities::EntityRegistry;
 use crate::player::Player;
-use crate::vfs::GameFs;
 use crate::world::CurrentMap;
+use portal2_core::entity::EntityRegistry;
+use portal2_core::vfs::GameFs;
 
 const RUN_SPEED: f32 = 220.0;
 const MIN_SPEED: f32 = 10.0;

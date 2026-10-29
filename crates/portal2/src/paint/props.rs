@@ -10,11 +10,11 @@ use bevy::prelude::*;
 
 use super::PaintType;
 use super::power::GelSettings;
-use crate::clock::ThinkSet;
 use crate::collision::{Collider, Physics, mask};
-use crate::console::Console;
 use crate::entities::props::PhysicsProp;
 use crate::render::source_material::ModelMaterial;
+use portal2_core::console::Console;
+use portal2_core::sets::ThinkSet;
 
 const TICK: f32 = 1.0 / 60.0;
 /// A painted prop bounces at most this often.
@@ -53,10 +53,10 @@ pub struct PaintedProp {
 #[derive(Component, Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PaintTint(pub Option<[u8; 3]>);
 
-impl crate::save::Restore for PaintedProp {}
-impl crate::save::Restore for PaintTint {}
+impl portal2_core::save::Restore for PaintedProp {}
+impl portal2_core::save::Restore for PaintTint {}
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<PaintedProp>("painted_prop");
     r.component::<PaintTint>("paint_tint");
 }

@@ -11,7 +11,8 @@ use bevy::prelude::*;
 
 use super::io::{FireOutput, InputCall, InputHandlers, fire_output};
 use super::{EntityRegistry, MapEntity, SpawnHandlers, world_transform};
-use crate::clock::{GameClock, ThinkSet};
+use portal2_core::clock::GameClock;
+use portal2_core::sets::ThinkSet;
 
 pub fn register(app: &mut App) {
     app.add_systems(FixedUpdate, (activate_trains, move_trains).chain().in_set(ThinkSet));
@@ -82,10 +83,10 @@ fn path_input(world: &mut World, call: &InputCall) -> bool {
 #[derive(Component, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Train {
     /// Node the train is heading for.
-    #[serde(with = "crate::save::ids::opt_entity")]
+    #[serde(with = "portal2_core::save::ids::opt_entity")]
     pub toward: Option<Entity>,
     /// Node it last passed or started at.
-    #[serde(with = "crate::save::ids::opt_entity")]
+    #[serde(with = "portal2_core::save::ids::opt_entity")]
     pub last: Option<Entity>,
     pub speed: f32,
     pub max_speed: f32,
@@ -93,7 +94,7 @@ pub struct Train {
     pub forward: bool,
     pub height: f32,
     /// Stop when this node is reached (`MoveToPathNode`).
-    #[serde(with = "crate::save::ids::opt_entity")]
+    #[serde(with = "portal2_core::save::ids::opt_entity")]
     pub destination: Option<Entity>,
     pub fixed_orientation: bool,
     pub no_pitch: bool,
@@ -358,6 +359,6 @@ fn train_input(world: &mut World, call: &InputCall) -> bool {
     true
 }
 
-impl crate::save::Restore for Train {}
+impl portal2_core::save::Restore for Train {}
 
-impl crate::save::Restore for PathTrack {}
+impl portal2_core::save::Restore for PathTrack {}

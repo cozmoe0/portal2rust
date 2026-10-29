@@ -8,10 +8,10 @@ pub mod instructor;
 use bevy::prelude::*;
 use source_formats::kv::KeyValues;
 
-use crate::console::Console;
-use crate::vfs::GameFs;
 use crate::vgui::layout::{self, Rect, ResFile};
 use crate::vgui::{Schemes, Surface};
+use portal2_core::console::Console;
+use portal2_core::vfs::GameFs;
 
 pub struct HudPlugin;
 

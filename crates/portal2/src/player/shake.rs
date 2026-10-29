@@ -4,9 +4,10 @@
 
 use bevy::prelude::*;
 
-use super::{Player, PlayerCameraSet};
-use crate::entities::MapEntity;
+use super::Player;
 use crate::entities::io::{InputCall, InputHandlers};
+use portal2_core::entity::MapEntity;
+use portal2_core::sets::PlayerCameraSet;
 
 pub struct ShakePlugin;
 

@@ -8,12 +8,13 @@ use std::fmt::Write as _;
 
 use bevy::prelude::*;
 
-use crate::args::Args;
+use crate::entities::SpawnHandlers;
 use crate::entities::io::InputHandlers;
 use crate::entities::io::IoStats;
-use crate::entities::{MapEntity, SpawnHandlers};
-use crate::vfs::GameFs;
 use crate::world::{CurrentMap, LoadMap, MapLoadType};
+use portal2_core::args::Args;
+use portal2_core::entity::MapEntity;
+use portal2_core::vfs::GameFs;
 
 pub struct SmokePlugin;
 
@@ -82,7 +83,7 @@ fn run(world: &mut World) {
             }
             smoke.loading = false;
             smoke.frames_left = frames;
-            smoke.log_start = world.resource::<crate::console::Console>().log.len();
+            smoke.log_start = world.resource::<portal2_core::console::Console>().log.len();
             world.resource_mut::<IoStats>().unhandled.clear();
             break;
         }
@@ -100,7 +101,7 @@ fn run(world: &mut World) {
 
 fn collect(world: &mut World, log_start: usize) -> MapReport {
     let mut report = MapReport::default();
-    let log = &world.resource::<crate::console::Console>().log;
+    let log = &world.resource::<portal2_core::console::Console>().log;
     let start = log_start.min(log.len());
     for (i, line) in log[start..].iter().enumerate() {
         if line.starts_with("AN ERROR HAS OCCURED") || line.starts_with("Script compile error") {

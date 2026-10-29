@@ -4,85 +4,13 @@
 //! scene data, sound channels) are skipped and kept from what the spawn code
 //! built (see [`Restore`]).
 
-use bevy::ecs::component::Mutable;
-use bevy::prelude::*;
-use serde::{Serialize, de::DeserializeOwned};
-
-use super::{decode, encode};
 use crate::entities::io::{EventQueue, EventTarget};
-use crate::entities::{MapEntity, logic};
+use crate::entities::logic;
 use crate::models::StudioAnimator;
 use crate::models::animation::Layer;
-
-pub type ComponentSave = fn(&World, Entity) -> Option<Result<Vec<u8>, String>>;
-pub type ComponentLoad = fn(&mut World, Entity, &[u8]) -> Result<(), String>;
-pub type ResourceSave = fn(&World) -> Option<Result<Vec<u8>, String>>;
-pub type ResourceLoad = fn(&mut World, &[u8]) -> Result<(), String>;
-
-#[derive(Resource, Default)]
-pub struct SaveRegistry {
-    pub(super) components: Vec<(&'static str, ComponentSave, ComponentLoad)>,
-    pub(super) resources: Vec<(&'static str, ResourceSave, ResourceLoad)>,
-}
-
-/// Saved state replacing live state on load.
-pub trait Restore: Sized {
-    /// Called on the saved value with the live one (as the spawn code built
-    /// it) just before the saved value replaces it: copy across the fields
-    /// the save skips.
-    fn keep(&mut self, _live: Self) {}
-}
-
-impl SaveRegistry {
-    pub fn component<T>(&mut self, name: &'static str)
-    where
-        T: Component<Mutability = Mutable> + Serialize + DeserializeOwned + Restore,
-    {
-        self.components.push((name, save_component::<T>, load_component::<T>));
-    }
-
-    pub fn custom(&mut self, name: &'static str, save: ComponentSave, load: ComponentLoad) {
-        self.components.push((name, save, load));
-    }
-
-    pub fn custom_resource(&mut self, name: &'static str, save: ResourceSave, load: ResourceLoad) {
-        self.resources.push((name, save, load));
-    }
-
-    pub fn resource<T: Resource + Serialize + DeserializeOwned + Restore>(&mut self, name: &'static str) {
-        self.resources.push((name, save_resource::<T>, load_resource::<T>));
-    }
-}
-
-fn save_component<T: Component + Serialize>(world: &World, e: Entity) -> Option<Result<Vec<u8>, String>> {
-    world.get::<T>(e).map(encode)
-}
-
-fn load_component<T>(world: &mut World, e: Entity, bytes: &[u8]) -> Result<(), String>
-where
-    T: Component<Mutability = Mutable> + DeserializeOwned + Restore,
-{
-    let mut saved: T = decode(bytes)?;
-    let mut em = world.entity_mut(e);
-    if let Some(live) = em.take::<T>() {
-        saved.keep(live);
-    }
-    em.insert(saved);
-    Ok(())
-}
-
-fn save_resource<T: Resource + Serialize>(world: &World) -> Option<Result<Vec<u8>, String>> {
-    world.get_resource::<T>().map(encode)
-}
-
-fn load_resource<T: Resource + DeserializeOwned + Restore>(world: &mut World, bytes: &[u8]) -> Result<(), String> {
-    let mut saved: T = decode(bytes)?;
-    if let Some(live) = world.remove_resource::<T>() {
-        saved.keep(live);
-    }
-    world.insert_resource(saved);
-    Ok(())
-}
+use bevy::prelude::*;
+use portal2_core::entity::MapEntity;
+use portal2_core::save::{SaveRegistry, decode, encode};
 
 pub fn register_all(r: &mut SaveRegistry) {
     use crate::audio::{ambient, soundscape};

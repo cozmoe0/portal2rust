@@ -5,9 +5,10 @@ use bevy::prelude::*;
 
 use super::io::{FireOutput, InputCall, InputHandlers, fire_output};
 use super::{MapEntity, SpawnHandlers};
-use crate::clock::{GameClock, ThinkSet};
-use crate::coords::angles_forward;
 use crate::world::CurrentMap;
+use portal2_core::clock::GameClock;
+use portal2_core::coords::angles_forward;
+use portal2_core::sets::ThinkSet;
 
 pub fn register(app: &mut App) {
     app.add_systems(FixedUpdate, (move_doors, rotate_brushes).in_set(ThinkSet));
@@ -366,13 +367,13 @@ fn rotate_brushes(clock: Res<GameClock>, mut q: Query<(&mut Rotating, &mut Trans
     }
 }
 
-impl crate::save::Restore for Mover {
+impl portal2_core::save::Restore for Mover {
     fn keep(&mut self, live: Self) {
         self.closed = live.closed;
         self.open = live.open;
     }
 }
 
-impl crate::save::Restore for Rotating {}
+impl portal2_core::save::Restore for Rotating {}
 
-impl crate::save::Restore for Toggleable {}
+impl portal2_core::save::Restore for Toggleable {}

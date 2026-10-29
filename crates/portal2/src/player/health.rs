@@ -2,10 +2,11 @@
 
 use bevy::prelude::*;
 
-use super::{Player, PlayerMoveSet};
-use crate::clock::GameClock;
+use super::Player;
 use crate::entities::triggers::PlayerDied;
 use crate::world::PlayerStart;
+use portal2_core::clock::GameClock;
+use portal2_core::sets::PlayerMoveSet;
 
 pub const MAX_HEALTH: f32 = 100.0;
 /// Seconds without damage before health starts coming back
@@ -90,4 +91,4 @@ fn apply_damage(
     }
 }
 
-impl crate::save::Restore for Health {}
+impl portal2_core::save::Restore for Health {}

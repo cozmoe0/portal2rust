@@ -11,9 +11,9 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use source_formats::bsp::contents;
 
-use crate::vfs::GameFs;
 use crate::world::{CurrentMap, MapLoaded};
 use bvh::Bvh;
+use portal2_core::vfs::GameFs;
 use volume::ConvexVolume;
 
 pub mod mask {
@@ -30,7 +30,7 @@ pub struct CollisionPlugin;
 impl Plugin for CollisionPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<CollisionWorld>()
-            .add_systems(PreUpdate, rebuild_on_map_load.after(crate::world::LoadMapSet).before(crate::entities::EntitySpawnSet));
+            .add_systems(PreUpdate, rebuild_on_map_load.after(portal2_core::sets::LoadMapSet).before(portal2_core::sets::EntitySpawnSet));
     }
 }
 

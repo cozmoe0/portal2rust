@@ -5,12 +5,15 @@
 
 use bevy::prelude::*;
 
-use crate::clock::{GameClock, ThinkSet};
-use crate::console::Console;
+use crate::entities::despawn_entity;
 use crate::entities::io::{EventQueue, EventTarget, InputCall, InputHandlers};
-use crate::entities::{EntityRegistry, MapEntity, despawn_entity};
 use crate::player::health::Health;
 use crate::screen::ScreenFade;
+use portal2_core::clock::GameClock;
+use portal2_core::console::Console;
+use portal2_core::entity::{EntityRegistry, MapEntity};
+use portal2_core::save::AutosaveRequest;
+use portal2_core::sets::ThinkSet;
 
 pub struct AutosavePlugin;
 
@@ -27,18 +30,6 @@ impl Plugin for AutosavePlugin {
         c.register_cvar("sv_autosave", "1", 0);
         c.register_cvar("sk_auto_reload_time", "3", 0);
     }
-}
-
-/// An autosave asked for by an entity. `dangerous` seconds above zero make
-/// it a dangerous autosave, skipped below `min_health` and kept only if the
-/// player still has `commit_health` when the time is up.
-#[derive(Message, Clone, Copy, Debug)]
-pub struct AutosaveRequest {
-    pub dangerous: f32,
-    pub min_health: f32,
-    pub commit_health: f32,
-    /// Entity removed once it has saved (`trigger_autosave`).
-    pub remove: Option<Entity>,
 }
 
 /// The pending dangerous autosave.
@@ -64,15 +55,15 @@ fn handle_requests(world: &mut World) {
         // A dangerous save still waiting is good enough once another comes.
         if world.resource::<Dangerous>().deadline.is_some_and(|d| d >= now) && player_health(world).is_some() {
             world.resource_mut::<Dangerous>().deadline = None;
-            crate::console::queue(world, "autosavedangerousissafe");
+            portal2_core::console::queue(world, "autosavedangerousissafe");
         }
         if let Some(e) = r.remove {
             despawn_entity(world, e);
         }
         if r.dangerous <= 0.0 {
-            crate::console::queue(world, "autosave");
+            portal2_core::console::queue(world, "autosave");
         } else if player_health(world).is_some_and(|h| h >= r.min_health) {
-            crate::console::queue(world, "autosavedangerous");
+            portal2_core::console::queue(world, "autosavedangerous");
             *world.resource_mut::<Dangerous>() = Dangerous { deadline: Some(now + r.dangerous as f64), commit_health: r.commit_health };
         }
     }
@@ -86,14 +77,14 @@ fn commit_when_safe(world: &mut World) {
     }
     world.resource_mut::<Dangerous>().deadline = None;
     if player_health(world).is_some_and(|h| h >= commit_health) {
-        crate::console::queue(world, "autosavedangerousissafe");
+        portal2_core::console::queue(world, "autosavedangerousissafe");
     }
 }
 
 fn logic_autosave_input(world: &mut World, call: &InputCall) -> bool {
     let Some(me) = world.get::<MapEntity>(call.target).cloned() else { return false };
     match call.input.as_str() {
-        "save" => crate::console::queue(world, "autosave"),
+        "save" => portal2_core::console::queue(world, "autosave"),
         "savedangerous" => {
             world.write_message(AutosaveRequest {
                 dangerous: source_formats::kv::parse_f32_lenient(&call.param),
@@ -133,7 +124,7 @@ fn loadsaved_input(world: &mut World, call: &InputCall) -> bool {
             let delay = me.get_f32("loadtime").unwrap_or(0.0);
             world.resource_mut::<EventQueue>().push(delay, EventTarget::Entity(call.target), "__reload", "", None, None);
         }
-        "__reload" => crate::console::queue(world, "reload"),
+        "__reload" => portal2_core::console::queue(world, "reload"),
         _ => return false,
     }
     true

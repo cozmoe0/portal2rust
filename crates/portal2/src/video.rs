@@ -13,8 +13,8 @@ use std::sync::{Arc, Mutex};
 
 use bevy::prelude::*;
 
-use crate::vfs::GameFs;
 use crate::vgui::{ImageRef, Surface};
+use portal2_core::vfs::GameFs;
 
 pub struct VideoPlugin;
 

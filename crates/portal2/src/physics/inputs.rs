@@ -10,9 +10,9 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 
 use crate::collision::Collider as TraceCollider;
-use crate::entities::MapEntity;
 use crate::entities::io::{InputCall, InputHandlers, fire_output};
 use crate::entities::props::PhysicsProp;
+use portal2_core::entity::MapEntity;
 
 /// The explosion's radius when its keyvalue is 0: this times its magnitude.
 const RADIUS_PER_MAGNITUDE: f32 = 2.5;
@@ -88,7 +88,7 @@ fn explosion_input(world: &mut World, call: &InputCall) -> bool {
     for (e, pos) in targets {
         let dist = pos.distance(center);
         let damage = (magnitude - dist / RADIUS_PER_MAGNITUDE).max(1.0);
-        let force = (damage * IMPULSE_PER_DAMAGE).min(MAX_IMPULSE) * crate::audio::ops::random_range(0.85, 1.15);
+        let force = (damage * IMPULSE_PER_DAMAGE).min(MAX_IMPULSE) * portal2_core::rng::random_range(0.85, 1.15);
         let dir = (pos - center).normalize_or(Vec3::Z);
         let dv = dir * force / mass_of(world, e);
         if let Some(mut v) = world.get_mut::<LinearVelocity>(e) {
@@ -96,7 +96,7 @@ fn explosion_input(world: &mut World, call: &InputCall) -> bool {
         }
     }
     if me.spawnflags() & SF_PUSH_PLAYER != 0
-        && let Some(player) = world.resource::<crate::entities::EntityRegistry>().player
+        && let Some(player) = world.resource::<portal2_core::entity::EntityRegistry>().player
         && let Some(mut p) = world.get_mut::<crate::player::Player>(player)
     {
         let at = p.state.origin + Vec3::Z * 36.0;

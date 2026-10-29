@@ -6,8 +6,8 @@
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::prelude::*;
 
-use crate::console::Console;
 use crate::vgui::{Schemes, Surface, VguiPaint, layer};
+use portal2_core::console::Console;
 
 pub fn build(app: &mut App) {
     app.init_resource::<ConsoleUi>().add_systems(Update, input.before(super::input)).add_systems(PostUpdate, paint.in_set(VguiPaint));

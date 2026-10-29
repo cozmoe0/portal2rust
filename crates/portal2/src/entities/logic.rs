@@ -8,8 +8,9 @@ use bevy::prelude::*;
 
 use super::io::{EventQueue, EventTarget, FireOutput, InputCall, InputHandlers, fire_output};
 use super::{EntityRegistry, MapEntity, SpawnHandlers, despawn_entity, world_transform};
-use crate::clock::{GameClock, ThinkSet};
 use crate::world::{CurrentMap, MapLoadType};
+use portal2_core::clock::GameClock;
+use portal2_core::sets::ThinkSet;
 
 pub fn register(app: &mut App) {
     app.init_resource::<GlobalStates>().add_systems(FixedUpdate, tick_timers.in_set(ThinkSet));
@@ -129,7 +130,7 @@ fn command_input(world: &mut World, call: &InputCall) -> bool {
     if call.input != "command" {
         return false;
     }
-    crate::console::queue_trusted(world, &call.param);
+    portal2_core::console::queue_trusted(world, &call.param);
     true
 }
 
@@ -310,7 +311,7 @@ fn random_outputs_input(world: &mut World, call: &InputCall) -> bool {
 #[derive(Component, serde::Serialize, serde::Deserialize)]
 struct RegisterActivator {
     enabled: bool,
-    #[serde(with = "crate::save::ids::opt_entity")]
+    #[serde(with = "portal2_core::save::ids::opt_entity")]
     registered: Option<Entity>,
 }
 
@@ -777,7 +778,7 @@ const SF_TELEPORT_HOME: u32 = 1;
 
 fn spawn_point_teleport(world: &mut World, e: Entity) {
     let Some(t) = world.get::<Transform>(e).copied() else { return };
-    let home = TeleportHome { origin: t.translation, angles: crate::coords::quat_to_angles(t.rotation) };
+    let home = TeleportHome { origin: t.translation, angles: portal2_core::coords::quat_to_angles(t.rotation) };
     world.entity_mut(e).insert(home);
 }
 
@@ -802,7 +803,7 @@ fn teleport_input(world: &mut World, call: &InputCall) -> bool {
     }
     let (origin, angles) = if !to_saved {
         let here = world_transform(world, e).compute_transform();
-        (here.translation, crate::coords::quat_to_angles(here.rotation))
+        (here.translation, portal2_core::coords::quat_to_angles(here.rotation))
     } else {
         let start = if teleport_home { world.get::<MapEntity>(t).map(|m| (m.origin(), m.angles())) } else { None };
         match (start, world.get::<TeleportHome>(e)) {
@@ -815,27 +816,27 @@ fn teleport_input(world: &mut World, call: &InputCall) -> bool {
     true
 }
 
-impl crate::save::Restore for LogicRelay {}
+impl portal2_core::save::Restore for LogicRelay {}
 
-impl crate::save::Restore for LogicTimer {}
+impl portal2_core::save::Restore for LogicTimer {}
 
-impl crate::save::Restore for MathCounter {}
+impl portal2_core::save::Restore for MathCounter {}
 
-impl crate::save::Restore for LogicBranch {}
+impl portal2_core::save::Restore for LogicBranch {}
 
-impl crate::save::Restore for LogicCompare {}
+impl portal2_core::save::Restore for LogicCompare {}
 
-impl crate::save::Restore for BranchListener {}
+impl portal2_core::save::Restore for BranchListener {}
 
-impl crate::save::Restore for RandomOutputs {}
+impl portal2_core::save::Restore for RandomOutputs {}
 
-impl crate::save::Restore for RegisterActivator {}
+impl portal2_core::save::Restore for RegisterActivator {}
 
-impl crate::save::Restore for TeleportHome {}
+impl portal2_core::save::Restore for TeleportHome {}
 
-impl crate::save::Restore for GlobalStates {}
+impl portal2_core::save::Restore for GlobalStates {}
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<RandomOutputs>("logic_random_outputs");
     r.component::<RegisterActivator>("logic_register_activator");
     r.component::<TeleportHome>("teleport_home");

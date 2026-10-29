@@ -20,15 +20,15 @@ use bevy::prelude::*;
 use source_formats::bsp::contents;
 
 use super::GameInstructor;
-use crate::camera::MainCamera;
-use crate::clock::GameClock;
 use crate::collision::Physics;
-use crate::console::Console;
-use crate::entities::EntityRegistry;
 use crate::screen::Localization;
-use crate::vfs::GameFs;
 use crate::vgui::surface::{FontId, ImageRef};
 use crate::vgui::{Schemes, Surface, VguiPaint, layer};
+use portal2_core::clock::GameClock;
+use portal2_core::console::Console;
+use portal2_core::entity::EntityRegistry;
+use portal2_core::vfs::GameFs;
+use portal2_core::view::MainCamera;
 
 pub fn build(app: &mut App) {
     app.init_resource::<LocatorState>().add_systems(PostUpdate, paint.in_set(VguiPaint));

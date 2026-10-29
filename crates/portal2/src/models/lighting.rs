@@ -8,7 +8,7 @@ use source_formats::bsp::{Bsp, WorldLight};
 
 use crate::render::source_material::{ModelLight, ModelParams};
 use crate::render::textures::TextureCache;
-use crate::vfs::GameFs;
+use portal2_core::vfs::GameFs;
 
 /// Local lights per model (`r_worldlights`, 3 by default).
 pub const MAX_MODEL_LIGHTS: usize = 3;

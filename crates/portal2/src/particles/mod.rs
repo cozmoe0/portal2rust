@@ -22,14 +22,15 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use source_formats::pcf::{self, Pcf};
 
-use crate::camera::MainCamera;
 use crate::collision::Physics;
+use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::entities::{EntityRegistry, MapEntity, SpawnHandlers};
 use crate::render::textures::TextureCache;
-use crate::vfs::GameFs;
 use crate::world::{CurrentMap, MapLoaded, MapObject};
 use defs::{Def, DefRef};
+use portal2_core::entity::{EntityRegistry, MapEntity};
+use portal2_core::vfs::GameFs;
+use portal2_core::view::MainCamera;
 use render::{Batch, Looks, ParticleMaterial, Seen};
 use sim::{Collection, ControlPoint, Env, MAX_CONTROL_POINTS};
 
@@ -130,13 +131,13 @@ impl ParticleEffect {
     }
 }
 
-impl crate::save::Restore for ParticleEffect {
+impl portal2_core::save::Restore for ParticleEffect {
     fn keep(&mut self, live: Self) {
         self.meshes = live.meshes;
     }
 }
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<ParticleEffect>("particle_effect");
 }
 
@@ -397,7 +398,7 @@ fn draw(
                         let mesh = meshes.add(render::empty_mesh());
                         // View model effects draw with the first-person weapon.
                         let layer = if c.def.view_model {
-                            RenderLayers::layer(crate::portals::gun::VIEWMODEL_LAYER)
+                            RenderLayers::layer(portal2_core::layers::VIEWMODEL_LAYER)
                         } else {
                             RenderLayers::layer(0)
                         };

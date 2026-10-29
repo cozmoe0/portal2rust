@@ -1,0 +1,12 @@
+[package]
+name = "portal2_core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Foundation of the portal2rust engine: game clock, console, game filesystem, save registry, system sets and shared types"
+
+[dependencies]
+bevy.workspace = true
+source_formats.workspace = true
+serde.workspace = true
+ciborium.workspace = true

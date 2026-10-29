@@ -15,16 +15,17 @@ use source_formats::vhv::Vhv;
 use super::io::{EventQueue, EventTarget, FireOutput, InputCall, InputHandlers, fire_output};
 use super::spawner::{ModelOptions, attach_studio_model, clear_render_children};
 use super::{MapEntity, SpawnHandlers};
-use crate::clock::{GameClock, ThinkSet};
-use crate::coords::angles_to_quat;
 use crate::models::animation::{AnimationEvent, AnimationFinished};
 use crate::models::lighting;
 use crate::models::{ModelCache, SpawnModel, StudioAnimator, spawn_model_parts};
 use crate::render::materials::{MaterialCache, MaterialContext};
 use crate::render::source_material::{ModelMaterial, RefractMaterial};
 use crate::render::textures::TextureCache;
-use crate::vfs::GameFs;
 use crate::world::{CurrentMap, MapObject};
+use portal2_core::clock::GameClock;
+use portal2_core::coords::angles_to_quat;
+use portal2_core::sets::ThinkSet;
+use portal2_core::vfs::GameFs;
 
 pub fn register(app: &mut App) {
     app.add_systems(Update, (animation_done_outputs, animation_events)).add_systems(FixedUpdate, button_timers.in_set(ThinkSet));
@@ -76,7 +77,7 @@ fn options_for(me: &MapEntity, animated: bool) -> ModelOptions {
 /// Attaches the entity's model (or a placeholder box) and returns whether a
 /// real model was found.
 fn attach_entity_model(world: &mut World, e: Entity, animated: bool) -> bool {
-    if world.resource::<crate::args::Args>().no_entity_models {
+    if world.resource::<portal2_core::args::Args>().no_entity_models {
         return false;
     }
     let Some(me) = world.get::<MapEntity>(e).cloned() else { return false };
@@ -507,7 +508,7 @@ type StaticPropParams<'w, 's> = (
 
 /// Spawns the map's static props with their baked per-vertex lighting.
 pub fn spawn_static_props(world: &mut World) {
-    if world.resource::<crate::args::Args>().no_static_props {
+    if world.resource::<portal2_core::args::Args>().no_static_props {
         return;
     }
     let mut state: SystemState<StaticPropParams> = SystemState::new(world);
@@ -562,15 +563,15 @@ fn static_prop_lighting_origin(prop: &StaticProp, studio: &StudioModel) -> Vec3 
     }
 }
 
-impl crate::save::Restore for ChamberDoor {}
+impl portal2_core::save::Restore for ChamberDoor {}
 
-impl crate::save::Restore for FloorButton {}
+impl portal2_core::save::Restore for FloorButton {}
 
-impl crate::save::Restore for PedestalButton {}
+impl portal2_core::save::Restore for PedestalButton {}
 
-impl crate::save::Restore for PendingDoorReport {}
+impl portal2_core::save::Restore for PendingDoorReport {}
 
-pub fn register_save(r: &mut crate::save::SaveRegistry) {
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<ChamberDoor>("chamber_door");
     r.component::<FloorButton>("floor_button");
     r.component::<PedestalButton>("pedestal_button");

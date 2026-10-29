@@ -11,7 +11,7 @@ use super::{MapEntity, SpawnHandlers};
 use crate::render::materials::MaterialCache;
 use crate::render::source_material::WorldMaterial;
 use crate::render::textures::TextureCache;
-use crate::vfs::GameFs;
+use portal2_core::vfs::GameFs;
 
 pub fn register(app: &mut App) {
     app.init_resource::<FrameMaterials>();

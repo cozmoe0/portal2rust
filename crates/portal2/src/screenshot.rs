@@ -4,7 +4,7 @@
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 
-use crate::args::Args;
+use portal2_core::args::Args;
 
 pub struct ScreenshotPlugin;
 

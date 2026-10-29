@@ -10,7 +10,7 @@ use bevy::prelude::*;
 
 use super::io::{InputCall, InputHandlers, fire_output};
 use super::{EntityRegistry, MapEntity, SpawnHandlers, world_transform};
-use crate::coords::{angles_to_quat, quat_to_angles};
+use portal2_core::coords::{angles_to_quat, quat_to_angles};
 
 pub fn register(app: &mut App) {
     app.init_resource::<TemplateCounter>();
@@ -153,7 +153,7 @@ fn spawn_at(world: &mut World, maker: Entity, at: GlobalTransform) -> Vec<Entity
     // Optional launch velocity for physics props.
     let speed = me.get_f32("postspawnspeed").unwrap_or(0.0);
     if speed > 0.0 {
-        let dir = rot * crate::coords::angles_forward(me.get_vec3("postspawndirection").unwrap_or(Vec3::ZERO));
+        let dir = rot * portal2_core::coords::angles_forward(me.get_vec3("postspawndirection").unwrap_or(Vec3::ZERO));
         for e in &spawned {
             if let Some(mut v) = world.get_mut::<avian3d::prelude::LinearVelocity>(*e) {
                 v.0 = dir * speed;
@@ -181,10 +181,10 @@ fn maker_input(world: &mut World, call: &InputCall) -> bool {
     true
 }
 
-impl crate::save::Restore for Template {}
+impl portal2_core::save::Restore for Template {}
 
-impl crate::save::Restore for TemplateCounter {}
+impl portal2_core::save::Restore for TemplateCounter {}
 
-pub fn register_save_resources(r: &mut crate::save::SaveRegistry) {
+pub fn register_save_resources(r: &mut portal2_core::save::SaveRegistry) {
     r.resource::<TemplateCounter>("template_counter");
 }
