@@ -100,14 +100,16 @@ fn attach_placeholder(world: &mut World, e: Entity) {
     state.apply(world);
 }
 
-/// The server's model for personality cores (Wheatley and the other
-/// spheres); `ModelSkin` picks the core's skin.
-const PERSONALITY_CORE_MODEL: &str = "models/npcs/personality_sphere/personality_sphere_skins.mdl";
+/// The server's models for personality cores: Wheatley's, or with
+/// `altmodel` set the one the other cores share; `ModelSkin` picks the skin.
+const PERSONALITY_CORE_MODEL: &str = "models/npcs/personality_sphere/personality_sphere.mdl";
+const PERSONALITY_CORE_ALT_MODEL: &str = "models/npcs/personality_sphere/personality_sphere_skins.mdl";
 
 fn spawn_personality_core(world: &mut World, e: Entity) {
     if let Some(mut me) = world.get_mut::<MapEntity>(e) {
         if me.get("model").is_none_or(|m| !m.to_ascii_lowercase().ends_with(".mdl")) {
-            me.set("model", PERSONALITY_CORE_MODEL);
+            let alt = me.get_i32("altmodel").unwrap_or(0) != 0;
+            me.set("model", if alt { PERSONALITY_CORE_ALT_MODEL } else { PERSONALITY_CORE_MODEL });
         }
         if let Some(skin) = me.get("modelskin").map(str::to_owned) {
             me.set("skin", &skin);

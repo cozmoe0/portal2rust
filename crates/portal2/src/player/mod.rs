@@ -57,6 +57,8 @@ pub struct Player {
 pub struct PlayerInput {
     pub input: MoveInput,
     pub fast: bool,
+    /// A scripted view holds the player still (no movement or mouse look).
+    pub frozen: bool,
 }
 
 fn spawn_or_reset_player(
@@ -136,6 +138,11 @@ fn gather_input(
     focus: Option<Res<crate::gameui::UiFocus>>,
 ) {
     let grabbed = cursor.single().is_ok_and(|c| c.grab_mode != CursorGrabMode::None);
+    if input.frozen {
+        input.input = MoveInput { angles: input.input.angles, ..default() };
+        input.fast = false;
+        return;
+    }
     let i = &mut input.input;
     if grabbed && !focus.is_some_and(|f| f.0) {
         let sens = console.f32("sensitivity");
@@ -236,7 +243,7 @@ fn player_tick(
     }
 }
 
-fn place_camera(
+pub fn place_camera(
     fixed: Res<Time<Fixed>>,
     input: Res<PlayerInput>,
     shakes: Res<shake::Shakes>,

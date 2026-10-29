@@ -79,3 +79,15 @@ Globals include: `Time`, `FrameTime`, `DoEntFire`, `EntFireByHandle`,
 `CTriggerCamera`, `CPropLinkedPortalDoor`, `CEntities` (the `Entities`
 instance), `CScriptKeyValues`. The full member list with signatures comes
 from the game's `script_help` output (see `re/tools`).
+
+- `CBaseFlex.GetCurrentScene()` ("Returns the instance of the oldest active
+  scene entity (if any)", bound to `ScriptGetOldestScene`): the scene the
+  actor joined first among those it has an event running in.
+  `GetSceneByIndex(i)` walks the same list. `glados.nut` relies on it: a
+  `talkover` line cancels the character's current scene, and a line that
+  exits early (negative `postdelay`) moves the current scene's
+  `OnCompletion` from `PlayNextScene` to `SkipOnCompletion`. Checked with
+  `scene_print 1` in the game: on opening the first map's container door,
+  `intro_ride01` is cancelled 0.6 s in when `intro_ride02` starts, then
+  `intro_ride03`, the announcer and `intro_ride04` follow at the vcd
+  lengths and post delays.

@@ -128,7 +128,7 @@ pub fn register(vm: &mut Vm, vector: ObjRef) -> ScriptClasses {
             ("IsSequenceFinished", true_fn, 1),
         ],
     );
-    let flex = new_class(vm, "CBaseFlex", Some(animating), &[("GetCurrentScene", null_fn, 1), ("GetSceneByIndex", null_fn, 2)]);
+    let flex = new_class(vm, "CBaseFlex", Some(animating), &[("GetCurrentScene", get_current_scene, 1), ("GetSceneByIndex", get_scene_by_index, 2)]);
     let player = new_class(vm, "CBasePlayer", Some(animating), &[("IsNoclipping", is_noclipping, 1)]);
     let portal_player = new_class(
         vm,
@@ -590,6 +590,22 @@ fn disconnect_output(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
         outs.connections.retain(|c| !(c.output == output && c.target == "!self" && c.input == "callscriptfunction" && c.param == func));
     }
     Ok(Value::Null)
+}
+
+/// The oldest scene this actor has an event under way in.
+fn get_current_scene(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
+    let (vm, world) = parts(ctx);
+    let e = this_entity(vm, world, args)?;
+    let scene = crate::entities::scenes::active_scenes(world, e).first().copied();
+    Ok(handle_or_null(vm, world, scene))
+}
+
+fn get_scene_by_index(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
+    let index = args.get(1).and_then(Value::as_f32).unwrap_or(-1.0);
+    let (vm, world) = parts(ctx);
+    let e = this_entity(vm, world, args)?;
+    let scene = (index >= 0.0).then(|| crate::entities::scenes::active_scenes(world, e).get(index as usize).copied()).flatten();
+    Ok(handle_or_null(vm, world, scene))
 }
 
 fn destroy(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {

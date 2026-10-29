@@ -4,14 +4,16 @@
 //! angles it spawned with, at most at its rates. As the Source tank does,
 //! the turn speed is ten times the remaining angle (so it eases in),
 //! capped at the rate. Targets are aimed at their eyes (the player) or
-//! their centre, from the barrel point.
+//! their centre, from the barrel point. A tank an input moved onto a model
+//! attachment no longer turns (the original stops its movement there): the
+//! first map's Wheatley rig leaves the aiming to the swivel below.
 
 use bevy::prelude::*;
 
 use crate::clock::{GameClock, ThinkSet};
 use crate::coords::{angles_to_quat, quat_to_angles};
 use crate::entities::io::{InputCall, InputHandlers, resolve_targets};
-use crate::entities::{EntityRegistry, MapEntity, SpawnHandlers};
+use crate::entities::{EntityRegistry, MapEntity, RidesAttachment, SpawnHandlers};
 use crate::player::Player;
 
 const ACTIVE: u32 = 1;
@@ -105,7 +107,7 @@ fn angle_distance(to: f32, from: f32) -> f32 {
 fn aim_tanks(
     clock: Res<GameClock>,
     registry: Res<EntityRegistry>,
-    mut tanks: Query<(&mut FuncTank, &mut Transform, &GlobalTransform, Option<&ChildOf>)>,
+    mut tanks: Query<(&mut FuncTank, &mut Transform, &GlobalTransform, Option<&ChildOf>), Without<RidesAttachment>>,
     targets: Query<&GlobalTransform, Without<FuncTank>>,
     players: Query<&Player>,
     parents: Query<&GlobalTransform>,

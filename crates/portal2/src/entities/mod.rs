@@ -16,6 +16,7 @@ pub mod texturetoggle;
 pub mod trains;
 pub mod transition;
 pub mod triggers;
+pub mod viewcontrol;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -52,6 +53,7 @@ impl Plugin for EntitiesPlugin {
         scenes::register(app);
         script_conditions::register(app);
         hints::register(app);
+        viewcontrol::register(app);
         trains::register(app);
         transition::register(app);
         props::register(app);
@@ -416,7 +418,7 @@ pub(crate) fn setup_entities_with(world: &mut World, spawned: &[(Entity, String)
 }
 
 /// The entity's nearest ancestor that is a map entity.
-fn map_parent(world: &World, e: Entity) -> Option<Entity> {
+pub(crate) fn map_parent(world: &World, e: Entity) -> Option<Entity> {
     let mut cur = world.get::<ChildOf>(e).map(|c| c.parent());
     while let Some(c) = cur {
         if world.get::<MapEntity>(c).is_some() {
@@ -426,6 +428,14 @@ fn map_parent(world: &World, e: Entity) -> Option<Entity> {
     }
     None
 }
+
+/// Set on an entity the `SetParentAttachment` inputs moved onto an
+/// attachment: as in the original, which stops the entity's own movement
+/// there, it only rides along (a `func_tank` no longer turns).
+#[derive(Component, Default, serde::Serialize, serde::Deserialize)]
+pub struct RidesAttachment;
+
+impl crate::save::Restore for RidesAttachment {}
 
 /// Re-parents `child` to an attachment of its parent's model: snapped onto
 /// it, or keeping its current placement (`keep_offset`).
@@ -603,7 +613,9 @@ fn generic_inputs(world: &mut World, call: &InputCall) -> bool {
         }
         "setparentattachment" | "setparentattachmentmaintainoffset" => {
             let keep = call.input == "setparentattachmentmaintainoffset";
-            set_parent_attachment(world, e, call.param.trim(), keep);
+            if set_parent_attachment(world, e, call.param.trim(), keep) {
+                world.entity_mut(e).insert(RidesAttachment);
+            }
             true
         }
         "clearparent" => {

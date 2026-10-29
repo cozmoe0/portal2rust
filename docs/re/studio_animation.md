@@ -94,6 +94,35 @@ code in the installed `server.dll`.
   0x80, realtime 0x100, local 0x200, world 0x4000. Layer flags: spline
   0x40, xfade 0x80, noblend 0x200, local 0x1000, pose 0x4000.
 
+## Whole-frame animations
+
+Animation descriptors with flag 0x40 store every frame rather than
+run-length channels (the container ride and the intro's `ghostAnim`
+models). Long ones are split into sections (`section frames` per
+section); a section's data sits in the `.mdl` (block 0, offset from the
+descriptor) or in the `.ani` block file, and frames count from the
+section's start.
+
+- Header: constants offset, frame data offset, frame length (all from the
+  header's start), 12 unused bytes, then one flag byte per bone.
+- Each bone reads its rotation, then its position. Constants and frame
+  data are two streams; frame `n`'s data starts at
+  `frame offset + n * frame length`.
+- Flag bits: 0x01 position as three half floats in the constants; 0x02
+  rotation as a Quaternion48 (16/16/15 bits and a w sign) in the
+  constants; 0x04 / 0x08 the same two in the frame data; 0x10 position as
+  three floats in the frame data; 0x20 the same in the constants; 0x40
+  rotation as a 48-bit smallest-three quaternion in the constants; 0x80
+  the same in the frame data.
+- Smallest-three: three 15-bit components (offset 16384, scale 1/23168);
+  the top bits of the first two words give the index of the first stored
+  component, the next two follow it wrapping round, and the missing one is
+  rebuilt from unit length, negated when the third word's top bit is set.
+- Checked against the real game: the intro wake-up view path recorded
+  with `getpos` (0x40/0x80/0x10/0x20 bones), and Wheatley's entry rail
+  (`wheatley_entry.mdl`, 0x02/0x01/0x08/0x04 bones) whose attachment the
+  game reports at the same place and angles.
+
 ## In the installed models
 
 - Security cameras and floor turrets aim with autoplay delta grids over

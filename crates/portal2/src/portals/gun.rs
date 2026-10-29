@@ -417,9 +417,14 @@ fn attach_viewmodel(world: &mut World) {
     info!("viewmodel ready ({} bones)", model.bone_count());
 }
 
-/// `r_drawviewmodel 0` hides the first-person weapon.
-fn show_viewmodel(console: Res<crate::console::Console>, mut cams: Query<&mut Camera, With<ViewmodelCamera>>) {
-    let show = console.bool("r_drawviewmodel");
+/// `r_drawviewmodel 0` hides the first-person weapon, as does a scripted
+/// view.
+fn show_viewmodel(
+    console: Res<crate::console::Console>,
+    view: Res<crate::entities::viewcontrol::ActiveView>,
+    mut cams: Query<&mut Camera, With<ViewmodelCamera>>,
+) {
+    let show = console.bool("r_drawviewmodel") && view.0.is_none();
     for mut c in &mut cams {
         if c.is_active != show {
             c.is_active = show;

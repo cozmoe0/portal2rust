@@ -77,7 +77,6 @@ pub fn register(app: &mut App) {
         "env_ar2explosion",
         "info_overlay_accessor",
         "vgui_screen",
-        "point_viewcontrol",
         "move_rope",
         "keyframe_rope",
     ] {

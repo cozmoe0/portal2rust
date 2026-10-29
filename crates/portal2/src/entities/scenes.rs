@@ -88,6 +88,9 @@ pub struct ChoreoScene {
     time: f32,
     pitch: f32,
     next: usize,
+    /// Game time the scene last started (orders an actor's scenes).
+    #[serde(default)]
+    started: f64,
     #[serde(with = "crate::save::ids::opt_entity")]
     activator: Option<Entity>,
     /// Sound channels started by this scene's speak events.
@@ -110,6 +113,7 @@ fn spawn(world: &mut World, e: Entity) {
         time: 0.0,
         pitch: 1.0,
         next: 0,
+        started: 0.0,
         activator: None,
         speech: Vec::new(),
         layered: Vec::new(),
@@ -141,7 +145,9 @@ fn input(world: &mut World, call: &InputCall) -> bool {
             if loaded(world, e).is_none() {
                 return true;
             }
+            let now = world.resource::<GameClock>().curtime;
             if let Some(mut s) = world.get_mut::<ChoreoScene>(e) {
+                s.started = now;
                 s.playing = true;
                 s.paused = false;
                 s.time = 0.0;
@@ -236,6 +242,24 @@ fn actor(world: &World, e: Entity, name: &str) -> Option<Entity> {
         }
         _ => by_name(&lower),
     }
+}
+
+/// The playing scenes in which `who` has an event under way, oldest first
+/// (what `GetCurrentScene` and `GetSceneByIndex` answer from).
+pub fn active_scenes(world: &mut World, who: Entity) -> Vec<Entity> {
+    let mut playing: Vec<(f64, Entity)> =
+        world.query::<(Entity, &ChoreoScene)>().iter(world).filter(|(_, s)| s.playing).map(|(e, s)| (s.started, e)).collect();
+    playing.sort_by(|a, b| a.0.total_cmp(&b.0));
+    playing
+        .into_iter()
+        .filter(|&(_, e)| {
+            let (Some(scene), Some(time)) = (loaded(world, e), world.get::<ChoreoScene>(e).map(|s| s.time)) else { return false };
+            scene.events.iter().any(|(name, ev)| {
+                ev.start <= time && time < ev.end.max(ev.start) && name.as_deref().and_then(|n| actor(world, e, n)) == Some(who)
+            })
+        })
+        .map(|(_, e)| e)
+        .collect()
 }
 
 /// Plays a speak event's line on `who`, `offset` seconds in, with its

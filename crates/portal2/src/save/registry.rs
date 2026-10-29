@@ -103,6 +103,8 @@ pub fn register_all(r: &mut SaveRegistry) {
     buttons::register_save(r);
     r.component::<detectors::PortalDetector>("portal_detector");
     crate::entities::script_conditions::register_save(r);
+    crate::entities::viewcontrol::register_save(r);
+    r.component::<crate::entities::RidesAttachment>("rides_attachment");
     r.component::<triggers::Trigger>("trigger");
     r.component::<trains::Train>("train");
     r.component::<trains::PathTrack>("path_track");

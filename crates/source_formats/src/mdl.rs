@@ -25,6 +25,9 @@ pub mod seq_flags {
     /// Delta applied in the bone's own frame (after the base rotation).
     pub const POST: i32 = 0x0010;
     pub const ALLZEROS: i32 = 0x0020;
+    /// Stored as whole frames (per-bone constants and fixed-size frames)
+    /// rather than run-length channels.
+    pub const FRAMEANIM: i32 = 0x0040;
     /// The cycle is the setting of pose parameter `cycle_pose`.
     pub const CYCLEPOSE: i32 = 0x0080;
     /// The cycle follows the clock.
@@ -717,6 +720,25 @@ pub fn quat64(b: &[u8]) -> Quat {
     Quat::from_xyzw(fx, fy, fz, w)
 }
 
+/// 48-bit "smallest three" quaternion: three 15-bit components (offset
+/// 16384, 23168 per unit). The top bits of the first two words give the
+/// (x, y, z, w) index of the first stored component; the other two follow
+/// it, wrapping round, and the one left out is rebuilt from the unit
+/// length, negated when the third word's top bit is set.
+pub fn quat48s(b: &[u8]) -> Quat {
+    let word = |i: usize| u16::from_le_bytes([b[i * 2], b[i * 2 + 1]]);
+    let (a, bb, c) = (word(0), word(1), word(2));
+    let first = (((a >> 15) << 1) | (bb >> 15)) as usize;
+    let comp = |w: u16| ((w & 0x7FFF) as f32 - 16384.0) / 23168.0;
+    let mut q = [0f32; 4];
+    q[first] = comp(a);
+    q[(first + 1) & 3] = comp(bb);
+    q[(first + 2) & 3] = comp(c);
+    let rest = q[first].powi(2) + q[(first + 1) & 3].powi(2) + q[(first + 2) & 3].powi(2);
+    q[(first + 3) & 3] = (1.0 - rest).max(0.0).sqrt() * if c >> 15 != 0 { -1.0 } else { 1.0 };
+    Quat::from_xyzw(q[0], q[1], q[2], q[3])
+}
+
 pub fn vector48(b: &[u8]) -> Vec3 {
     let h = |o: usize| crate::vtf::f16_to_f32(u16::from_le_bytes([b[o], b[o + 1]]));
     Vec3::new(h(0), h(2), h(4))
@@ -802,6 +824,10 @@ impl Mdl {
         if index == 0 && block == 0 {
             return out;
         }
+        if desc.flags & seq_flags::FRAMEANIM != 0 {
+            self.sample_frame_anim(data, p, local_frame, &mut out);
+            return out;
+        }
         for _ in 0..self.bones.len() + 1 {
             let (Some(&bone), Some(&flags)) = (data.get(p), data.get(p + 1)) else { break };
             let next = data.get(p + 2..p + 4).map(|b| i16::from_le_bytes([b[0], b[1]])).unwrap_or(0);
@@ -866,4 +892,72 @@ impl Mdl {
         }
         out
     }
+
+    /// A frame of a whole-frame animation at `base`: a header (constants
+    /// offset, frame offset, frame length, 12 unused bytes), then one flag
+    /// byte per bone. Each bone takes its rotation and then its position
+    /// from the constants or from the frame's data, in bone order.
+    fn sample_frame_anim(&self, data: &[u8], base: usize, frame: i32, out: &mut [(Vec3, Quat)]) {
+        use frame_flags::*;
+        let int = |at: usize| data.get(at..at + 4).map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]])).unwrap_or(0);
+        let float = |at: usize| data.get(at..at + 4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).unwrap_or(0.0);
+        let vector = |at: usize| Vec3::new(float(at), float(at + 4), float(at + 8));
+        let mut constants = base + int(base).max(0) as usize;
+        let mut frame_data = base + int(base + 4).max(0) as usize + frame.max(0) as usize * int(base + 8).max(0) as usize;
+        // Reads `len` bytes from a stream and moves it on.
+        let take = |at: &mut usize, len: usize| {
+            let b = data.get(*at..*at + len);
+            *at += len;
+            b
+        };
+        for (bone, slot) in out.iter_mut().enumerate().take(self.bones.len()) {
+            let Some(&flags) = data.get(base + 24 + bone) else { break };
+            if flags & CONST_ROT != 0 {
+                slot.1 = take(&mut constants, 6).map_or(slot.1, |b| quat48s(b).normalize());
+            }
+            if flags & RAW_ROT != 0 {
+                slot.1 = take(&mut constants, 6).map_or(slot.1, |b| quat48(b).normalize());
+            }
+            if flags & ANIM_ROT != 0 {
+                slot.1 = take(&mut frame_data, 6).map_or(slot.1, |b| quat48s(b).normalize());
+            }
+            if flags & ANIM_RAW_ROT != 0 {
+                slot.1 = take(&mut frame_data, 6).map_or(slot.1, |b| quat48(b).normalize());
+            }
+            if flags & CONST_POS != 0 {
+                slot.0 = vector(constants);
+                constants += 12;
+            }
+            if flags & RAW_POS != 0 {
+                slot.0 = take(&mut constants, 6).map_or(slot.0, vector48);
+            }
+            if flags & ANIM_POS != 0 {
+                slot.0 = vector(frame_data);
+                frame_data += 12;
+            }
+            if flags & ANIM_RAW_POS != 0 {
+                slot.0 = take(&mut frame_data, 6).map_or(slot.0, vector48);
+            }
+        }
+    }
+}
+
+/// Per-bone flags of whole-frame animations.
+pub mod frame_flags {
+    /// Position: a half-float vector in the constants.
+    pub const RAW_POS: u8 = 0x01;
+    /// Rotation: a 48-bit quaternion in the constants.
+    pub const RAW_ROT: u8 = 0x02;
+    /// Position: a half-float vector in each frame.
+    pub const ANIM_RAW_POS: u8 = 0x04;
+    /// Rotation: a 48-bit quaternion in each frame.
+    pub const ANIM_RAW_ROT: u8 = 0x08;
+    /// Position: a float vector in each frame.
+    pub const ANIM_POS: u8 = 0x10;
+    /// Position: a float vector in the constants.
+    pub const CONST_POS: u8 = 0x20;
+    /// Rotation: a 48-bit smallest-three quaternion in the constants.
+    pub const CONST_ROT: u8 = 0x40;
+    /// Rotation: a 48-bit smallest-three quaternion in each frame.
+    pub const ANIM_ROT: u8 = 0x80;
 }
