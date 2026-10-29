@@ -11,8 +11,14 @@
 //! `--shot-settle` frames, or `--shot-settle-time` seconds, before its
 //! screenshot; `--shot-map-settle` waits that many seconds after each map
 //! load first (as `capture.py --map-settle` does in the game).
+//!
+//! `--bench <file>` visits the same kind of list but measures frame times
+//! for `--bench-seconds` at each view instead of taking a screenshot, and
+//! appends one line per view to `--bench-out` (`re/out/bench.txt`).
 
+use std::fmt::Write as _;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
@@ -66,6 +72,48 @@ enum Phase {
     Loading,
     Settling(u32),
     Saving(u32),
+    /// `--bench`: collecting frame times since the instant.
+    Measuring(Instant),
+}
+
+/// Frame times collected at the current view in `--bench` mode.
+struct Bench {
+    seconds: f32,
+    out: PathBuf,
+    samples: Vec<f32>,
+}
+
+impl Bench {
+    /// Appends `name map frames mean p50 p95 p99 max fps` for the view.
+    fn report(&mut self, shot: &Shot) {
+        let mut ms: Vec<f32> = self.samples.drain(..).map(|s| s * 1000.0).collect();
+        if ms.is_empty() {
+            return;
+        }
+        ms.sort_by(f32::total_cmp);
+        let mean = ms.iter().sum::<f32>() / ms.len() as f32;
+        let pct = |p: f32| ms[((ms.len() - 1) as f32 * p).round() as usize];
+        let mut line = String::new();
+        let _ = write!(
+            line,
+            "{}	{}	frames={}	mean={mean:.2}ms	p50={:.2}ms	p95={:.2}ms	p99={:.2}ms	max={:.2}ms	fps={:.0}",
+            shot.name,
+            shot.map,
+            ms.len(),
+            pct(0.5),
+            pct(0.95),
+            pct(0.99),
+            ms[ms.len() - 1],
+            1000.0 / mean
+        );
+        info!("bench {line}");
+        if let Some(dir) = self.out.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let old = std::fs::read_to_string(&self.out).unwrap_or_default();
+        let _ = std::fs::write(&self.out, old + &line + "
+");
+    }
 }
 
 #[derive(Resource)]
@@ -82,10 +130,11 @@ struct ShotRunner {
     loaded_at: Option<std::time::Instant>,
     out_dir: PathBuf,
     map_identity: usize,
+    bench: Option<Bench>,
 }
 
 fn setup(mut commands: Commands, args: Res<Args>) {
-    let Some(path) = &args.shots else { return };
+    let Some(path) = args.shots.as_ref().or(args.bench.as_ref()) else { return };
     let shots = std::fs::read_to_string(path).map(|t| parse_shots(&t)).unwrap_or_default();
     info!("{} shots from {path}", shots.len());
     let out_dir = PathBuf::from(&args.shots_out);
@@ -101,6 +150,11 @@ fn setup(mut commands: Commands, args: Res<Args>) {
         loaded_at: None,
         out_dir,
         map_identity: 0,
+        bench: args.bench.is_some().then(|| Bench {
+            seconds: args.bench_seconds,
+            out: PathBuf::from(&args.bench_out),
+            samples: Vec::new(),
+        }),
     });
 }
 
@@ -162,6 +216,23 @@ fn run_shots(world: &mut World) {
                 Phase::Next
             } else {
                 Phase::Loading
+            }
+        }
+        Phase::Settling(0) if world.resource::<ShotRunner>().bench.is_some() => {
+            info!("bench {}", shot.name);
+            Phase::Measuring(Instant::now())
+        }
+        Phase::Measuring(start) => {
+            hold_view(world, &shot);
+            let frame = world.resource::<Time<Real>>().delta_secs();
+            let mut runner = world.resource_mut::<ShotRunner>();
+            let bench = runner.bench.as_mut().expect("measuring only in bench mode");
+            bench.samples.push(frame);
+            if start.elapsed().as_secs_f32() >= bench.seconds {
+                bench.report(&shot);
+                Phase::Saving(0)
+            } else {
+                Phase::Measuring(start)
             }
         }
         Phase::Settling(0) => {

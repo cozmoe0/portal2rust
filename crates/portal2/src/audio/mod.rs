@@ -194,7 +194,7 @@ impl Sounds {
 fn init_sounds(world: &mut World) {
     let Some(fs) = world.get_resource::<GameFs>().map(|f| f.0.clone()) else { return };
     let args = world.resource::<Args>();
-    let quiet = args.nosound || args.smoke.is_some() || args.chain.is_some() || args.shots.is_some() || args.screenshot.is_some();
+    let quiet = args.quiet();
     let scripts = SoundScripts::load(&fs).unwrap_or_else(|e| {
         warn!("audio: sound scripts: {e}");
         SoundScripts::from_manifest("", &mut |_| None)

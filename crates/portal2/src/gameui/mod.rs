@@ -230,12 +230,7 @@ impl Plugin for GameUiPlugin {
 }
 
 fn start(mut ui: ResMut<GameUi>, args: Res<Args>, fs: Res<GameFs>, mut pending: ResMut<crate::world::PendingLoad>) {
-    let batch = args.smoke.is_some()
-        || args.shots.is_some()
-        || args.save_test.is_some()
-        || args.chain.is_some()
-        || args.save_info.is_some()
-        || (args.screenshot.is_some() && !args.map.is_empty());
+    let batch = args.batch();
     // `P2R_UI=1` keeps the menus in screenshot runs (for comparing them).
     let batch = batch && std::env::var_os("P2R_UI").is_none();
     if batch {

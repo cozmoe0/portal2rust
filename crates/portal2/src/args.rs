@@ -67,6 +67,18 @@ pub struct Args {
     pub shot_settle_time: Option<f32>,
     /// Seconds to wait after a map loads before its first view.
     pub shot_map_settle: f32,
+    /// `--bench <file>`: visit the views of a shot list like `--shots`, but
+    /// measure frame times for `bench_seconds` at each instead of taking a
+    /// screenshot; results are appended to `bench_out`.
+    pub bench: Option<String>,
+    pub bench_seconds: f32,
+    pub bench_out: String,
+    /// `--record <dir>`: save `record_seconds` of frames at `record_fps`,
+    /// starting when the map clock reads `record_start` (see `record`).
+    pub record: Option<String>,
+    pub record_fps: f32,
+    pub record_seconds: f32,
+    pub record_start: f32,
     /// `--smoke <maps>`: run each map briefly and report problems.
     pub smoke: Option<String>,
     /// `--save-test <maps>`: save/load round trip of each map (see `save::roundtrip`).
@@ -117,6 +129,13 @@ impl Default for Args {
             shot_settle: 120,
             shot_settle_time: None,
             shot_map_settle: 0.0,
+            bench: None,
+            bench_seconds: 10.0,
+            bench_out: "re/out/bench.txt".to_owned(),
+            record: None,
+            record_fps: 30.0,
+            record_seconds: 8.0,
+            record_start: 0.0,
             smoke: None,
             save_test: None,
             save_info: None,
@@ -182,6 +201,13 @@ impl Args {
                 "--shot-settle" => args.shot_settle = it.next().and_then(|s| s.parse().ok()).unwrap_or(args.shot_settle),
                 "--shot-settle-time" => args.shot_settle_time = it.next().and_then(|s| s.parse().ok()),
                 "--shot-map-settle" => args.shot_map_settle = it.next().and_then(|s| s.parse().ok()).unwrap_or(0.0),
+                "--bench" => args.bench = it.next(),
+                "--bench-seconds" => args.bench_seconds = it.next().and_then(|s| s.parse().ok()).unwrap_or(args.bench_seconds),
+                "--bench-out" => args.bench_out = it.next().unwrap_or(args.bench_out),
+                "--record" => args.record = it.next(),
+                "--record-fps" => args.record_fps = it.next().and_then(|s| s.parse().ok()).unwrap_or(args.record_fps),
+                "--record-seconds" => args.record_seconds = it.next().and_then(|s| s.parse().ok()).unwrap_or(args.record_seconds),
+                "--record-start" => args.record_start = it.next().and_then(|s| s.parse().ok()).unwrap_or(args.record_start),
                 "--spawn" => args.spawn.extend(it.next()),
                 "--fire" => args.fire.extend(it.next()),
                 "--strip-flags" => args.strip_flags = it.next().and_then(|s| s.parse().ok()).unwrap_or(0),
@@ -202,12 +228,35 @@ impl Args {
             }
         }
         // Start on the first shot's map rather than loading the default one.
-        if let Some(first) = args.shots.as_deref().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| crate::shots::parse_shots(&t).into_iter().next()) {
+        if let Some(first) = args.shots.as_deref().or(args.bench.as_deref()).and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| crate::shots::parse_shots(&t).into_iter().next()) {
             args.map = first.map;
         }
         if let Some(first) = &args.chain {
             args.map = first.clone();
         }
         args
+    }
+
+    /// Whether a batch mode runs, which plays no sound.
+    pub fn quiet(&self) -> bool {
+        self.nosound
+            || self.smoke.is_some()
+            || self.chain.is_some()
+            || self.shots.is_some()
+            || self.bench.is_some()
+            || self.record.is_some()
+            || self.screenshot.is_some()
+    }
+
+    /// Whether a batch mode starts straight in a map, without the intro
+    /// video, menus or loading screens.
+    pub fn batch(&self) -> bool {
+        self.smoke.is_some()
+            || self.shots.is_some()
+            || self.bench.is_some()
+            || self.save_test.is_some()
+            || self.chain.is_some()
+            || self.save_info.is_some()
+            || ((self.screenshot.is_some() || self.record.is_some()) && !self.map.is_empty())
     }
 }

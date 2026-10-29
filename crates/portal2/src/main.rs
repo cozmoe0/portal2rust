@@ -23,6 +23,7 @@ mod physics;
 mod player;
 mod portals;
 mod probe;
+mod record;
 mod render;
 mod save;
 mod script;
@@ -48,7 +49,8 @@ fn main() {
                         title: "Portal 2 (Rust)".into(),
                         // Physical pixels, so screenshots match the reference captures.
                         resolution: WindowResolution::new(args.width, args.height).with_scale_factor_override(1.0),
-                        present_mode: PresentMode::AutoVsync,
+                        // Benchmarks measure frame times without waiting for the display.
+                        present_mode: if args.bench.is_some() { PresentMode::AutoNoVsync } else { PresentMode::AutoVsync },
                         ..default()
                     }),
                     ..default()
@@ -67,7 +69,7 @@ fn main() {
             (render::RenderSetupPlugin, world::WorldPlugin, models::ModelsPlugin, collision::CollisionPlugin),
             (entities::EntitiesPlugin, script::ScriptPlugin, player::PlayerPlugin, physics::GamePhysicsPlugin),
             (portals::PortalsPlugin, devices::DevicesPlugin, screen::ScreenPlugin, render::fog::FogPlugin, render::projected::ProjectedPlugin, render::sprites::SpritePlugin, render::spotlights::SpotlightPlugin, render::movies::MoviePlugin, render::tonemap::TonemapPlugin, audio::AudioPlugin, captions::CaptionsPlugin),
-            (camera::CameraPlugin, screenshot::ScreenshotPlugin, shots::ShotsPlugin, smoke::SmokePlugin, chain::ChainPlugin, probe::ProbePlugin),
+            (camera::CameraPlugin, screenshot::ScreenshotPlugin, shots::ShotsPlugin, smoke::SmokePlugin, chain::ChainPlugin, probe::ProbePlugin, record::RecordPlugin),
             (save::SavePlugin, vgui::VguiPlugin, hud::HudPlugin, video::VideoPlugin, gameui::GameUiPlugin, particles::ParticlePlugin, paint::PaintPlugin),
         ))
         .run();
