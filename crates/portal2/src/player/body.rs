@@ -17,15 +17,15 @@ use bevy::prelude::*;
 use portal2_core::layers::PLAYER_BODY_LAYER;
 
 use super::{Player, PlayerInput};
-use crate::models::animation::Layer;
-use crate::models::{ModelCache, SpawnModel, StudioAnimator, lighting, spawn_model_parts};
-use crate::render::materials::{MaterialCache, MaterialContext};
-use crate::render::source_material::{ModelMaterial, RefractMaterial};
-use crate::render::textures::TextureCache;
 use crate::world::{CurrentMap, MapObject};
 use portal2_core::coords::angles_to_quat;
 use portal2_core::sets::PlayerCameraSet;
 use portal2_core::vfs::GameFs;
+use portal2_render::materials::{MaterialCache, MaterialContext};
+use portal2_render::models::animation::Layer;
+use portal2_render::models::{ModelCache, SpawnModel, StudioAnimator, lighting, spawn_model_parts};
+use portal2_render::source_material::{ModelMaterial, RefractMaterial};
+use portal2_render::textures::TextureCache;
 
 pub const BODY_MODEL: &str = "models/player/chell/player.mdl";
 /// Below this speed the body stands idle.

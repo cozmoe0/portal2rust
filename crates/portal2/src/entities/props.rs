@@ -15,17 +15,17 @@ use source_formats::vhv::Vhv;
 use super::io::{EventQueue, EventTarget, FireOutput, InputCall, InputHandlers, fire_output};
 use super::spawner::{ModelOptions, attach_studio_model, clear_render_children};
 use super::{MapEntity, SpawnHandlers};
-use crate::models::animation::{AnimationEvent, AnimationFinished};
-use crate::models::lighting;
-use crate::models::{ModelCache, SpawnModel, StudioAnimator, spawn_model_parts};
-use crate::render::materials::{MaterialCache, MaterialContext};
-use crate::render::source_material::{ModelMaterial, RefractMaterial};
-use crate::render::textures::TextureCache;
 use crate::world::{CurrentMap, MapObject};
 use portal2_core::clock::GameClock;
 use portal2_core::coords::angles_to_quat;
 use portal2_core::sets::ThinkSet;
 use portal2_core::vfs::GameFs;
+use portal2_render::materials::{MaterialCache, MaterialContext};
+use portal2_render::models::animation::{AnimationEvent, AnimationFinished};
+use portal2_render::models::lighting;
+use portal2_render::models::{ModelCache, SpawnModel, StudioAnimator, spawn_model_parts};
+use portal2_render::source_material::{ModelMaterial, RefractMaterial};
+use portal2_render::textures::TextureCache;
 
 pub fn register(app: &mut App) {
     app.add_systems(Update, (animation_done_outputs, animation_events)).add_systems(FixedUpdate, button_timers.in_set(ThinkSet));

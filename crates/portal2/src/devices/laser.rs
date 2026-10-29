@@ -9,13 +9,13 @@ use crate::collision::{Collider as TraceCollider, Physics};
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{FireOutput, InputCall, InputHandlers};
 use crate::entities::spawner::{ModelOptions, attach_studio_model};
-use crate::models::StudioAnimator;
 use crate::player::Player;
 use crate::player::health::DamagePlayer;
 use crate::portals::{Portal, Portals};
 use crate::world::MapObject;
 use portal2_core::entity::MapEntity;
 use portal2_core::sets::PlayerMoveSet;
+use portal2_render::models::StudioAnimator;
 use source_formats::bsp::contents;
 
 /// Lasers pass through glass and grates.

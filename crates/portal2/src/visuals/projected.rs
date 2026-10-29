@@ -119,7 +119,7 @@ impl Plugin for ProjectedPlugin {
                 .add(ShaderBuffer::new(vec![0f32; 4 + MAX_LIGHTS * LIGHT_FLOATS], RenderAssetUsages::default()));
             ProjectedGpu { lights, cookies, shadows, cookie_names }
         };
-        let _ = crate::render::source_material::PROJECTED.set(crate::render::source_material::ProjectedHandles {
+        let _ = portal2_render::source_material::PROJECTED.set(portal2_render::source_material::ProjectedHandles {
             lights: gpu.lights.clone(),
             cookies: gpu.cookies.clone(),
             shadows: gpu.shadows.clone(),
@@ -139,7 +139,7 @@ impl Plugin for ProjectedPlugin {
 struct ProjectedShaderModule(Handle<Shader>);
 
 fn load_shader_module(mut commands: Commands, assets: Res<AssetServer>) {
-    commands.insert_resource(ProjectedShaderModule(assets.load("embedded://portal2/render/shaders/projected.wesl")));
+    commands.insert_resource(ProjectedShaderModule(assets.load("embedded://portal2_render/shaders/projected.wesl")));
 }
 
 /// Every `materials/effects/flashlight*` texture, resampled into one array

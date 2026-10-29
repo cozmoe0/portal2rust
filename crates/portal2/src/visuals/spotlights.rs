@@ -23,12 +23,12 @@ use serde::{Deserialize, Serialize};
 use super::sprites::{SourceSprite, SpriteMaterial, SpriteParams, load_sprite_source, sprite_quad};
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::render::textures::TextureCache;
 use portal2_core::entity::MapEntity;
 use portal2_core::vfs::GameFs;
 use portal2_core::view::MainCamera;
+use portal2_render::textures::TextureCache;
 
-pub const BEAM_SHADER: &str = "embedded://portal2/render/shaders/beam.wesl";
+pub const BEAM_SHADER: &str = "embedded://portal2_render/shaders/beam.wesl";
 const BEAM_MATERIAL: &str = "sprites/glow_test02.vmt";
 const HALO_MATERIAL: &str = "sprites/light_glow03.vmt";
 /// The engine's widest beam.

@@ -104,7 +104,7 @@ fn texinfo_surface(world: &World, fs: &GameFs, state: &mut FootstepState, texinf
     if let Some(p) = state.materials.get(&name) {
         return p.clone();
     }
-    let prop = crate::render::materials::load_vmt(fs, &format!("materials/{name}.vmt"))
+    let prop = portal2_render::materials::load_vmt(fs, &format!("materials/{name}.vmt"))
         .and_then(|v| v.get("$surfaceprop").map(str::to_ascii_lowercase))
         .unwrap_or_else(|| "default".into());
     state.materials.insert(name, prop.clone());

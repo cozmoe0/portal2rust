@@ -25,12 +25,12 @@ use source_formats::pcf::{self, Pcf};
 use crate::collision::Physics;
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::render::textures::TextureCache;
 use crate::world::{CurrentMap, MapLoaded, MapObject};
 use defs::{Def, DefRef};
 use portal2_core::entity::{EntityRegistry, MapEntity};
 use portal2_core::vfs::GameFs;
 use portal2_core::view::MainCamera;
+use portal2_render::textures::TextureCache;
 use render::{Batch, Looks, ParticleMaterial, Seen};
 use sim::{Collection, ControlPoint, Env, MAX_CONTROL_POINTS};
 

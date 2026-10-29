@@ -7,9 +7,9 @@ use bevy::render::render_resource::{AsBindGroup, Face, RenderPipelineDescriptor,
 use bevy::render::storage::ShaderBuffer;
 use bevy::shader::ShaderRef;
 
-pub const WORLD_SHADER: &str = "embedded://portal2/render/shaders/world.wesl";
-pub const MODEL_SHADER: &str = "embedded://portal2/render/shaders/model.wesl";
-pub const REFRACT_SHADER: &str = "embedded://portal2/render/shaders/refract.wesl";
+pub const WORLD_SHADER: &str = "embedded://portal2_render/shaders/world.wesl";
+pub const MODEL_SHADER: &str = "embedded://portal2_render/shaders/model.wesl";
+pub const REFRACT_SHADER: &str = "embedded://portal2_render/shaders/refract.wesl";
 
 pub mod world_flags {
     pub const BASE2: u32 = 1;

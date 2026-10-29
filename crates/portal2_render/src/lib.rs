@@ -1,12 +1,13 @@
-pub mod fog;
+//! Drawing Source content with Bevy: the game's materials (`.vmt`) turned
+//! into shader parameters ([`materials`], [`source_material`]), textures
+//! (`.vtf`) uploaded as they are ([`textures`]), studio models with their
+//! animation and lighting ([`models`]), and the engine's WESL shaders, which
+//! every crate's materials load from `embedded://portal2_render/shaders/`.
+
 pub mod materials;
-pub mod movies;
-pub mod projected;
+pub mod models;
 pub mod source_material;
-pub mod spotlights;
-pub mod sprites;
 pub mod textures;
-pub mod tonemap;
 
 use bevy::asset::embedded_asset;
 use bevy::prelude::*;

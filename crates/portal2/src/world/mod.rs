@@ -16,15 +16,15 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use source_formats::bsp::{Bsp, Entity as MapEntity};
 use source_formats::zip::ZipArchive;
 
-use crate::render::materials::{MaterialCache, MaterialContext};
-use crate::render::source_material::{WorldMaterial, world_flags};
-use crate::render::textures::TextureCache;
 use bsp_mesh::{MeshBatch, build_world_geometry};
 use portal2_core::MapGeneration;
 use portal2_core::args::Args;
 use portal2_core::console::Console;
 use portal2_core::sets::LoadMapSet;
 use portal2_core::vfs::GameFs;
+use portal2_render::materials::{MaterialCache, MaterialContext};
+use portal2_render::source_material::{WorldMaterial, world_flags};
+use portal2_render::textures::TextureCache;
 
 /// How a map is being entered; `logic_auto` fires the matching output.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -262,7 +262,7 @@ fn load_map_system(
         let info = material_cache.world(&batch.texdata_name, &mut ctx, &mut world_materials);
         let material = match world_materials.get(&info.handle).cloned() {
             Some(mut m) if m.depth_bias == 0 => {
-                m.depth_bias = crate::render::source_material::DECAL_DEPTH_BIAS;
+                m.depth_bias = portal2_render::source_material::DECAL_DEPTH_BIAS;
                 // Overlays cover paint; they never show it themselves.
                 m.params.flags &= !world_flags::PAINT;
                 world_materials.add(m)

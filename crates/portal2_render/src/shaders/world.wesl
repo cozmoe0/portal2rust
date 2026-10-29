@@ -6,7 +6,7 @@ import bevy_pbr::render::forward_io::VertexOutput;
 import bevy_pbr::render::mesh_view_bindings::view;
 import bevy_pbr::render::mesh_view_bindings::fog;
 import bevy_pbr::render::mesh_view_bindings::globals;
-import portal2::render::shaders::projected::{is_shadow_view, projected_lighting};
+import portal2_render::shaders::projected::{is_shadow_view, projected_lighting};
 
 struct WorldParams {
     color: vec4<f32>,

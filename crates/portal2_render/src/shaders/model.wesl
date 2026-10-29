@@ -5,7 +5,7 @@
 import bevy_pbr::render::forward_io::VertexOutput;
 import bevy_pbr::render::mesh_view_bindings::view;
 import bevy_pbr::render::mesh_view_bindings::fog;
-import portal2::render::shaders::projected::{is_shadow_view, projected_lighting};
+import portal2_render::shaders::projected::{is_shadow_view, projected_lighting};
 
 struct ModelLight {
     // xyz: position, w: kind (0 point, 1 spot, 2 directional)

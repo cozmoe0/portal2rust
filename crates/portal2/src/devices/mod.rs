@@ -21,7 +21,7 @@ use crate::collision::Physics;
 use crate::portals::placement::{PortalFrame, transfer};
 use crate::portals::{Portal, Portals};
 
-pub const EFFECT_SHADER: &str = "embedded://portal2/render/shaders/effect.wesl";
+pub const EFFECT_SHADER: &str = "embedded://portal2_render/shaders/effect.wesl";
 
 pub struct DevicesPlugin;
 

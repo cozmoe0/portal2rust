@@ -40,7 +40,7 @@ use crate::entities::io::{InputCall, InputHandlers};
 use crate::vgui::render::VguiComposite;
 use portal2_core::view::MainCamera;
 
-pub const HISTOGRAM_SHADER: &str = "embedded://portal2/render/shaders/tonemap_histogram.wesl";
+pub const HISTOGRAM_SHADER: &str = "embedded://portal2_render/shaders/tonemap_histogram.wesl";
 
 const BUCKETS: usize = 17;
 /// The scale's per-frame step limit with the newer algorithm.

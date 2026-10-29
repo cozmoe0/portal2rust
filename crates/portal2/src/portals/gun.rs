@@ -20,12 +20,7 @@ use crate::collision::Physics;
 use crate::entities::SpawnHandlers;
 use crate::entities::io::InputCall;
 use crate::entities::io::InputHandlers;
-use crate::models::lighting;
-use crate::models::{ModelCache, SpawnModel, StudioAnimator, spawn_model_parts};
 use crate::player::{Player, PlayerInput};
-use crate::render::materials::{MaterialCache, MaterialContext, load_vmt};
-use crate::render::source_material::{ModelMaterial, RefractMaterial};
-use crate::render::textures::TextureCache;
 use crate::world::{CurrentMap, PlayerStart};
 use portal2_core::args::Args;
 use portal2_core::coords::{angles_forward, angles_to_quat};
@@ -34,6 +29,11 @@ use portal2_core::events::{EventValue, GameEvent};
 use portal2_core::sets::PlayerCameraSet;
 use portal2_core::vfs::GameFs;
 use portal2_core::view::MainCamera;
+use portal2_render::materials::{MaterialCache, MaterialContext, load_vmt};
+use portal2_render::models::lighting;
+use portal2_render::models::{ModelCache, SpawnModel, StudioAnimator, spawn_model_parts};
+use portal2_render::source_material::{ModelMaterial, RefractMaterial};
+use portal2_render::textures::TextureCache;
 
 /// Seconds between shots (`portalgun_fire_delay`).
 pub const FIRE_DELAY: f64 = 0.2;

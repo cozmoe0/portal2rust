@@ -21,11 +21,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::render::source_material::{WorldMaterial, world_flags};
 use crate::vgui::Surface;
 use crate::video::{VideoId, Videos};
 use portal2_core::entity::MapEntity;
 use portal2_core::vfs::GameFs;
+use portal2_render::source_material::{WorldMaterial, world_flags};
 
 #[derive(Component, Clone, Debug, Serialize, Deserialize)]
 pub struct MovieDisplay {
@@ -101,7 +101,7 @@ fn spawn_display(world: &mut World, e: Entity) {
     let width = me.get_f32("width").unwrap_or(256.0).max(1.0);
     let height = me.get_f32("height").unwrap_or(128.0).max(1.0);
     let material = world.resource_mut::<Assets<WorldMaterial>>().add(WorldMaterial {
-        params: crate::render::source_material::WorldParams {
+        params: portal2_render::source_material::WorldParams {
             color: Vec4::ONE,
             flags: world_flags::UNLIT,
             lightmap_scale: 1.0,

@@ -23,13 +23,13 @@ use serde::{Deserialize, Serialize};
 use crate::collision::Physics;
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::render::materials::load_vmt;
-use crate::render::textures::TextureCache;
 use portal2_core::entity::MapEntity;
 use portal2_core::vfs::GameFs;
 use portal2_core::view::MainCamera;
+use portal2_render::materials::load_vmt;
+use portal2_render::textures::TextureCache;
 
-pub const SPRITE_SHADER: &str = "embedded://portal2/render/shaders/sprite.wesl";
+pub const SPRITE_SHADER: &str = "embedded://portal2_render/shaders/sprite.wesl";
 
 const MODE_GLOW: u8 = 3;
 const MODE_TRANS_ADD: u8 = 5;

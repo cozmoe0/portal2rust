@@ -304,7 +304,7 @@ impl portal2_core::save::Restore for RidesAttachment {}
 
 /// World placement of the named attachment on an entity's model.
 pub fn attachment_world(world: &World, e: Entity, name: &str) -> Option<Transform> {
-    let anim = world.get::<crate::models::StudioAnimator>(e)?;
+    let anim = world.get::<portal2_render::models::StudioAnimator>(e)?;
     let mdl = &anim.model.studio.mdl;
     let a = mdl.attachments.get(mdl.find_attachment(name)?)?;
     let joint = *anim.joints.get(a.bone.max(0) as usize)?;
@@ -315,7 +315,7 @@ pub fn attachment_world(world: &World, e: Entity, name: &str) -> Option<Transfor
 /// it, or keeping its current placement (`keep_offset`).
 pub fn set_parent_attachment(world: &mut World, child: Entity, attachment: &str, keep_offset: bool) -> bool {
     let Some(parent) = map_parent(world, child) else { return false };
-    let Some(anim) = world.get::<crate::models::StudioAnimator>(parent) else { return false };
+    let Some(anim) = world.get::<portal2_render::models::StudioAnimator>(parent) else { return false };
     let mdl = &anim.model.studio.mdl;
     let Some(a) = mdl.find_attachment(attachment).map(|i| mdl.attachments[i].clone()) else { return false };
     let Some(&joint) = anim.joints.get(a.bone.max(0) as usize) else { return false };

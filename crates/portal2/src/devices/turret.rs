@@ -18,13 +18,13 @@ use crate::entities::SpawnHandlers;
 use crate::entities::io::{FireOutput, InputCall, InputHandlers};
 use crate::entities::props::PhysicsProp;
 use crate::entities::spawner::{ModelOptions, attach_studio_model};
-use crate::models::StudioAnimator;
 use crate::player::Player;
 use crate::player::health::DamagePlayer;
 use crate::world::MapObject;
 use portal2_core::clock::GameClock;
 use portal2_core::entity::MapEntity;
 use portal2_core::sets::ThinkSet;
+use portal2_render::models::StudioAnimator;
 
 const THINK: f64 = 0.1;
 /// `PortalTurretBullet` damage, of which players take half

@@ -22,11 +22,11 @@ use source_formats::vtf::{Sheet, Vtf};
 
 use super::defs::{RendererKind, field};
 use super::sim::Collection;
-use crate::render::materials::load_vmt;
-use crate::render::textures::TextureCache;
 use portal2_core::vfs::GameFs;
+use portal2_render::materials::load_vmt;
+use portal2_render::textures::TextureCache;
 
-pub const PARTICLE_SHADER: &str = "embedded://portal2/render/shaders/particle.wesl";
+pub const PARTICLE_SHADER: &str = "embedded://portal2_render/shaders/particle.wesl";
 
 pub const ATTR_CORNER: MeshVertexAttribute = MeshVertexAttribute::new("Particle_Corner", 988_540_101, VertexFormat::Float32x4);
 pub const ATTR_SHAPE: MeshVertexAttribute = MeshVertexAttribute::new("Particle_Shape", 988_540_102, VertexFormat::Float32x4);

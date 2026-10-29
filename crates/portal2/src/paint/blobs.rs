@@ -18,12 +18,12 @@ use crate::audio::SoundRequest;
 use crate::collision::{Physics, mask};
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::render::textures::TextureCache;
 use crate::world::CurrentMap;
 use portal2_core::console::Console;
 use portal2_core::entity::MapEntity;
 use portal2_core::sets::ThinkSet;
 use portal2_core::vfs::GameFs;
+use portal2_render::textures::TextureCache;
 
 pub const BLOB_SHADER: &str = "embedded://portal2/paint/paint_blob.wesl";
 const TICK: f32 = 1.0 / 60.0;
@@ -202,7 +202,7 @@ fn spawn_sprayer(world: &mut World, e: Entity) {
     let Some(me) = world.get::<MapEntity>(e).cloned() else { return };
     let ambient = world
         .get_resource::<CurrentMap>()
-        .map(|m| crate::models::lighting::compute(&m.bsp, me.origin()).ambient)
+        .map(|m| portal2_render::models::lighting::compute(&m.bsp, me.origin()).ambient)
         .unwrap_or([Vec3::splat(0.2); 6]);
     world.entity_mut(e).insert(PaintSprayer {
         active: me.get_bool("start_active"),
@@ -696,7 +696,7 @@ fn draw_blobs(
         && let Some(first) = spheres.first()
         && let Some(map) = current.as_ref()
     {
-        relight = Some(crate::models::lighting::compute(&map.bsp, first.0).ambient);
+        relight = Some(portal2_render::models::lighting::compute(&map.bsp, first.0).ambient);
         free.relight_in = 30;
     }
     free.relight_in = free.relight_in.saturating_sub(1);

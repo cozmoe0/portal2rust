@@ -18,11 +18,11 @@ use crate::collision::Physics;
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
 use crate::entities::spawner::{ModelOptions, attach_studio_model};
-use crate::models::StudioAnimator;
 use crate::player::Player;
 use portal2_core::clock::GameClock;
 use portal2_core::entity::MapEntity;
 use portal2_core::sets::ThinkSet;
+use portal2_render::models::StudioAnimator;
 
 const MODEL: &str = "models/props/security_camera.mdl";
 const THINK_INTERVAL: f64 = 0.1;

@@ -24,12 +24,12 @@ use super::render::{self, Batch, Looks, ParticleMaterial};
 use crate::collision::Physics;
 use crate::entities::io::{InputCall, InputHandlers};
 use crate::entities::{SpawnHandlers, world_transform};
-use crate::render::textures::TextureCache;
 use crate::world::MapObject;
 use portal2_core::entity::MapEntity;
 use portal2_core::rng::random_range;
 use portal2_core::vfs::GameFs;
 use portal2_core::view::MainCamera;
+use portal2_render::textures::TextureCache;
 
 const PUFFS: usize = 70;
 const RADIUS: f32 = 240.0;

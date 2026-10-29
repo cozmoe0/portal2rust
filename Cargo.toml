@@ -21,6 +21,7 @@ source_formats = { path = "crates/source_formats" }
 squirrel = { path = "crates/squirrel" }
 bink = { path = "crates/bink" }
 portal2_core = { path = "crates/portal2_core" }
+portal2_render = { path = "crates/portal2_render" }
 
 # Engine crates build fast in dev; dependencies (Bevy, wgpu, physics) get full
 # optimisation so the game stays playable in debug builds.

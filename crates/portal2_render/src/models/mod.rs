@@ -15,8 +15,8 @@ use bevy::prelude::*;
 use source_formats::studio::{StudioMesh, StudioModel};
 use source_formats::vhv::Vhv;
 
-use crate::render::materials::{MaterialCache, MaterialContext};
-use crate::render::source_material::{ModelMaterial, RefractMaterial, model_flags};
+use crate::materials::{MaterialCache, MaterialContext};
+use crate::source_material::{ModelMaterial, RefractMaterial, model_flags};
 use portal2_core::vfs::GameFs;
 
 pub use animation::StudioAnimator;

@@ -13,7 +13,6 @@ mod devices;
 mod entities;
 mod gameui;
 mod hud;
-mod models;
 mod paint;
 mod particles;
 mod physics;
@@ -21,7 +20,6 @@ mod player;
 mod portals;
 mod probe;
 mod record;
-mod render;
 mod save;
 mod screen;
 mod screenshot;
@@ -30,6 +28,7 @@ mod shots;
 mod smoke;
 mod vgui;
 mod video;
+mod visuals;
 mod world;
 
 use bevy::prelude::*;
@@ -63,18 +62,18 @@ fn main() {
         .insert_resource(args)
         .add_plugins((
             (portal2_core::CorePlugin, commands::GameCommandsPlugin),
-            (render::RenderSetupPlugin, world::WorldPlugin, models::ModelsPlugin, collision::CollisionPlugin),
+            (portal2_render::RenderSetupPlugin, world::WorldPlugin, portal2_render::models::ModelsPlugin, collision::CollisionPlugin),
             (entities::EntitiesPlugin, script::ScriptPlugin, player::PlayerPlugin, physics::GamePhysicsPlugin),
             (
                 portals::PortalsPlugin,
                 devices::DevicesPlugin,
                 screen::ScreenPlugin,
-                render::fog::FogPlugin,
-                render::projected::ProjectedPlugin,
-                render::sprites::SpritePlugin,
-                render::spotlights::SpotlightPlugin,
-                render::movies::MoviePlugin,
-                render::tonemap::TonemapPlugin,
+                visuals::fog::FogPlugin,
+                visuals::projected::ProjectedPlugin,
+                visuals::sprites::SpritePlugin,
+                visuals::spotlights::SpotlightPlugin,
+                visuals::movies::MoviePlugin,
+                visuals::tonemap::TonemapPlugin,
                 audio::AudioPlugin,
                 captions::CaptionsPlugin,
             ),

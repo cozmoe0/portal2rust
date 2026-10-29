@@ -8,13 +8,14 @@ use bevy::mesh::skinning::SkinnedMeshInverseBindposes;
 use bevy::prelude::*;
 
 use super::MapEntity;
-use crate::models::lighting::{self, ModelLighting};
-use crate::models::{LoadedModel, ModelCache, SpawnModel, StudioAnimator, spawn_model_parts};
-use crate::render::materials::{MaterialCache, MaterialContext};
-use crate::render::source_material::{ModelMaterial, RefractMaterial};
-use crate::render::textures::TextureCache;
 use crate::world::{CurrentMap, is_invisible_brush_class, spawn_model_meshes};
 use portal2_core::vfs::GameFs;
+use portal2_render::materials::{MaterialCache, MaterialContext};
+use portal2_render::models::lighting;
+use portal2_render::models::lighting::ModelLighting;
+use portal2_render::models::{LoadedModel, ModelCache, SpawnModel, StudioAnimator, spawn_model_parts};
+use portal2_render::source_material::{ModelMaterial, RefractMaterial};
+use portal2_render::textures::TextureCache;
 
 /// Adds brush geometry for `model "*N"` entities whose class is drawn.
 pub fn attach_brush_model(world: &mut World, e: Entity) {

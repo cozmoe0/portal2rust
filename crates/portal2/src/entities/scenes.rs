@@ -339,7 +339,7 @@ fn advance(world: &mut World, e: Entity, dt: f32) {
                 // The actor plays the named sequence (blending, gestures and
                 // returning to idle afterwards are not done yet).
                 if let Some(who) = actor_name.as_deref().and_then(|n| actor(world, e, n))
-                    && let Some(mut anim) = world.get_mut::<crate::models::StudioAnimator>(who)
+                    && let Some(mut anim) = world.get_mut::<portal2_render::models::StudioAnimator>(who)
                     && !anim.set_sequence(&ev.param)
                 {
                     debug!("scene sequence {} missing on actor", ev.param);
@@ -350,7 +350,7 @@ fn advance(world: &mut World, e: Entity, dt: f32) {
                 let found = actor_name
                     .as_deref()
                     .and_then(|n| actor(world, e, n))
-                    .and_then(|w| world.get::<crate::models::StudioAnimator>(w))
+                    .and_then(|w| world.get::<portal2_render::models::StudioAnimator>(w))
                     .map(|a| a.model.studio.find_sequence(&ev.param).is_some());
                 debug!("scene gesture {} on {actor_name:?}: sequence {found:?}", ev.param);
             }
@@ -400,7 +400,7 @@ fn event_weight(ev: &source_formats::vcd::Event, local: f32, fades: (f32, f32)) 
 /// Layers every gesture event spanning the scene time onto its actor; the
 /// gesture's sequence plays over the event's length. `None` clears them.
 fn update_gestures(world: &mut World, e: Entity, at: Option<(&LoadedScene, f32)>) {
-    use crate::models::animation::Layer;
+    use portal2_render::models::animation::Layer;
     let mut layers: Vec<(Entity, Layer)> = Vec::new();
     if let Some((scene, time)) = at {
         for (actor_name, ev) in &scene.events {
@@ -408,7 +408,7 @@ fn update_gestures(world: &mut World, e: Entity, at: Option<(&LoadedScene, f32)>
                 continue;
             }
             let Some(who) = actor_name.as_deref().and_then(|n| actor(world, e, n)) else { continue };
-            let Some(anim) = world.get::<crate::models::StudioAnimator>(who) else { continue };
+            let Some(anim) = world.get::<portal2_render::models::StudioAnimator>(who) else { continue };
             let Some(sequence) = anim.model.studio.find_sequence(&ev.param) else { continue };
             let local = time - ev.start;
             let cycle = (local / ev.duration().max(0.01)).clamp(0.0, 1.0);
@@ -421,7 +421,7 @@ fn update_gestures(world: &mut World, e: Entity, at: Option<(&LoadedScene, f32)>
     touched.dedup();
     for who in previous.iter().chain(touched.iter()) {
         let mine: Vec<Layer> = layers.iter().filter(|(w, _)| w == who).map(|(_, l)| *l).collect();
-        if let Some(mut anim) = world.get_mut::<crate::models::StudioAnimator>(*who) {
+        if let Some(mut anim) = world.get_mut::<portal2_render::models::StudioAnimator>(*who) {
             anim.set_layers(mine);
         }
     }

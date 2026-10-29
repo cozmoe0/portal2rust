@@ -26,7 +26,7 @@ use portal2_core::sets::PlayerMoveSet;
 use portal2_core::view::MainCamera;
 use projection::PortalProjection;
 
-pub const PORTAL_SHADER: &str = "embedded://portal2/render/shaders/portal.wesl";
+pub const PORTAL_SHADER: &str = "embedded://portal2_render/shaders/portal.wesl";
 
 pub struct PortalsPlugin;
 
@@ -331,7 +331,11 @@ fn apply_placements(
     mut materials: ResMut<Assets<PortalMaterial>>,
     mut sounds: MessageWriter<crate::audio::SoundRequest>,
     mut fx: MessageWriter<PortalFx>,
-    (fs, mut textures, physics): (Res<portal2_core::vfs::GameFs>, ResMut<crate::render::textures::TextureCache>, crate::collision::Physics),
+    (fs, mut textures, physics): (
+        Res<portal2_core::vfs::GameFs>,
+        ResMut<portal2_render::textures::TextureCache>,
+        crate::collision::Physics,
+    ),
 ) {
     for req in requests.read() {
         let mut req = *req;

@@ -8,12 +8,12 @@ use super::io::{FireOutput, InputCall, InputHandlers, fire_output};
 use super::props::FloorButton;
 use super::{EntityRegistry, MapEntity, SpawnHandlers};
 use crate::collision::Physics;
-use crate::models::StudioAnimator;
 use crate::player::Player;
 use crate::player::health::DamagePlayer;
 use crate::world::CurrentMap;
 use portal2_core::clock::GameClock;
 use portal2_core::sets::PlayerMoveSet;
+use portal2_render::models::StudioAnimator;
 
 pub fn register(app: &mut App) {
     app.add_message::<PlayerDied>()

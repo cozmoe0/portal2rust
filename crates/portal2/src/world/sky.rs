@@ -19,13 +19,13 @@ use portal2_core::layers::{SKY2D_LAYER, SKYBOX_LAYER};
 use source_formats::bsp::Bsp;
 
 use super::{CurrentMap, MapLoaded, MapObject};
-use crate::render::materials::load_vmt;
-use crate::render::textures::TextureCache;
 use portal2_core::sets::LoadMapSet;
 use portal2_core::vfs::GameFs;
 use portal2_core::view::MainCamera;
+use portal2_render::materials::load_vmt;
+use portal2_render::textures::TextureCache;
 
-pub const SKY_SHADER: &str = "embedded://portal2/render/shaders/sky.wesl";
+pub const SKY_SHADER: &str = "embedded://portal2_render/shaders/sky.wesl";
 
 /// Side names in the order the engine loads them.
 const SIDES: [&str; 6] = ["rt", "bk", "lf", "ft", "up", "dn"];

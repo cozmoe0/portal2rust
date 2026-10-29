@@ -8,10 +8,10 @@ use bevy::prelude::*;
 
 use super::io::{EventQueue, EventTarget, InputCall, InputHandlers};
 use super::{MapEntity, SpawnHandlers};
-use crate::render::materials::MaterialCache;
-use crate::render::source_material::WorldMaterial;
-use crate::render::textures::TextureCache;
 use portal2_core::vfs::GameFs;
+use portal2_render::materials::MaterialCache;
+use portal2_render::source_material::WorldMaterial;
+use portal2_render::textures::TextureCache;
 
 pub fn register(app: &mut App) {
     app.init_resource::<FrameMaterials>();

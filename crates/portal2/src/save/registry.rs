@@ -6,11 +6,11 @@
 
 use crate::entities::io::{EventQueue, EventTarget};
 use crate::entities::logic;
-use crate::models::StudioAnimator;
-use crate::models::animation::Layer;
 use bevy::prelude::*;
 use portal2_core::entity::MapEntity;
 use portal2_core::save::{SaveRegistry, decode, encode};
+use portal2_render::models::StudioAnimator;
+use portal2_render::models::animation::Layer;
 
 pub fn register_all(r: &mut SaveRegistry) {
     use crate::audio::{ambient, soundscape};
@@ -48,13 +48,13 @@ pub fn register_all(r: &mut SaveRegistry) {
     security_camera::register_save(r);
     ambient::register_save(r);
     r.component::<soundscape::SoundscapeEnt>("soundscape");
-    crate::render::fog::register_save(r);
-    crate::render::projected::register_save(r);
-    crate::render::sprites::register_save(r);
+    crate::visuals::fog::register_save(r);
+    crate::visuals::projected::register_save(r);
+    crate::visuals::sprites::register_save(r);
     crate::particles::register_save(r);
-    crate::render::spotlights::register_save(r);
-    crate::render::movies::register_save(r);
-    crate::render::tonemap::register_save(r);
+    crate::visuals::spotlights::register_save(r);
+    crate::visuals::movies::register_save(r);
+    crate::visuals::tonemap::register_save(r);
     crate::paint::blobs::register_save(r);
     crate::paint::bomb::register_save(r);
     crate::paint::props::register_save(r);

@@ -6,8 +6,8 @@
 use bevy::prelude::*;
 use source_formats::bsp::{Bsp, WorldLight};
 
-use crate::render::source_material::{ModelLight, ModelParams};
-use crate::render::textures::TextureCache;
+use crate::source_material::{ModelLight, ModelParams};
+use crate::textures::TextureCache;
 use portal2_core::vfs::GameFs;
 
 /// Local lights per model (`r_worldlights`, 3 by default).

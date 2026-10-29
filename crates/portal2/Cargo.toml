@@ -8,6 +8,7 @@ description = "A Portal 2 engine reimplementation written in Rust on top of Bevy
 [dependencies]
 bevy = { workspace = true, features = ["serialize"] }
 portal2_core.workspace = true
+portal2_render.workspace = true
 source_formats = { path = "../source_formats" }
 squirrel = { path = "../squirrel", features = ["serde"] }
 bink = { path = "../bink" }

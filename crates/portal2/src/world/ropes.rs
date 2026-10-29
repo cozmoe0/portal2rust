@@ -30,12 +30,12 @@ use source_formats::bsp::{Bsp, Entity as MapEntity};
 
 use super::sky::{SkyChecked, Skybox3d};
 use super::{CurrentMap, MapLoaded, MapObject};
-use crate::render::materials::load_vmt;
-use crate::render::textures::TextureCache;
 use portal2_core::sets::LoadMapSet;
 use portal2_core::vfs::GameFs;
+use portal2_render::materials::load_vmt;
+use portal2_render::textures::TextureCache;
 
-pub const ROPE_SHADER: &str = "embedded://portal2/render/shaders/rope.wesl";
+pub const ROPE_SHADER: &str = "embedded://portal2_render/shaders/rope.wesl";
 
 const TIME_STEP: f32 = 0.02;
 const SETTLE_TIME: f32 = 5.0;

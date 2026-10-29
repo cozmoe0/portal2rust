@@ -12,9 +12,9 @@ use super::PaintType;
 use super::power::GelSettings;
 use crate::collision::{Collider, Physics, mask};
 use crate::entities::props::PhysicsProp;
-use crate::render::source_material::ModelMaterial;
 use portal2_core::console::Console;
 use portal2_core::sets::ThinkSet;
+use portal2_render::source_material::ModelMaterial;
 
 const TICK: f32 = 1.0 / 60.0;
 /// A painted prop bounces at most this often.

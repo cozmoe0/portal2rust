@@ -26,7 +26,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::entities::EntityDefinitions;
 use crate::entities::io::{Connection, EventQueue, Outputs};
-use crate::models::StudioAnimator;
 use crate::player::Player;
 use crate::world::{CurrentMap, LoadMap, MapLoadType};
 use portal2_core::clock::GameClock;
@@ -34,6 +33,7 @@ use portal2_core::console::{CommandArgs, Console};
 use portal2_core::entity::{EntityRegistry, MapEntity};
 use portal2_core::save::ids::{self, PLAYER_ID, SaveId};
 use portal2_core::save::{SaveRegistry, decode, encode};
+use portal2_render::models::StudioAnimator;
 
 const VERSION: u32 = 1;
 
