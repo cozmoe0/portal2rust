@@ -314,7 +314,7 @@ fn fire_gun(
     match result {
         Ok(frame) => {
             info!("portal {slot} placed at {:.0?} facing {:.2?}", frame.center, frame.forward);
-            place.write(PlacePortal { slot, frame });
+            place.write(PlacePortal { slot, frame, settle: false });
             fx.write(super::PortalFx::Shot { slot, start: muzzle, end: frame.center, aim: dir });
         }
         Err(e) => {
@@ -517,7 +517,7 @@ fn spawn_map_portal(world: &mut World, e: Entity) {
         let slot = me.get_i32("portaltwo").unwrap_or(0).clamp(0, 1) as usize;
         let q = angles_to_quat(me.angles());
         let frame = PortalFrame { center: me.origin(), forward: q * Vec3::X, up: q * Vec3::Z };
-        world.resource_mut::<Messages<PlacePortal>>().write(PlacePortal { slot, frame });
+        world.resource_mut::<Messages<PlacePortal>>().write(PlacePortal { slot, frame, settle: true });
     }
 }
 
@@ -550,7 +550,7 @@ fn spawn_map_portal_now(world: &mut World, me: &MapEntity, slot: usize, at: Opti
     let (origin, angles) = at.unwrap_or((me.origin(), me.angles()));
     let q = angles_to_quat(angles);
     let frame = PortalFrame { center: origin, forward: q * Vec3::X, up: q * Vec3::Z };
-    world.resource_mut::<Messages<PlacePortal>>().write(PlacePortal { slot, frame });
+    world.resource_mut::<Messages<PlacePortal>>().write(PlacePortal { slot, frame, settle: true });
 }
 
 impl crate::save::Restore for PortalGun {

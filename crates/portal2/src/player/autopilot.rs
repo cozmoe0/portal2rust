@@ -4,7 +4,8 @@
 //! Steps are comma separated: `w1.5` wait, `f2` forward, `b1` back, `l1` /
 //! `r1` strafe, `j` jump tap, `d1` crouch, `t90` turn (degrees), `e` use,
 //! `@12.5` wait until the map clock reads 12.5 s, `c<text>` run console
-//! text (for replaying a timed run of the original game).
+//! text (for replaying a timed run of the original game), `h1` / `h0`
+//! hold forward on / off across the steps that follow.
 
 use bevy::prelude::*;
 
@@ -39,6 +40,7 @@ enum Step {
     Use,
     Until(f64),
     Command(String),
+    Hold(f32),
 }
 
 #[derive(Resource)]
@@ -47,6 +49,8 @@ struct Autopilot {
     index: usize,
     elapsed: f32,
     log_timer: f32,
+    /// Forward input kept between steps (`h1`).
+    hold_forward: f32,
 }
 
 fn parse(spec: &str) -> Vec<Step> {
@@ -79,6 +83,7 @@ fn parse(spec: &str) -> Vec<Step> {
                     Step::LookAt(Vec3::new(v[0], v[1], v[2]))
                 }
                 "e" => Step::Use,
+                "h" => Step::Hold(n),
                 "1" => Step::Fire(0),
                 "2" => Step::Fire(1),
                 _ => return None,
@@ -89,7 +94,7 @@ fn parse(spec: &str) -> Vec<Step> {
 
 fn setup(mut commands: Commands, args: Res<Args>) {
     if let Some(spec) = &args.autopilot {
-        commands.insert_resource(Autopilot { steps: parse(spec), index: 0, elapsed: 0.0, log_timer: 0.0 });
+        commands.insert_resource(Autopilot { steps: parse(spec), index: 0, elapsed: 0.0, log_timer: 0.0, hold_forward: 0.0 });
     }
 }
 
@@ -115,7 +120,7 @@ fn drive(
     let Some(mut ap) = ap else { return };
     let dt = time.delta_secs();
     let i = &mut input.input;
-    i.forward = 0.0;
+    i.forward = ap.hold_forward;
     i.right = 0.0;
     i.jump = false;
     i.duck = false;
@@ -124,7 +129,7 @@ fn drive(
         Step::Wait(d) | Step::Forward(d) | Step::Back(d) | Step::Left(d) | Step::Right(d) | Step::Duck(d) => d,
         Step::Jump => 2.0 / 60.0,
         Step::Until(t) if clock.curtime < t => return,
-        Step::Turn(_) | Step::Pitch(_) | Step::Fire(_) | Step::LookAt(_) | Step::Use | Step::Until(_) | Step::Command(_) => 0.0,
+        Step::Turn(_) | Step::Pitch(_) | Step::Fire(_) | Step::LookAt(_) | Step::Use | Step::Until(_) | Step::Command(_) | Step::Hold(_) => 0.0,
     };
     match step {
         Step::Forward(_) => i.forward = 1.0,
@@ -146,6 +151,10 @@ fn drive(
             }
         }
         Step::Command(ref text) => console.add_trusted_text(text),
+        Step::Hold(f) => {
+            ap.hold_forward = f;
+            i.forward = f;
+        }
         Step::Wait(_) | Step::Until(_) => {}
     }
     ap.elapsed += dt;

@@ -1,6 +1,7 @@
 //! The player: input, fixed-tick movement, camera placement and "use".
 
 pub mod autopilot;
+pub mod body;
 pub mod health;
 pub mod movement;
 pub mod shake;
@@ -22,7 +23,7 @@ pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((autopilot::AutopilotPlugin, health::HealthPlugin, shake::ShakePlugin))
+        app.add_plugins((autopilot::AutopilotPlugin, body::BodyPlugin, health::HealthPlugin, shake::ShakePlugin))
             .init_resource::<PlayerInput>()
             // Placed during level load, before the new map's first tick.
             .add_systems(PreUpdate, spawn_or_reset_player.in_set(PlayerSpawnSet).after(crate::entities::EntitySpawnSet))
@@ -243,18 +244,38 @@ fn player_tick(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn place_camera(
     fixed: Res<Time<Fixed>>,
     input: Res<PlayerInput>,
     shakes: Res<shake::Shakes>,
     players: Query<&Player>,
-    mut cams: Query<&mut ViewAngles, With<MainCamera>>,
+    portals: Option<Res<crate::portals::Portals>>,
+    portal_query: Query<&crate::portals::Portal>,
+    mut cams: Query<(&mut ViewAngles, Option<&Projection>), With<MainCamera>>,
 ) {
     let Ok(p) = players.single() else { return };
     let alpha = fixed.overstep_fraction();
     let origin = p.previous_origin.lerp(p.state.origin, alpha);
-    for mut view in &mut cams {
+    let frames = portals.and_then(|portals| crate::portals::linked_frames(&portals, &portal_query)).filter(|_| !p.noclip);
+    for (mut view, projection) in &mut cams {
         view.origin = origin + Vec3::Z * p.state.eye_offset() + shakes.offset;
         view.angles = input.input.angles + Vec3::Z * shakes.roll;
+        // An eye on the far side of an opening sees out of the other portal.
+        if let Some(frames) = &frames {
+            let (near, near_half) = match projection {
+                Some(Projection::Perspective(pp)) => {
+                    let h = pp.near * (pp.fov * 0.5).tan();
+                    (pp.near, Vec2::new(h * pp.aspect_ratio, h))
+                }
+                _ => (4.0, Vec2::new(4.0, 3.0)),
+            };
+            let rot = crate::coords::angles_to_quat(view.angles);
+            let (eye, rot) = crate::portals::view_through_portals(frames, view.origin, rot, near, near_half);
+            if eye != view.origin {
+                view.origin = eye;
+                view.angles = crate::coords::quat_to_angles(rot);
+            }
+        }
     }
 }

@@ -66,6 +66,20 @@ pub struct CollisionWorld {
     pub brush_models: Vec<Arc<Shape>>,
 }
 
+impl CollisionWorld {
+    pub fn from_statics(statics: Vec<ConvexVolume>) -> Self {
+        let bounds: Vec<(Vec3, Vec3)> = statics.iter().map(|v| (v.mins, v.maxs)).collect();
+        Self { bvh: Bvh::build(&bounds), statics, brush_models: Vec::new() }
+    }
+
+    /// Indices of static volumes whose bounds overlap a box.
+    pub fn statics_in(&self, mins: Vec3, maxs: Vec3) -> Vec<u32> {
+        let mut out = Vec::new();
+        self.bvh.query_aabb(mins, maxs, |i| out.push(i));
+        out
+    }
+}
+
 /// Collision attached to an entity; volumes are in the entity's space.
 #[derive(Component, Clone)]
 pub struct Collider {
@@ -184,7 +198,7 @@ impl Physics<'_, '_> {
             if v.contents & mask == 0 {
                 return;
             }
-            if in_holes.iter().any(|h| h.is_surface_volume(v)) {
+            if in_holes.iter().any(|h| h.carves(i)) {
                 return;
             }
             if let Some(hit) = v.sweep(start, end, mins, maxs) {
@@ -214,6 +228,22 @@ impl Physics<'_, '_> {
             for v in &col.shape.volumes {
                 if v.contents & mask == 0 {
                     continue;
+                }
+                // Brush entities a portal sits on are cut like the world.
+                if !in_holes.is_empty() {
+                    let corners: Vec<Vec3> = (0..8)
+                        .map(|i| {
+                            let c = Vec3::new(
+                                if i & 1 == 0 { v.mins.x } else { v.maxs.x },
+                                if i & 2 == 0 { v.mins.y } else { v.maxs.y },
+                                if i & 4 == 0 { v.mins.z } else { v.maxs.z },
+                            );
+                            affine.transform_point3(c)
+                        })
+                        .collect();
+                    if in_holes.iter().any(|h| h.carves_bounds(&corners)) {
+                        continue;
+                    }
                 }
                 if let Some(hit) = v.sweep(ls, le, lmins, lmaxs) {
                     let n = Vec3::from(affine.matrix3 * bevy::math::Vec3A::from(hit.plane.normal)).normalize_or_zero();

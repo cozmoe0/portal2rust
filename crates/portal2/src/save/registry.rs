@@ -174,7 +174,7 @@ pub fn place_saved_portals(world: &mut World) {
     let Some(PendingPortals(frames)) = world.remove_resource::<PendingPortals>() else { return };
     for (slot, frame) in frames.into_iter().enumerate() {
         if let Some(frame) = frame {
-            world.write_message(crate::portals::PlacePortal { slot, frame });
+            world.write_message(crate::portals::PlacePortal { slot, frame, settle: false });
         }
     }
 }
