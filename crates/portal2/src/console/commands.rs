@@ -334,14 +334,19 @@ fn upgrade_portalgun(world: &mut World, args: &CommandArgs) {
 }
 
 /// Saves the window to `screenshots/<map>NNNN.png` under the working directory.
-fn screenshot(world: &mut World, _args: &CommandArgs) {
+/// `screenshot` / `jpeg [name]`: saves the frame under `screenshots/`, as
+/// `name.png` when given, otherwise numbered after the map.
+fn screenshot(world: &mut World, args: &CommandArgs) {
     let map = world.get_resource::<CurrentMap>().map(|m| m.name.clone()).unwrap_or_else(|| "screenshot".into());
     let dir = std::path::Path::new("screenshots");
     let _ = std::fs::create_dir_all(dir);
-    let path = (0..10000)
-        .map(|i| dir.join(format!("{map}{i:04}.png")))
-        .find(|p| !p.exists())
-        .unwrap_or_else(|| dir.join(format!("{map}.png")));
+    let named = Some(args.arg(1)).filter(|n| !n.is_empty()).map(|n| dir.join(format!("{n}.png")));
+    let path = named.unwrap_or_else(|| {
+        (0..10000)
+            .map(|i| dir.join(format!("{map}{i:04}.png")))
+            .find(|p| !p.exists())
+            .unwrap_or_else(|| dir.join(format!("{map}.png")))
+    });
     print(world, format!("Wrote {}", path.display()));
     world.spawn(Screenshot::primary_window()).observe(save_to_disk(path));
 }

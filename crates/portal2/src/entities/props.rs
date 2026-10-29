@@ -12,12 +12,12 @@ use source_formats::bsp::StaticProp;
 use source_formats::studio::StudioModel;
 use source_formats::vhv::Vhv;
 
-use super::io::{FireOutput, InputCall, InputHandlers, fire_output};
+use super::io::{EventQueue, EventTarget, FireOutput, InputCall, InputHandlers, fire_output};
 use super::spawner::{ModelOptions, attach_studio_model, clear_render_children};
 use super::{MapEntity, SpawnHandlers};
 use crate::clock::{GameClock, ThinkSet};
 use crate::coords::angles_to_quat;
-use crate::models::animation::AnimationFinished;
+use crate::models::animation::{AnimationEvent, AnimationFinished};
 use crate::models::lighting;
 use crate::models::{ModelCache, SpawnModel, StudioAnimator, spawn_model_parts};
 use crate::render::materials::{MaterialCache, MaterialContext};
@@ -27,7 +27,7 @@ use crate::vfs::GameFs;
 use crate::world::{CurrentMap, MapObject};
 
 pub fn register(app: &mut App) {
-    app.add_systems(Update, animation_done_outputs)
+    app.add_systems(Update, (animation_done_outputs, animation_events))
         .add_systems(FixedUpdate, button_timers.in_set(ThinkSet));
     let world = app.world_mut();
     {
@@ -250,6 +250,50 @@ fn model_inputs(world: &mut World, call: &InputCall) -> bool {
 fn animation_done_outputs(mut finished: MessageReader<AnimationFinished>, mut out: MessageWriter<FireOutput>) {
     for f in finished.read() {
         out.write(FireOutput::new(f.entity, "OnAnimationDone"));
+    }
+}
+
+/// Model events the server and client act on: event 1100 sends the input
+/// named in its options to the model's own entity (the container ride's
+/// impacts are `FireUser1`-`4` on its master model), sound events play
+/// their sound from the model, particle events start their effect at the
+/// named attachment (or the model).
+const SCRIPT_EVENT_FIRE_INPUT: i32 = 1100;
+
+fn animation_events(mut events: MessageReader<AnimationEvent>, mut commands: Commands) {
+    for ev in events.read() {
+        let ev = ev.clone();
+        commands.queue(move |world: &mut World| animation_event(world, &ev));
+    }
+}
+
+fn animation_event(world: &mut World, ev: &AnimationEvent) {
+    let e = ev.entity;
+    if world.get_entity(e).is_err() {
+        return;
+    }
+    if ev.event == SCRIPT_EVENT_FIRE_INPUT {
+        let input = ev.options.trim().to_ascii_lowercase();
+        world.resource_mut::<EventQueue>().push(0.0, EventTarget::Entity(e), &input, "", Some(e), Some(e));
+        return;
+    }
+    match ev.name.as_str() {
+        "AE_CL_PLAYSOUND" | "AE_SV_PLAYSOUND" => {
+            crate::audio::emit(world, ev.options.trim(), crate::audio::Emit { entity: Some(e), ..default() });
+        }
+        "AE_CL_CREATE_PARTICLE_EFFECT" => {
+            let mut parts = ev.options.split_whitespace();
+            let Some(effect) = parts.next() else { return };
+            let attachment = parts.nth(1);
+            let at = attachment
+                .and_then(|a| super::attachment_world(world, e, a))
+                .unwrap_or_else(|| super::world_transform(world, e).compute_transform());
+            let effect = effect.to_owned();
+            let mut commands = world.commands();
+            crate::particles::spawn_effect(&mut commands, &effect, at, true);
+            world.flush();
+        }
+        _ => {}
     }
 }
 

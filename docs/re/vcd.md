@@ -152,6 +152,13 @@ The compiled format numbers types in this order. Counts are events in the
 | 8 | `face` | 52 | 18 | `script` | 0 |
 | 9 | `firetrigger` | 59 | | | |
 
+## Scene names
+
+Before looking a scene up, the server replaces the file name's extension
+with `.vcd` (`V_SetExtension`), so `glados.nut`'s
+`scenes/npc/sphere03/intro_ride07.wav` plays `intro_ride07.vcd`. The key
+is then lowercased with backslashes.
+
 ## `scenes.image`
 
 Little endian throughout.

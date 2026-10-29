@@ -54,7 +54,7 @@ impl SceneLibrary {
         let scene: Option<Scene> = match image.as_ref().and_then(|i| i.load(&key)) {
             Some(Ok(s)) => Some(s),
             _ => {
-                let path = if key.ends_with(".vcd") { key.clone() } else { format!("{key}.vcd") };
+                let path = source_formats::scenes_image::scene_key(&key).replace('\\', "/");
                 fs.read_string(&path).and_then(|t| Scene::parse(&t).ok())
             }
         };

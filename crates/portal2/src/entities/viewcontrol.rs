@@ -20,6 +20,7 @@ use crate::player::{Player, PlayerCameraSet, PlayerInput};
 pub fn register(app: &mut App) {
     app.init_resource::<ActiveView>()
         .add_systems(FixedUpdate, update_proxies.after(crate::player::PlayerMoveSet))
+        .add_systems(PostUpdate, track_proxy_motion.before(TransformSystems::Propagate))
         .add_systems(
             PostUpdate,
             apply_view
@@ -73,6 +74,22 @@ pub struct ViewProxy {
     spawn_origin: Vec3,
     enabled_at: f64,
     start_offset: Vec3,
+    /// `usefakeacceleration`: the proxy's jolts push the player around.
+    #[serde(default)]
+    fake_acceleration: bool,
+    /// `skewaccelerationforward`: jolts along the proxy's facing push less.
+    #[serde(default)]
+    skew_forward: bool,
+    #[serde(default)]
+    acceleration_scale: f32,
+    /// The proxy's place and velocity when last seen (each frame, after
+    /// animation), and its change of velocity since the last tick.
+    #[serde(default)]
+    last_position: Vec3,
+    #[serde(default)]
+    last_velocity: Vec3,
+    #[serde(skip)]
+    pending_accel: Vec3,
 }
 
 impl crate::save::Restore for ViewProxy {}
@@ -90,10 +107,16 @@ fn spawn_proxy(world: &mut World, e: Entity) {
         proxy: me.get("proxy").unwrap_or("").to_ascii_lowercase(),
         attachment: me.get("proxyattachment").filter(|s| !s.is_empty()).map(str::to_owned),
         offset_type: me.get_i32("offsettype").unwrap_or(0),
-        tilt: me.get_f32("tiltfraction").unwrap_or(0.5),
+        tilt: me.get_f32("tiltfraction").unwrap_or(0.5).clamp(0.0, 1.0),
         spawn_origin: me.origin(),
         enabled_at: 0.0,
         start_offset: Vec3::ZERO,
+        fake_acceleration: me.get_bool("usefakeacceleration"),
+        skew_forward: me.get_bool("skewaccelerationforward"),
+        acceleration_scale: me.get_f32("accelerationscalar").unwrap_or(1.0),
+        last_position: Vec3::ZERO,
+        last_velocity: Vec3::ZERO,
+        pending_accel: Vec3::ZERO,
     };
     world.entity_mut(e).insert(p);
 }
@@ -150,6 +173,12 @@ fn proxy_input(world: &mut World, call: &InputCall) -> bool {
         "enable" => {
             let now = world.resource::<GameClock>().curtime;
             let proxy = proxy_origin(world, e);
+            if let (Some(o), Some(mut p)) = (proxy, world.get_mut::<ViewProxy>(e))
+                && p.last_position == Vec3::ZERO
+            {
+                p.last_position = o;
+                p.last_velocity = Vec3::ZERO;
+            }
             let eye = player_eye(world).map(|(_, eye)| eye);
             if let Some(mut p) = world.get_mut::<ViewProxy>(e) {
                 p.enabled_at = now;
@@ -186,13 +215,7 @@ fn proxy_origin(world: &World, e: Entity) -> Option<Vec3> {
 fn proxy_rotation(world: &World, e: Entity, proxy: Entity) -> Quat {
     let own = world_transform(world, proxy).compute_transform().rotation;
     let Some(name) = world.get::<ViewProxy>(e).and_then(|p| p.attachment.clone()) else { return own };
-    let Some(parent) = super::map_parent(world, proxy) else { return own };
-    let Some(anim) = world.get::<crate::models::StudioAnimator>(parent) else { return own };
-    let mdl = &anim.model.studio.mdl;
-    let Some(a) = mdl.find_attachment(&name).map(|i| mdl.attachments[i].clone()) else { return own };
-    let Some(&joint) = anim.joints.get(a.bone.max(0) as usize) else { return own };
-    let joint = world_transform(world, joint).compute_transform();
-    (joint * Transform::from_matrix(a.local)).rotation
+    super::map_parent(world, proxy).and_then(|parent| super::attachment_world(world, parent, &name)).map_or(own, |t| t.rotation)
 }
 
 /// Computes the proxy view from the player's place (`origin`: feet, or
@@ -233,7 +256,56 @@ fn update_proxies(world: &mut World) {
     let Some(view) = world.resource::<ActiveView>().0 else { return };
     if world.get::<ViewProxy>(view).is_some() {
         place_proxy(world, view, None);
+        fake_acceleration(world, view);
     }
+}
+
+/// The proxy moves with animation, which runs each frame: its velocity is
+/// measured there and the changes add up until the next tick takes them.
+fn track_proxy_motion(world: &mut World) {
+    let Some(view) = world.resource::<ActiveView>().0 else { return };
+    let dt = world.resource::<Time>().delta_secs();
+    let Some(proxy) = proxy_entity(world, view) else { return };
+    let position = world_transform(world, proxy).translation();
+    let Some(mut p) = world.get_mut::<ViewProxy>(view) else { return };
+    if !p.fake_acceleration || dt <= 0.0 {
+        return;
+    }
+    let velocity = (position - p.last_position) / dt;
+    let change = velocity - p.last_velocity;
+    p.pending_accel += change;
+    p.last_position = position;
+    p.last_velocity = velocity;
+}
+
+/// With `usefakeacceleration`, the proxy's change of velocity this tick
+/// (ignored when tiny or huge) pushes the player the other way through
+/// their base velocity, which otherwise winds down: it loses 100 units/s
+/// each second and a quarter of itself.
+fn fake_acceleration(world: &mut World, e: Entity) {
+    let dt = world.resource::<Time<Fixed>>().delta_secs();
+    let Some(proxy) = proxy_entity(world, e) else { return };
+    let placed = world_transform(world, proxy).compute_transform();
+    let Some(mut p) = world.get_mut::<ViewProxy>(e) else { return };
+    if !p.fake_acceleration || dt <= 0.0 {
+        return;
+    }
+    let mut accel = std::mem::take(&mut p.pending_accel);
+    if !(20.0..=10000.0).contains(&accel.length_squared()) {
+        accel = Vec3::ZERO;
+    }
+    if p.skew_forward {
+        let forward = placed.rotation * Vec3::X;
+        accel *= 0.75 - forward.dot(accel.normalize_or_zero()) * 0.35;
+    }
+    let scale = p.acceleration_scale;
+    let Some(pe) = world.resource::<EntityRegistry>().player else { return };
+    let Some(mut player) = world.get_mut::<Player>(pe) else { return };
+    let s = &mut player.state;
+    let speed = s.base_velocity.length();
+    let base = if speed >= dt * 100.0 { s.base_velocity * ((speed - dt * 100.0) / speed) } else { Vec3::ZERO };
+    s.base_velocity = base * (1.0 - dt * 0.25).max(0.0) - accel * 3.0 * scale;
+    s.base_velocity_set = true;
 }
 
 /// Puts the main camera on the active view each frame.
@@ -259,6 +331,7 @@ fn apply_view(world: &mut World) {
         world_transform(world, view).compute_transform()
     };
     let angles = quat_to_angles(t.rotation);
+    debug!("view {:.2} at {:.1?} angles {:.1?}", world.resource::<GameClock>().curtime, t.translation, angles);
     let mut cams = world.query_filtered::<&mut crate::camera::ViewAngles, With<crate::camera::MainCamera>>();
     for mut v in cams.iter_mut(world) {
         v.origin = t.translation;

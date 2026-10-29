@@ -133,6 +133,7 @@ pub fn register_all(r: &mut SaveRegistry) {
     crate::devices::func_tank::register_save(r);
     crate::devices::futbol::register_save(r);
     r.custom("animator", save_animator, load_animator);
+    crate::physics::constraints::register_save(r);
     r.custom("physics", save_physics, load_physics);
     r.custom("script_scope", crate::script::save::save_scope, crate::script::save::load_scope);
 

@@ -314,6 +314,11 @@ pub fn service_events(world: &mut World) {
 }
 
 pub fn dispatch_input(world: &mut World, call: &InputCall) {
+    if world.get_resource::<IoDebug>().is_some_and(|d| d.0) {
+        let name = world.get::<MapEntity>(call.target).map(|m| m.targetname.clone().unwrap_or_else(|| m.classname.clone()));
+        let now = world.get_resource::<crate::clock::GameClock>().map_or(0.0, |c| c.curtime);
+        info!("io: ({now:.2}) input {}.{}({})", name.unwrap_or_default(), call.input, call.param);
+    }
     // Scripted entities see `activator` / `caller` and may veto the input
     // with an `Input<Name>` function.
     let scripted = world.get::<crate::script::ScriptScope>(call.target).is_some();

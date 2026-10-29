@@ -155,13 +155,16 @@ impl ScenesImage {
     }
 }
 
-/// Lookup key as the game builds it: lowercase, backslashes, `.vcd` added
-/// when the file name has no extension.
+/// Lookup key as the game builds it: lowercase, backslashes, and the file
+/// name's extension (if any) replaced by `.vcd` (a script naming
+/// `intro_ride07.wav` gets `intro_ride07.vcd`).
 pub fn scene_key(path: &str) -> String {
     let mut key: String = path.chars().map(|c| if c == '/' { '\\' } else { c.to_ascii_lowercase() }).collect();
-    if !key.rsplit('\\').next().unwrap_or("").contains('.') {
-        key.push_str(".vcd");
+    let name_start = key.rfind('\\').map_or(0, |i| i + 1);
+    if let Some(dot) = key[name_start..].rfind('.') {
+        key.truncate(name_start + dot);
     }
+    key.push_str(".vcd");
     key
 }
 
@@ -390,6 +393,7 @@ mod tests {
         assert_eq!(crc32(b"123456789"), 0xCBF4_3926);
         assert_eq!(scene_key("Scenes/NPC/Glados/Hello"), "scenes\\npc\\glados\\hello.vcd");
         assert_eq!(scene_key("scenes/a.b/c.vcd"), "scenes\\a.b\\c.vcd");
+        assert_eq!(scene_key("scenes/npc/sphere03/intro_ride07.wav"), "scenes\\npc\\sphere03\\intro_ride07.vcd");
         assert_eq!(scene_crc("scenes/x.vcd"), crc32(b"scenes\\x.vcd"));
     }
 

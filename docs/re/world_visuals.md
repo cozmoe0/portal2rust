@@ -87,6 +87,12 @@ descriptions are our own; the code in `crates/portal2` is written from them.
   shadowed light keeps `r_flashlightshadowatten` (0.35) of the light,
   blended back toward full shadow where the attenuation is strong.
 - The light points at `target` when one is set.
+- Only one shines at a time: `TurnOn` first sends `TurnOff` to every other
+  `env_projectedtexture`, and one that is on when it activates does the
+  same (warning "forced off"). In `sp_a1_intro1` the container's track
+  light turning on at the first impact switches off the room, door and
+  Wheatley lights, and the map raises `r_flashlightbrightness` to 3 (from
+  0.25) through a `point_clientcommand` for the ride.
 
 ## Sprites (`env_sprite`)
 

@@ -74,7 +74,6 @@ pub fn register(app: &mut App) {
         "light",
         "light_spot",
         "env_spark",
-        "env_ar2explosion",
         "info_overlay_accessor",
         "vgui_screen",
         "move_rope",

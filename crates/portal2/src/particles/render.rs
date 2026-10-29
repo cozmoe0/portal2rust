@@ -343,6 +343,20 @@ impl Batch {
         self.indices.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
     }
 
+    /// A screen-facing quad of the whole texture (code-driven effects).
+    pub fn sprite(&mut self, pos: Vec3, radius: f32, roll: f32, color: [f32; 4]) {
+        self.quad(&Vert {
+            pos,
+            mode: MODE_SCREEN,
+            blend: 0.0,
+            shape: [radius, roll, 1.0, 0.0],
+            rects: [FULL; 3],
+            axis0: Vec3::ZERO,
+            axis1: Vec3::ZERO,
+            color,
+        });
+    }
+
     /// Writes the arrays into `mesh`, replacing what it held.
     pub fn write(self, mesh: &mut Mesh) {
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, self.pos);

@@ -2,7 +2,9 @@
 //! a periodic log of the player's state.
 //!
 //! Steps are comma separated: `w1.5` wait, `f2` forward, `b1` back, `l1` /
-//! `r1` strafe, `j` jump tap, `d1` crouch, `t90` turn (degrees), `e` use.
+//! `r1` strafe, `j` jump tap, `d1` crouch, `t90` turn (degrees), `e` use,
+//! `@12.5` wait until the map clock reads 12.5 s, `c<text>` run console
+//! text (for replaying a timed run of the original game).
 
 use bevy::prelude::*;
 
@@ -21,7 +23,7 @@ impl Plugin for AutopilotPlugin {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 enum Step {
     Wait(f32),
     Forward(f32),
@@ -35,6 +37,8 @@ enum Step {
     Fire(usize),
     LookAt(Vec3),
     Use,
+    Until(f64),
+    Command(String),
 }
 
 #[derive(Resource)]
@@ -49,6 +53,12 @@ fn parse(spec: &str) -> Vec<Step> {
     spec.split(',')
         .filter_map(|s| {
             let s = s.trim();
+            if let Some(text) = s.strip_prefix('c') {
+                return Some(Step::Command(text.to_owned()));
+            }
+            if let Some(t) = s.strip_prefix('@') {
+                return t.parse().ok().map(Step::Until);
+            }
             let (kind, rest) = s.split_at(1.min(s.len()));
             let n: f32 = rest.parse().unwrap_or(1.0);
             Some(match kind {
@@ -91,8 +101,11 @@ pub struct AutoFire(pub Option<usize>);
 #[derive(Resource, Default)]
 pub struct AutoUse(pub bool);
 
+#[allow(clippy::too_many_arguments)]
 fn drive(
     time: Res<Time<Fixed>>,
+    clock: Res<crate::clock::GameClock>,
+    mut console: ResMut<crate::console::Console>,
     ap: Option<ResMut<Autopilot>>,
     mut input: ResMut<PlayerInput>,
     mut fire: ResMut<AutoFire>,
@@ -106,11 +119,12 @@ fn drive(
     i.right = 0.0;
     i.jump = false;
     i.duck = false;
-    let Some(&step) = ap.steps.get(ap.index) else { return };
+    let Some(step) = ap.steps.get(ap.index).cloned() else { return };
     let duration = match step {
         Step::Wait(d) | Step::Forward(d) | Step::Back(d) | Step::Left(d) | Step::Right(d) | Step::Duck(d) => d,
         Step::Jump => 2.0 / 60.0,
-        Step::Turn(_) | Step::Pitch(_) | Step::Fire(_) | Step::LookAt(_) | Step::Use => 0.0,
+        Step::Until(t) if clock.curtime < t => return,
+        Step::Turn(_) | Step::Pitch(_) | Step::Fire(_) | Step::LookAt(_) | Step::Use | Step::Until(_) | Step::Command(_) => 0.0,
     };
     match step {
         Step::Forward(_) => i.forward = 1.0,
@@ -131,13 +145,14 @@ fn drive(
                 i.angles.x = (-d.z).asin().to_degrees().clamp(-89.0, 89.0);
             }
         }
-        Step::Wait(_) => {}
+        Step::Command(ref text) => console.add_trusted_text(text),
+        Step::Wait(_) | Step::Until(_) => {}
     }
     ap.elapsed += dt;
     if ap.elapsed >= duration {
         ap.elapsed = 0.0;
         ap.index += 1;
-        info!("autopilot step {} {:?}", ap.index, step);
+        info!("autopilot step {} {:?} at {:.2}", ap.index, step, clock.curtime);
     }
 }
 

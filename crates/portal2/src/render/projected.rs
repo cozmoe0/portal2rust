@@ -5,8 +5,10 @@
 //! The lighting follows the engine's flashlight. Its colour is `lightcolor`
 //! rgb / 255 times alpha / 255, times `brightnessscale` and the flashlight
 //! scale (`r_flashlightbrightness`, 0.25, times 2.5 when blending is
-//! sRGB-correct, as on every current card). Light falls off as 100 /
-//! distance (no constant or quadratic term), fades out between 60% and 100%
+//! sRGB-correct, as on every current card). Only one shines at a time:
+//! turning one on, or one starting on, turns all the others off. Light
+//! falls off as 100 / distance (no constant or quadratic term), fades out
+//! between 60% and 100%
 //! of the far distance and is scaled by N·L and the cookie. In shadow a
 //! surface keeps `r_flashlightshadowatten` (0.35) of the light, less where
 //! the light is strong. The colour follows changes of `lightcolor` at
@@ -44,8 +46,9 @@ pub const MAX_SHADOWS: usize = 4;
 /// `r_flashlightdepthres`.
 const SHADOW_SIZE: u32 = 1024;
 const COOKIE_SIZE: u32 = 512;
-/// `r_flashlightbrightness` × 2.5 for sRGB-correct blending.
-const FLASHLIGHT_SCALE: f32 = 0.25 * 2.5;
+/// Flashlight brightness is `r_flashlightbrightness` (0.25; the first map
+/// raises it for the container ride) × 2.5 for sRGB-correct blending.
+const SRGB_BLEND_SCALE: f32 = 2.5;
 /// `r_flashlightshadowatten`.
 const SHADOW_ATTEN: f32 = 0.35;
 /// The engine's attenuation for projected textures: constant, linear, quadratic.
@@ -290,10 +293,28 @@ fn spawn_projected(world: &mut World, e: Entity) {
         cookie: me.get("texturename").unwrap_or("effects/flashlight001").to_owned(),
         target: me.get("target").filter(|t| !t.is_empty()).map(str::to_owned),
     };
+    let on = light.on;
     world.entity_mut(e).insert(light);
+    if on {
+        turn_off_others(world, e);
+    }
+}
+
+/// Only one projected texture shines at a time: turning one on (or one
+/// starting on) turns every other one off.
+fn turn_off_others(world: &mut World, keep: Entity) {
+    let mut lights = world.query::<(Entity, &mut ProjectedTexture)>();
+    for (e, mut l) in lights.iter_mut(world) {
+        if e != keep {
+            l.on = false;
+        }
+    }
 }
 
 fn projected_input(world: &mut World, call: &InputCall) -> bool {
+    if call.input == "turnon" && world.get::<ProjectedTexture>(call.target).is_some() {
+        turn_off_others(world, call.target);
+    }
     let Some(mut l) = world.get_mut::<ProjectedTexture>(call.target) else { return false };
     let f = source_formats::kv::parse_f32_lenient(&call.param);
     match call.input.as_str() {
@@ -337,8 +358,10 @@ fn update_lights(
     main: Query<&GlobalTransform, With<MainCamera>>,
     mut cameras: Query<(&ShadowCamera, &mut Camera, &mut Transform, &mut Projection), Without<ProjectedTexture>>,
     mut last_count: Local<usize>,
+    console: Option<Res<crate::console::Console>>,
 ) {
     let eye = main.single().map(|t| t.translation()).unwrap_or_default();
+    let flashlight_scale = console.map_or(0.25, |c| c.f32("r_flashlightbrightness")) * SRGB_BLEND_SCALE;
     let dt = time.delta_secs();
     let mut active = Vec::new();
     for (gt, mut light) in &mut lights {
@@ -366,7 +389,7 @@ fn update_lights(
                 rotation = Quat::from_rotation_arc(Vec3::X, dir);
             }
         }
-        let brightness = current.w / 255.0 * light.brightness_scale * FLASHLIGHT_SCALE;
+        let brightness = current.w / 255.0 * light.brightness_scale * flashlight_scale;
         let color = current.truncate() / 255.0 * brightness;
         if color.max_element() <= 0.0 {
             continue;

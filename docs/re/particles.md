@@ -267,6 +267,29 @@ origin and angles.
   min z), and 4 and 5 at objects near the field (512 units below the
   bounds otherwise). The effect is made again whenever it has ended.
 
+## AR2 explosion dust (`env_ar2explosion`)
+
+`Explode` makes a client cloud (`C_AR2Explosion`) of 70 puffs of the
+entity's material (`particle/particle_noisesphere` by default):
+
+- Each puff first tries three times to land on the world: the segment
+  between two random points 240 units from the centre is tested against
+  nearby world surfaces and a random hit is used. The puff flies along its
+  direction from the centre mirrored in the surface, at
+  10000 × (1 − d / 240)² (d the distance, at most 240), and lives 4 to
+  10 s.
+- The others start 60 units out in a random direction; their distance
+  counts a further 0 to 50 units; they fly outward at
+  10000 × (1 − d / 120)² and live 2 to 5 s with five times the spin.
+- A puff appears `d × 0.0000767 + 0.1` s after the explosion. Each frame
+  (time step at most 0.05 s) it moves, grows by the distance moved (from 8)
+  and slows by `100 / (moved² + 100)`; its spin (random ±0.4 rad/s) falls
+  to 0.3 of itself per second while above 0.2.
+- Drawn screen-facing, colour from (0.35, 0.345, 0.33) to (0.75, 0.75, 0.7)
+  over its life `(age − 0.25) / life`; alpha rises over the first 0.25 s to
+  0.5, then falls with `(1 − t) × 0.5`, scaled to 0 within 50 units of
+  the view and to 1 at 150.
+
 ## Not traced yet
 
 - How the SpriteCard shader combines dual sequences (`$sequence_blend_mode`)

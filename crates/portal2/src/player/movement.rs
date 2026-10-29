@@ -182,6 +182,13 @@ pub struct MoveState {
     /// Gel under the player at the end of the last tick.
     #[serde(skip)]
     pub ground_paint: Option<PaintType>,
+    /// Velocity added to the player's own for the move only (a view
+    /// proxy's fake acceleration sets it); it lapses unless set again
+    /// before each tick.
+    #[serde(default)]
+    pub base_velocity: Vec3,
+    #[serde(skip)]
+    pub base_velocity_set: bool,
 }
 
 fn normal_speed() -> f32 {
@@ -202,6 +209,8 @@ impl Default for MoveState {
             max_speed: MAX_SPEED,
             speed_delay: 0.0,
             ground_paint: None,
+            base_velocity: Vec3::ZERO,
+            base_velocity_set: false,
         }
     }
 }
@@ -234,6 +243,14 @@ impl Mover<'_, '_, '_> {
     /// Advances the player by one tick. Returns whether bounce gel threw
     /// the player off a surface.
     pub fn step(&self, s: &mut MoveState, input: &MoveInput, dt: f32) -> bool {
+        if !s.base_velocity_set {
+            s.base_velocity = Vec3::ZERO;
+        }
+        s.base_velocity_set = false;
+        // The upward part of the base velocity goes into the velocity once.
+        s.velocity.z += s.base_velocity.z * dt;
+        s.base_velocity.z = 0.0;
+        let base = s.base_velocity;
         self.unstick(s);
         self.update_duck(s, input, dt);
         self.contacts.borrow_mut().clear();
@@ -281,14 +298,18 @@ impl Mover<'_, '_, '_> {
             accelerate(&mut s.velocity, wish_dir, wish_speed, ACCELERATE, dt);
             s.velocity.z = 0.0;
             clamp_velocity(&mut s.velocity);
+            s.velocity += base;
             self.walk_move(s, dt);
+            s.velocity -= base;
         } else {
             // Gravity is split around the move for a symmetric arc.
             s.velocity.z -= GRAVITY * dt * 0.5;
             let wish = self.air_wish(s, input, dt);
             air_accelerate(&mut s.velocity, wish.normalize_or_zero(), wish.length().min(max_speed), AIR_ACCELERATE, dt);
             clamp_velocity(&mut s.velocity);
+            s.velocity += base;
             self.slide_move(s, dt);
+            s.velocity -= base;
             s.velocity.z -= GRAVITY * dt * 0.5;
         }
         self.categorize_position(s);

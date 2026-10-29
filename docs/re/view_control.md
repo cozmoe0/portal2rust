@@ -32,6 +32,19 @@ screenshots through the network console).
   view, so other entities can aim at it (Wheatley's swivels target
   `camera_1`).
 - `TeleportPlayerToProxy` moves the player to the view and disables it.
+- `usefakeacceleration` (offset 944): each think the proxy's velocity is
+  measured from its movement since the last think and its change taken as
+  an acceleration; one whose square is below 20 or above 10000 counts as
+  none. With `skewaccelerationforward` it is scaled by
+  `0.75 − forward · direction × 0.35` (forward of the proxy entity). The
+  player's base velocity then loses `100 × frametime` of its length and a
+  `0.25 × frametime` share, and the acceleration × 3 × `accelerationscalar`
+  is taken off it. The base velocity carries the player around the hidden
+  box (`FL_BASEVELOCITY` keeps it for the next move), so with offset type 2
+  the view sways with the container's jolts.
+- `easeanglestocamera` (offset 952): the player's own pitch and yaw move
+  15% of the way to the proxy's each think and the view takes only the
+  proxy's roll.
 - Second wake-up in `sp_a1_intro1`: `camera_1` (offsettype 2, tilt 0)
   through `camera_proxy` on `Actor_container_master`'s `vstAttachment`;
   the game reports the view at (-5758, 1938, 281), as here.

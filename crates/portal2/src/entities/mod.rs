@@ -437,6 +437,15 @@ pub struct RidesAttachment;
 
 impl crate::save::Restore for RidesAttachment {}
 
+/// World placement of the named attachment on an entity's model.
+pub fn attachment_world(world: &World, e: Entity, name: &str) -> Option<Transform> {
+    let anim = world.get::<crate::models::StudioAnimator>(e)?;
+    let mdl = &anim.model.studio.mdl;
+    let a = mdl.attachments.get(mdl.find_attachment(name)?)?;
+    let joint = *anim.joints.get(a.bone.max(0) as usize)?;
+    Some(world_transform(world, joint).compute_transform() * Transform::from_matrix(a.local))
+}
+
 /// Re-parents `child` to an attachment of its parent's model: snapped onto
 /// it, or keeping its current placement (`keep_offset`).
 pub fn set_parent_attachment(world: &mut World, child: Entity, attachment: &str, keep_offset: bool) -> bool {

@@ -9,6 +9,7 @@
 //! effect owns a [`sim::Collection`] (with its children) and one mesh per
 //! renderer, rebuilt every frame.
 
+pub mod ar2_explosion;
 pub mod defs;
 pub mod hooks;
 pub mod render;
@@ -166,6 +167,7 @@ impl Plugin for ParticlePlugin {
         let world = app.world_mut();
         world.resource_mut::<SpawnHandlers>().register("info_particle_system", spawn_info);
         world.resource_mut::<InputHandlers>().register("info_particle_system", effect_input);
+        ar2_explosion::register(app);
     }
 }
 

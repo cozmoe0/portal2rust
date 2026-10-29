@@ -123,6 +123,17 @@ section's start.
   (`wheatley_entry.mdl`, 0x02/0x01/0x08/0x04 bones) whose attachment the
   game reports at the same place and angles.
 
+## Sequence events
+
+- Event 1100 sends the input named in its options to the model's own
+  entity (activator and caller itself). The container ride's master model
+  fires `FireUser1`-`4` this way for its impacts (`anim2`, 135 s); the
+  game's IO trace shows them at the cycles the events give.
+- Named events: `AE_CL_PLAYSOUND` plays the sound in the options from the
+  model; `AE_CL_CREATE_PARTICLE_EFFECT` starts the effect (options:
+  effect, attach type, attachment), e.g. the vault glass's
+  `impact_glass_dust_lrg` at `glass_D2_attach`.
+
 ## In the installed models
 
 - Security cameras and floor turrets aim with autoplay delta grids over

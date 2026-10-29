@@ -151,6 +151,7 @@ pub const DEFAULTS: &[(&str, &str, u32)] = &[
     ("mat_bloomscale", "1", 0x0),
     ("mat_motion_blur_enabled", "1", 0x0),
     ("r_portal_stencil_depth", "2", 0x88),
+    ("r_flashlightbrightness", "0.25", 0x0),
     // Portals and carrying.
     ("portalgun_fire_delay", "0.20", 0x6000),
     ("portal_draw_ghosting", "1", 0x0),
