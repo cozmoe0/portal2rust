@@ -1,4 +1,4 @@
-//! Paint bombs (`prop_paint_bomb`): physics balls of gel that burst when
+wa//! Paint bombs (`prop_paint_bomb`): physics balls of gel that burst when
 //! they hit something. The burst traces the `paintbomb_*_angle_split`
 //! directions out to `paintbomb_explosion_radius` and paints where they
 //! land; a ring of short-lived streaking blobs shows the splash. The ball
@@ -33,6 +33,7 @@ impl Plugin for PaintBombPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(FixedUpdate, burst_bombs.in_set(ThinkSet));
         app.world_mut().resource_mut::<SpawnHandlers>().register("prop_paint_bomb", spawn_bomb);
+        app.world_mut().resource_mut::<crate::entities::io::InputHandlers>().register("prop_paint_bomb", bomb_input);
     }
 }
 
@@ -66,6 +67,17 @@ fn spawn_bomb(world: &mut World, e: Entity) {
     if spawn_sound {
         world.write_message(SoundRequest::on("PaintBlob.Inception", e));
     }
+}
+
+/// Bombs funnel into floor portals like other props, when allowed.
+fn bomb_input(world: &mut World, call: &crate::entities::io::InputCall) -> bool {
+    if !matches!(call.input.as_str(), "enableportalfunnel" | "disableportalfunnel") {
+        return false;
+    }
+    if let Some(mut me) = world.get_mut::<MapEntity>(call.target) {
+        me.set("allowfunnel", if call.input == "enableportalfunnel" { "1" } else { "0" });
+    }
+    true
 }
 
 /// Unit directions of the burst: `h` around by `v` from straight down to
