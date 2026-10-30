@@ -228,8 +228,10 @@ fn animate_models(
         }
         for (i, &joint) in anim.joints.iter().enumerate() {
             if let (Some(&(p, q)), Ok(mut t)) = (pose.get(i), transforms.get_mut(joint)) {
-                t.translation = p;
-                t.rotation = q;
+                // Bones that did not move keep their change ticks, so their
+                // transforms are not propagated again.
+                let moved = Transform { translation: p, rotation: q, ..*t };
+                t.set_if_neq(moved);
             }
         }
     }
