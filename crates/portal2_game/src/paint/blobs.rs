@@ -577,9 +577,25 @@ fn spheres_mesh(spheres: &[Sphere], unit: &[Vec3], tris: &[u32]) -> Mesh {
     mesh
 }
 
-fn blob_sphere(b: &Blob, console: &Console) -> Sphere {
-    let c = b.paint.color(console);
-    (b.pos, b.radius() * DRAW_SCALE, Color::srgb_u8(c[0], c[1], c[2]).to_linear().to_f32_array())
+/// The linear colour of every paint type, read from the console once a
+/// frame rather than for every blob.
+struct Palette([[f32; 4]; 5]);
+
+impl Palette {
+    fn new(console: &Console) -> Self {
+        Self([PaintType::Bounce, PaintType::Reflect, PaintType::Speed, PaintType::Portal, PaintType::Erase].map(|t| {
+            let c = t.color(console);
+            Color::srgb_u8(c[0], c[1], c[2]).to_linear().to_f32_array()
+        }))
+    }
+
+    fn get(&self, paint: PaintType) -> [f32; 4] {
+        self.0[paint as usize]
+    }
+}
+
+fn blob_sphere(b: &Blob, palette: &Palette) -> Sphere {
+    (b.pos, b.radius() * DRAW_SCALE, palette.get(b.paint))
 }
 
 /// A drawn group of spheres: its entity and how many it showed last.
@@ -668,10 +684,11 @@ fn draw_blobs(
     let (unit, tris) = sphere.get_or_insert_with(unit_sphere);
     let envmap = textures.load(&fs, &mut images, "materials/paint/paint_envmap_hdr.vtf", false).map(|t| t.handle);
     let mut targets = DrawTargets { meshes: &mut meshes, materials: &mut materials, unit, tris };
+    let palette = Palette::new(&console);
     let mut owned = std::collections::HashSet::new();
     for (e, mut s) in &mut sprayers {
         owned.insert(e);
-        let spheres: Vec<Sphere> = blobs.list.iter().filter(|b| b.sprayer == e).map(|b| blob_sphere(b, &console)).collect();
+        let spheres: Vec<Sphere> = blobs.list.iter().filter(|b| b.sprayer == e).map(|b| blob_sphere(b, &palette)).collect();
         let ambient = s.ambient;
         let mut slot = DrawSlot { entity: s.draw, drawn: s.drawn };
         let env = envmap.clone();
@@ -681,11 +698,10 @@ fn draw_blobs(
         s.draw = slot.entity;
         s.drawn = slot.drawn;
     }
-    let mut spheres: Vec<Sphere> = blobs.list.iter().filter(|b| !owned.contains(&b.sprayer)).map(|b| blob_sphere(b, &console)).collect();
+    let mut spheres: Vec<Sphere> = blobs.list.iter().filter(|b| !owned.contains(&b.sprayer)).map(|b| blob_sphere(b, &palette)).collect();
     let t = time.elapsed_secs();
     for (e, bomb, gt) in &bombs {
-        let c = bomb.paint.color(&console);
-        let color = Color::srgb_u8(c[0], c[1], c[2]).to_linear().to_f32_array();
+        let color = palette.get(bomb.paint);
         for o in super::bomb::cluster_offsets(e.index_u32(), t) {
             spheres.push((gt.translation() + o, 0.7 * DRAW_SCALE, color));
         }
