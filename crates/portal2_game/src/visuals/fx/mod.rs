@@ -12,7 +12,9 @@
 //! `r_fx_save` writes the `r_fx_*` values to `fx.cfg` in our own data folder
 //! (next to the saves, never in the game's install), which runs at startup.
 
+pub mod lights;
 pub mod material;
+pub mod portal_light;
 pub mod postfx;
 
 use std::path::PathBuf;
@@ -265,7 +267,7 @@ impl Plugin for VisualFxPlugin {
             .add_plugins(ExtractResourcePlugin::<FxSettings>::default())
             .add_systems(Startup, run_settings_file)
             .add_systems(PreUpdate, update_settings.after(ConsoleSet))
-            .add_plugins((material::FxMaterialPlugin, postfx::PostFxPlugin));
+            .add_plugins((material::FxMaterialPlugin, lights::FxLightsPlugin, portal_light::PortalLightingPlugin, postfx::PostFxPlugin));
     }
 }
 

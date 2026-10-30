@@ -6,7 +6,7 @@ import bevy_pbr::render::forward_io::VertexOutput;
 import bevy_pbr::render::mesh_view_bindings::view;
 import bevy_pbr::render::mesh_view_bindings::fog;
 import portal2_render::shaders::projected::{is_shadow_view, projected_lighting};
-import portal2_render::shaders::fx::fx_emissive_boost;
+import portal2_render::shaders::fx::{FxSurface, fx_emissive_boost, fx_lighting};
 
 struct ModelLight {
     // xyz: position, w: kind (0 point, 1 spot, 2 directional)
@@ -243,6 +243,26 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     var color = albedo * diffuse;
     if !has(FLAG_UNLIT) {
         color = color + albedo * projected_lighting(p, n);
+        // The overhaul's lights; static props (baked) also take fixture
+        // highlights, dynamic models already have the fixtures as lights.
+        @if(FX) {
+            if !has(FLAG_ADDITIVE) {
+                var s: FxSurface;
+                s.pos = p;
+                s.n = n;
+                s.v = v;
+                var rough = 0.7;
+                if has(FLAG_PHONG) {
+                    rough = pow(2.0 / (exponent + 2.0), 0.25);
+                }
+                s.roughness = rough;
+                s.f0 = vec3<f32>(0.04);
+                s.baked = diffuse;
+                s.fixtures = has(FLAG_BAKED);
+                let lit = fx_lighting(s);
+                color = color + albedo * lit.diffuse + lit.specular;
+            }
+        }
     }
     if has(FLAG_SELFILLUM) {
         var mask = vec3<f32>(base.a);

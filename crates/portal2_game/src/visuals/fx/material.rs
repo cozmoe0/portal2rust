@@ -12,6 +12,11 @@ use super::FxSettings;
 use portal2_core::console::ConsoleSet;
 use portal2_core::sets::LoadMapSet;
 
+/// Overall strength of the overhaul lights' highlights.
+const SPECULAR_SCALE: f32 = 1.0;
+/// Strength of fixture highlights on glossy surfaces.
+const FIXTURE_SPECULAR_SCALE: f32 = 0.6;
+
 /// The buffer's contents, filled by the overhaul's systems each frame and
 /// uploaded once in `upload`.
 #[derive(Resource)]
@@ -79,6 +84,8 @@ fn fill_header(time: Res<Time>, settings: Res<FxSettings>, mut buffer: ResMut<Fx
     h[1] = time.elapsed_secs_wrapped();
     h[3] = settings.emissive_boost;
     h[4] = settings.wetness;
+    h[5] = SPECULAR_SCALE;
+    h[6] = FIXTURE_SPECULAR_SCALE;
 }
 
 fn upload(settings: Res<FxSettings>, buffer: Res<FxBuffer>, mut buffers: ResMut<Assets<ShaderBuffer>>) {

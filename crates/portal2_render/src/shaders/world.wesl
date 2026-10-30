@@ -7,7 +7,7 @@ import bevy_pbr::render::mesh_view_bindings::view;
 import bevy_pbr::render::mesh_view_bindings::fog;
 import bevy_pbr::render::mesh_view_bindings::globals;
 import portal2_render::shaders::projected::{is_shadow_view, projected_lighting};
-import portal2_render::shaders::fx::fx_emissive_boost;
+import portal2_render::shaders::fx::{FxSurface, fx_emissive_boost, fx_lighting};
 
 struct WorldParams {
     color: vec4<f32>,
@@ -416,6 +416,21 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
             }
         }
         color = color + albedo * projected_lighting(in.world_position.xyz, light_n);
+        // The overhaul's lights (portals, lasers, fixture highlights).
+        @if(FX) {
+            if !has(FLAG_ADDITIVE) {
+                var s: FxSurface;
+                s.pos = in.world_position.xyz;
+                s.n = light_n;
+                s.v = normalize(view.world_position - in.world_position.xyz);
+                s.roughness = select(0.75, 0.4, has(FLAG_ENVMAP));
+                s.f0 = vec3<f32>(0.04);
+                s.baked = diffuse;
+                s.fixtures = true;
+                let lit = fx_lighting(s);
+                color = color + albedo * lit.diffuse + lit.specular;
+            }
+        }
     }
 
     if has(FLAG_ENVMAP) {
