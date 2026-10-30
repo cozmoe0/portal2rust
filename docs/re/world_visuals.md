@@ -155,6 +155,41 @@ descriptions are our own; the code in `crates/portal2` is written from them.
   tone mapping scale and no conversion, so a frame shows at its own
   brightness whatever the exposure.
 
+## Progress signs (`vgui_screen` with `sp_progress_sign`)
+
+- The panel (`CVGUI_SP_ProgressSignScreen`, 400 × 808 pixels from
+  `scripts/vgui_screens.txt`) reads the map's entry under `Maps` in
+  `scripts/vscripts/transitions/sp_lightboard_icons.txt`: `level_number`,
+  `total_levels`, `startup` (a sequence in `lightboard_startup_sequences.txt`),
+  `dirt` (0-2, an `elevator_video_overlay1..3` over everything) and up to ten
+  `icons` (name and 1 for lit). Icon names index the five-by-five sheet
+  `vgui/screens/P2_lightboard_vgui` in this order: cube_drop, cube_button,
+  cube_bonk, drink_water, goop, crushers, laser_cube, turret, turret_burn,
+  portal_fling, plate_fling, bridges, bridge_block, grinders, tbeams,
+  paint_bounce, paint_speed, handoff, button_stand, laser_power,
+  portal_fling_2, tbeam_polarity, danger_field; an unknown name leaves its
+  slot empty.
+- Painting, in order: the board `vgui_coop_progress_board` over the whole
+  panel in grey 140; the chamber number's two digits from
+  `vgui_coop_progress_board_numbers` (a sixth of the sheet wide and half
+  tall, 0-5 on the top row and 6-9 below), each a third of 40% of the
+  panel's width wide and that 40% tall, from x 70 and y a quarter of the
+  40%, white; the bar `vgui_coop_progress_board_bar` from (81, 461) to
+  (81 + (width - 162) × level / total, 493) repeating every 32 pixels
+  (full when the level is 0), white; the icons, 53 pixels square every 63
+  from (81, 577), five to a row, black with alpha 255 when lit and 140
+  when not; the dirt, white; then the `LevelProgressLabel` "%02d/%02d" in
+  black (`CoopLevelProgressFont_Small`, UniversLTStd-BoldCn 28) at
+  (81, 386) in a box 100 tall.
+- When the screen becomes active the startup sequence plays: the board
+  grey drops to a quarter after `flicker_quick_min` seconds and every
+  `flicker_rate_min..max` seconds (random) switches between a quarter and a
+  half of 140 (the dirt's alpha between 63 and 127) until
+  `bg_flicker_length`; digits, bar and label have alpha 2 until
+  `level_number_delay`; the icons are drawn at a tenth until
+  `progress_delay`. The quick dimming time is a random number between the
+  minimum and the minimum again.
+
 ## Area portal windows (`func_areaportalwindow`)
 
 - The window takes over the brush model of the entity its `target` names

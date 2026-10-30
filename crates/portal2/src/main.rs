@@ -59,6 +59,7 @@ fn main() {
                 visuals::sprites::SpritePlugin,
                 visuals::spotlights::SpotlightPlugin,
                 visuals::movies::MoviePlugin,
+                visuals::progress_sign::ProgressSignPlugin,
                 visuals::tonemap::TonemapPlugin,
                 portal2_audio::AudioPlugin,
                 sound::SoundEntitiesPlugin,
