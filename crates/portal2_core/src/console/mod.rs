@@ -63,7 +63,9 @@ impl Console {
     }
 
     pub fn cvar(&self, name: &str) -> Option<&Cvar> {
-        self.cvars.get(&name.to_ascii_lowercase())
+        // Code asks for most variables by their lowercase name every frame;
+        // only mixed-case names need a lowercase copy.
+        if name.bytes().any(|b| b.is_ascii_uppercase()) { self.cvars.get(&name.to_ascii_lowercase()) } else { self.cvars.get(name) }
     }
 
     pub fn f32(&self, name: &str) -> f32 {
