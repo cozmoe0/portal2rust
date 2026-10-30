@@ -19,10 +19,10 @@ use bevy::app::AppExit;
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
-use crate::screen::Localization;
 use portal2_core::args::Args;
 use portal2_core::console::Console;
 use portal2_core::vfs::GameFs;
+use portal2_game::screen::Localization;
 use portal2_ui::vgui::layout::ResFile;
 use portal2_ui::vgui::scheme::proportional;
 use portal2_ui::vgui::{Schemes, Surface, VguiPaint, layer};
@@ -655,7 +655,7 @@ fn menu_act(world: &World) -> i32 {
     if let Some(n) = args.background {
         return n.clamp(1, 5);
     }
-    let from_save = crate::save::newest_save_map().and_then(|m| chapter_of(&m)).map(act_of_chapter);
+    let from_save = portal2_game::save::newest_save_map().and_then(|m| chapter_of(&m)).map(act_of_chapter);
     let act = from_save.unwrap_or_else(|| {
         let v = world.resource::<Console>().f32("ui_lastact_played") as i32;
         if (0..5).contains(&v) { v } else { 0 }
@@ -881,13 +881,13 @@ struct SaveEntry {
 
 /// Our saves, newest first.
 fn list_saves() -> Vec<SaveEntry> {
-    let Ok(dir) = std::fs::read_dir(crate::save::save_dir()) else { return Vec::new() };
+    let Ok(dir) = std::fs::read_dir(portal2_game::save::save_dir()) else { return Vec::new() };
     let mut out: Vec<SaveEntry> = dir
         .flatten()
         .filter(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("sav")))
         .filter_map(|e| {
             let name = e.path().file_stem()?.to_string_lossy().into_owned();
-            let file = crate::save::read_file(&name).ok()?;
+            let file = portal2_game::save::read_file(&name).ok()?;
             Some(SaveEntry { name, map: file.map, saved_at: file.saved_at })
         })
         .collect();

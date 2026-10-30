@@ -89,7 +89,7 @@ impl GameInstructor {
 }
 
 fn counts_path() -> std::path::PathBuf {
-    crate::save::save_dir().join("game_instructor_counts.txt")
+    portal2_game::save::save_dir().join("game_instructor_counts.txt")
 }
 
 fn load_counts() -> HashMap<String, (i32, i32)> {

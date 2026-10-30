@@ -17,17 +17,17 @@ use std::fmt::Write as _;
 use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
 
-use crate::entities::io::Outputs;
-use crate::entities::transition::PendingTransition;
-use crate::entities::triggers::Trigger;
-use crate::entities::world_transform;
-use crate::player::Player;
-use crate::player::movement::{HULL_MAXS, HULL_MINS};
 use portal2_core::args::Args;
 use portal2_core::clock::GameClock;
 use portal2_core::entity::{EntityRegistry, MapEntity};
 use portal2_core::sets::IoSet;
 use portal2_core::sets::TransitionSet;
+use portal2_game::entities::io::Outputs;
+use portal2_game::entities::transition::PendingTransition;
+use portal2_game::entities::triggers::Trigger;
+use portal2_game::entities::world_transform;
+use portal2_game::player::Player;
+use portal2_game::player::movement::{HULL_MAXS, HULL_MINS};
 use portal2_world::CurrentMap;
 use portal2_world::collision::{Collider, Physics, mask};
 
@@ -116,7 +116,7 @@ fn watch_level_end(clock: Res<GameClock>, pending: Option<Res<PendingTransition>
     }
 }
 
-fn watch_deaths(mut deaths: MessageReader<crate::entities::triggers::PlayerDied>, chain: Option<ResMut<Chain>>) {
+fn watch_deaths(mut deaths: MessageReader<portal2_game::entities::triggers::PlayerDied>, chain: Option<ResMut<Chain>>) {
     if deaths.read().count() > 0
         && let Some(mut chain) = chain
     {
@@ -127,7 +127,7 @@ fn watch_deaths(mut deaths: MessageReader<crate::entities::triggers::PlayerDied>
 /// Ends the level the way the scripts do, to keep the run going.
 fn force_level_end(world: &mut World) {
     if let Some(script) = world.resource::<EntityRegistry>().by_name.get("@transition_script").and_then(|l| l.first()).copied() {
-        crate::script::run_code(world, script, "RealTransitionFromMap()", "chain");
+        portal2_game::script::run_code(world, script, "RealTransitionFromMap()", "chain");
     }
 }
 
@@ -299,8 +299,8 @@ fn ride_train(world: &mut World, train: Entity, row: &mut Row) {
             world_transform(world, train).translation() - Vec3::Z * 59.0
         }
     };
-    crate::entities::teleport_entity(world, player, feet, None, Some(Vec3::ZERO));
-    crate::script::run_code(world, train, "StartMoving()", "chain");
+    portal2_game::entities::teleport_entity(world, player, feet, None, Some(Vec3::ZERO));
+    portal2_game::script::run_code(world, train, "StartMoving()", "chain");
 }
 
 /// Puts the player on the floor inside a trigger volume.
@@ -309,7 +309,7 @@ fn place_in(world: &mut World, trigger: Entity, row: &mut Row) -> bool {
     let Some((lo, hi)) = world
         .get::<Collider>(trigger)
         .zip(world.get::<GlobalTransform>(trigger))
-        .map(|(c, gt)| crate::physics::world_bounds(&c.shape, gt.translation(), gt.rotation()))
+        .map(|(c, gt)| portal2_game::physics::world_bounds(&c.shape, gt.translation(), gt.rotation()))
     else {
         row.notes.push("exit trigger has no volume".to_owned());
         return false;

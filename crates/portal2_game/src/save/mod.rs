@@ -15,7 +15,6 @@
 
 mod autosave;
 mod registry;
-mod roundtrip;
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -46,7 +45,7 @@ impl Plugin for SavePlugin {
             .add_systems(PreUpdate, finish_restore.after(portal2_core::sets::TransitionSet))
             .add_systems(Update, registry::place_saved_portals.after(crate::portals::clear_on_map_load))
             .add_systems(Startup, save_info)
-            .add_plugins((roundtrip::RoundTripPlugin, autosave::AutosavePlugin));
+            .add_plugins(autosave::AutosavePlugin);
         let mut reg = SaveRegistry::default();
         registry::register_all(&mut reg);
         app.insert_resource(reg);
@@ -492,7 +491,7 @@ fn restore(world: &mut World, file: &SaveFile) -> Result<(), String> {
 }
 
 /// Puts the player back once the level load has placed them.
-fn finish_restore(world: &mut World) {
+pub fn finish_restore(world: &mut World) {
     let done = world.get_resource::<PendingRestore>().is_some_and(|p| p.entities_done);
     if !done {
         return;

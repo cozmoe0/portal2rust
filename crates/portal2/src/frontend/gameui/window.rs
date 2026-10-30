@@ -9,7 +9,7 @@
 
 use source_formats::kv::KeyValues;
 
-use crate::screen::Localization;
+use portal2_game::screen::Localization;
 use portal2_ui::vgui::layout;
 use portal2_ui::vgui::layout::{Rect, ResFile};
 use portal2_ui::vgui::scheme::{Scheme, proportional};

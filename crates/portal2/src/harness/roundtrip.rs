@@ -9,8 +9,8 @@ use std::fmt::Write as _;
 use bevy::prelude::*;
 use ciborium::Value;
 
-use super::{PendingRestore, SaveFile, capture, load_named, write_file};
 use portal2_core::args::Args;
+use portal2_game::save::{PendingRestore, SaveFile, SavedEntity, capture, finish_restore, load_named, write_file};
 use portal2_world::{CurrentMap, LoadMap, MapLoadType};
 
 const FILE: &str = "p2r_roundtrip";
@@ -19,7 +19,7 @@ pub struct RoundTripPlugin;
 
 impl Plugin for RoundTripPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup).add_systems(Update, run).add_systems(PreUpdate, check_restored.after(super::finish_restore));
+        app.add_systems(Startup, setup).add_systems(Update, run).add_systems(PreUpdate, check_restored.after(finish_restore));
     }
 }
 
@@ -43,7 +43,7 @@ struct RoundTrip {
 
 fn setup(mut commands: Commands, args: Res<Args>, fs: Res<portal2_core::vfs::GameFs>) {
     let Some(spec) = &args.save_test else { return };
-    let maps = crate::smoke::smoke_maps(spec, &fs);
+    let maps = super::smoke::smoke_maps(spec, &fs);
     info!("save round trip of {} maps", maps.len());
     commands.insert_resource(RoundTrip { maps, index: 0, step: Step::Start, first: None, report: String::new(), failures: 0 });
 }
@@ -147,7 +147,7 @@ fn compare(a: &SaveFile, b: &SaveFile) -> Vec<String> {
     if a.tick != b.tick {
         out.push(format!("clock tick {} vs {}", a.tick, b.tick));
     }
-    fn by_id(f: &SaveFile) -> std::collections::BTreeMap<u32, &super::SavedEntity> {
+    fn by_id(f: &SaveFile) -> std::collections::BTreeMap<u32, &SavedEntity> {
         f.entities.iter().map(|e| (e.id, e)).collect()
     }
     let (ea, eb) = (by_id(a), by_id(b));

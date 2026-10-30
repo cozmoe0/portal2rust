@@ -11,9 +11,9 @@
 use bevy::prelude::*;
 use source_formats::kv::KeyValues;
 
-use crate::entities::io::{InputCall, InputHandlers};
 use portal2_core::console::Console;
 use portal2_core::vfs::GameFs;
+use portal2_game::entities::io::{InputCall, InputHandlers};
 use portal2_ui::vgui::surface::Rgba;
 use portal2_ui::vgui::{FontId, Schemes, Surface, VguiPaint, layer};
 use portal2_ui::video::{VideoId, Videos};

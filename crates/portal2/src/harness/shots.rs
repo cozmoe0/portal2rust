@@ -23,9 +23,9 @@ use std::time::Instant;
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 
-use crate::player::{Player, PlayerInput};
 use portal2_core::args::Args;
 use portal2_core::entity::EntityRegistry;
+use portal2_game::player::{Player, PlayerInput};
 use portal2_world::{CurrentMap, LoadMap, MapLoadType};
 
 #[derive(Clone, Debug, PartialEq)]

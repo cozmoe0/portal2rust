@@ -6,26 +6,16 @@ license.workspace = true
 description = "A Portal 2 engine reimplementation written in Rust on top of Bevy"
 
 [dependencies]
-bevy = { workspace = true, features = ["serialize"] }
+bevy.workspace = true
 portal2_core.workspace = true
 portal2_render.workspace = true
 portal2_audio.workspace = true
 portal2_ui.workspace = true
 portal2_world.workspace = true
 portal2_particles.workspace = true
-source_formats = { path = "../source_formats" }
-squirrel = { path = "../squirrel", features = ["serde"] }
-bink = { path = "../bink" }
-serde = { version = "1", features = ["derive"] }
-# Saved games restore components in place, leaving skipped (runtime-only)
-# fields as the spawn code built them.
-serde_derive = { version = "1", features = ["deserialize_in_place"] }
-ciborium = "0.2"
-flate2 = "1"
-log.workspace = true
-bytemuck.workspace = true
-avian3d = "0.8"
-half = "2"
+portal2_game.workspace = true
+source_formats.workspace = true
+ciborium.workspace = true
 
 # Save times are shown in local time, converted as the game does on Windows.
 [target.'cfg(windows)'.dependencies]

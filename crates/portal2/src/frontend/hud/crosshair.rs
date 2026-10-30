@@ -11,10 +11,10 @@
 
 use bevy::prelude::*;
 
-use crate::portals::Portals;
-use crate::portals::gun::PortalGun;
-use crate::screen::ScreenFade;
 use portal2_core::console::Console;
+use portal2_game::portals::Portals;
+use portal2_game::portals::gun::PortalGun;
+use portal2_game::screen::ScreenFade;
 use portal2_ui::vgui::{Surface, VguiPaint, layer};
 
 pub fn build(app: &mut App) {
@@ -41,7 +41,7 @@ fn paint(
     portals: Option<Res<Portals>>,
     fade: Res<ScreenFade>,
     clock: Res<portal2_core::clock::GameClock>,
-    ui: Res<crate::gameui::GameUi>,
+    ui: Res<crate::frontend::gameui::GameUi>,
     map: Option<Res<portal2_world::CurrentMap>>,
     mut surface: ResMut<Surface>,
 ) {

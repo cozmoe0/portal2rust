@@ -1,32 +1,19 @@
-//! Portal 2 engine reimplementation on Bevy.
+//! portal2rust: a Portal 2 engine reimplementation on Bevy.
 //!
 //! Requires a local Portal 2 installation; all game content (maps, models,
-//! textures, sounds, scripts) is read from it at runtime.
+//! textures, sounds, scripts) is read from it at runtime. This binary puts
+//! the engine crates together into the game and adds the menus, the HUD and
+//! the test harness.
 
-mod chain;
-mod commands;
-mod devices;
-mod effects;
-mod entities;
-mod gameui;
-mod hud;
-mod paint;
-mod physics;
-mod player;
-mod portals;
-mod probe;
-mod record;
-mod save;
-mod screen;
-mod screenshot;
-mod script;
-mod shots;
-mod smoke;
-mod sound;
-mod visuals;
+mod frontend;
+mod harness;
 
 use bevy::prelude::*;
 use bevy::window::{PresentMode, WindowResolution};
+use portal2_game::{commands, devices, effects, entities, paint, physics, player, portals, save, screen, script, sound, visuals};
+
+use frontend::{gameui, hud};
+use harness::{chain, probe, record, roundtrip, screenshot, shots, smoke};
 
 fn main() {
     let mut args = portal2_core::args::Args::from_env();
@@ -54,6 +41,8 @@ fn main() {
         )
         .insert_resource(entities::io::IoDebug(args.io_debug))
         .insert_resource(args)
+        // The order matters: the console comes first, and the entity I/O
+        // tables exist before the plugins that register classes into them.
         .add_plugins((
             (portal2_core::CorePlugin, commands::GameCommandsPlugin),
             (
@@ -88,6 +77,7 @@ fn main() {
             ),
             (
                 save::SavePlugin,
+                roundtrip::RoundTripPlugin,
                 portal2_ui::vgui::VguiPlugin,
                 portal2_ui::hud::HudLayoutPlugin,
                 hud::HudPlugin,

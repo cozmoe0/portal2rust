@@ -20,12 +20,12 @@ use bevy::prelude::*;
 use source_formats::bsp::contents;
 
 use super::GameInstructor;
-use crate::screen::Localization;
 use portal2_core::clock::GameClock;
 use portal2_core::console::Console;
 use portal2_core::entity::EntityRegistry;
 use portal2_core::vfs::GameFs;
 use portal2_core::view::MainCamera;
+use portal2_game::screen::Localization;
 use portal2_ui::vgui::surface::{FontId, ImageRef};
 use portal2_ui::vgui::{Schemes, Surface, VguiPaint, layer};
 use portal2_world::collision::Physics;
@@ -162,7 +162,7 @@ fn paint(
     console: Res<Console>,
     clock: Res<GameClock>,
     time: Res<Time>,
-    ui: Res<crate::gameui::GameUi>,
+    ui: Res<crate::frontend::gameui::GameUi>,
     map: Option<Res<portal2_world::CurrentMap>>,
     schemes: Res<Schemes>,
     localization: Option<Res<Localization>>,

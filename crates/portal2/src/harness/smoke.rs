@@ -8,12 +8,12 @@ use std::fmt::Write as _;
 
 use bevy::prelude::*;
 
-use crate::entities::SpawnHandlers;
-use crate::entities::io::InputHandlers;
-use crate::entities::io::IoStats;
 use portal2_core::args::Args;
 use portal2_core::entity::MapEntity;
 use portal2_core::vfs::GameFs;
+use portal2_game::entities::SpawnHandlers;
+use portal2_game::entities::io::InputHandlers;
+use portal2_game::entities::io::IoStats;
 use portal2_world::{CurrentMap, LoadMap, MapLoadType};
 
 pub struct SmokePlugin;

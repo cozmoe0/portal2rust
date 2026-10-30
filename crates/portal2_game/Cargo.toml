@@ -1,0 +1,24 @@
+[package]
+name = "portal2_game"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Portal 2 gameplay on the portal2rust engine: entities and I/O, player movement, portals, physics, test devices, gels, VScript and saved games"
+
+[dependencies]
+bevy.workspace = true
+portal2_core.workspace = true
+portal2_render.workspace = true
+portal2_audio.workspace = true
+portal2_ui.workspace = true
+portal2_world.workspace = true
+portal2_particles.workspace = true
+source_formats.workspace = true
+squirrel = { workspace = true, features = ["serde"] }
+serde.workspace = true
+# Saved games restore components in place, leaving skipped (runtime-only)
+# fields as the spawn code built them.
+serde_derive = { version = "1", features = ["deserialize_in_place"] }
+ciborium.workspace = true
+flate2 = "1"
+avian3d = "0.8"
