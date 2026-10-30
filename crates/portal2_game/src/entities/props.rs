@@ -381,6 +381,18 @@ struct PendingDoorReport {
     open: bool,
 }
 
+/// After a restore: the window of a door that is open, or still closing,
+/// stays open (saves from before windows were kept hold only the door).
+pub fn restore_door_windows(world: &mut World) {
+    let doors: Vec<Entity> = {
+        let mut q = world.query::<(Entity, &ChamberDoor, Option<&PendingDoorReport>)>();
+        q.iter(world).filter(|(_, d, pending)| d.open || pending.is_some_and(|p| !p.open)).map(|(e, ..)| e).collect()
+    };
+    for e in doors {
+        set_door_window(world, e, true);
+    }
+}
+
 // ------------------------------------------------------------ pedestal buttons
 
 #[derive(Component, serde::Serialize, serde::Deserialize)]

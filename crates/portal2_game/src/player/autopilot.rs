@@ -226,15 +226,16 @@ fn log_state(
             blocker,
             inside.join(", ")
         );
+        // Cubes anywhere, other props within reach of the player.
         let mut cubes: Vec<String> = props
             .iter()
-            .filter(|(m, _)| m.classname == "prop_weighted_cube")
-            .map(|(_, t)| {
+            .filter(|(m, t)| m.classname == "prop_weighted_cube" || t.translation().distance(s.origin) < 256.0)
+            .map(|(m, t)| {
                 let p = t.translation();
-                format!("({:.0}, {:.0}, {:.0})", p.x, p.y, p.z)
+                format!("{}({:.1}, {:.1}, {:.1})", m.targetname.as_deref().unwrap_or(""), p.x, p.y, p.z)
             })
             .collect();
-        cubes.truncate(3);
+        cubes.truncate(4);
         info!("  cubes {} holding {}", cubes.join(" "), holding.and_then(|h| h.entity).is_some());
     }
 }

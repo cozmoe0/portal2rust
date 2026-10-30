@@ -23,6 +23,13 @@ const HOLD_MAX_SPEED: f32 = 1000.0;
 /// Gap the steering leaves between the held prop and what it is pushed
 /// against.
 const HOLD_SKIN: f32 = 0.25;
+/// Deepest the held prop may sink into the world (turning against a pane,
+/// squeezed into a corner) before it is put back where it last was clear;
+/// well above the contact solver's slop, below half the thinnest glass.
+const HOLD_MAX_PENETRATION: f32 = 0.5;
+/// A held prop that moved further than this in one tick went through a
+/// portal: its new place counts as clear.
+const HOLD_TELEPORT_DISTANCE: f32 = 64.0;
 
 pub struct CarryPlugin;
 
@@ -52,6 +59,9 @@ pub struct Holding {
     /// Height the prop is lifted to clear the floor under its hold point.
     #[serde(default)]
     pub lift: f32,
+    /// The held prop's last placement clear of the world.
+    #[serde(skip)]
+    pub clear: Option<(Vec3, Quat)>,
 }
 
 fn prop_radius(col: &TraceCollider) -> f32 {
@@ -112,6 +122,7 @@ fn use_or_grab(
             holding.cube = me.classname == "prop_weighted_cube";
             holding.error = 0.0;
             holding.lift = 0.0;
+            holding.clear = None;
             commands.entity(target).insert((GravityScale(0.0), layers_for(layers::HELD, layers::WORLD | layers::PROP | layers::MOVER)));
             sounds.write(portal2_audio::SoundRequest::on("Weapon_Portalgun.HoldSound", pe));
             out.write(FireOutput::new(target, "OnPlayerPickup").with_activator(Some(pe)));
@@ -211,16 +222,38 @@ fn hold_held(
     console: Res<portal2_core::console::Console>,
     players: Query<(Entity, &Player)>,
     input: Res<PlayerInput>,
-    mut props: Query<(&Position, &Rotation, &mut LinearVelocity, &mut AngularVelocity, &Collider)>,
+    mut props: Query<(&Position, &Rotation, &mut LinearVelocity, &mut AngularVelocity, &Collider, &TraceCollider), With<PhysicsProp>>,
+    solids: Query<(&Collider, &Position, &Rotation), Without<PhysicsProp>>,
+    holes: Res<portal2_world::collision::portal::PortalHoles>,
     spatial: SpatialQuery,
     mut commands: Commands,
 ) {
     let Some(held) = holding.entity else { return };
     let Ok((pe, p)) = players.single() else { return };
-    let Ok((pos, rot, mut lin, mut ang, collider)) = props.get_mut(held) else {
+    let Ok((pos, rot, mut lin, mut ang, collider, shape)) = props.get_mut(held) else {
         holding.entity = None;
         return;
     };
+    // The contact solver only pushes back softly, so a prop turned or
+    // squeezed into a wall can work its way in and through a thin pane.
+    // Sunk in too deep, it goes back to where it last was clear (passing
+    // through a portal opening, where the wall behind does not count, or
+    // through a portal itself, is fine).
+    let (mins, maxs) = super::world_bounds(&shape.shape, pos.0, rot.0);
+    let (centre, half) = ((mins + maxs) * 0.5, (maxs - mins) * 0.5);
+    let in_portal = holes.holes.iter().any(|h| h.contains_box(centre, -half, half));
+    let teleported = holding.clear.is_some_and(|(at, _)| at.distance(pos.0) > HOLD_TELEPORT_DISTANCE);
+    let world = SpatialQueryFilter::from_mask(LayerMask(layers::WORLD | layers::MOVER)).with_excluded_entities([held, pe]);
+    if in_portal || teleported || sunk_depth(&spatial, &solids, collider, pos.0, rot.0, &world) <= HOLD_MAX_PENETRATION {
+        holding.clear = Some((pos.0, rot.0));
+    } else if let Some((at, turn)) = holding.clear {
+        // The spatial query reads every body's placement, so the move back
+        // goes through commands (applied before the next physics step).
+        commands.entity(held).insert((Position(at), Rotation::from(turn)));
+        lin.0 = Vec3::ZERO;
+        ang.0 = Vec3::ZERO;
+        return;
+    }
     let dt = time.delta_secs().max(1e-4);
     let eye = p.state.origin + Vec3::Z * p.state.eye_offset();
     let ignore = [pe, held];
@@ -258,6 +291,26 @@ fn hold_held(
     ang.0 = axis * (angle / dt * 0.3);
 }
 
+/// How far the prop at `pos` / `rot` reaches into the solids it overlaps.
+fn sunk_depth(
+    spatial: &SpatialQuery,
+    solids: &Query<(&Collider, &Position, &Rotation), Without<PhysicsProp>>,
+    collider: &Collider,
+    pos: Vec3,
+    rot: Quat,
+    filter: &SpatialQueryFilter,
+) -> f32 {
+    spatial
+        .shape_intersections(collider, pos, rot, filter)
+        .into_iter()
+        .filter_map(|e| {
+            let (other, at, turn) = solids.get(e).ok()?;
+            avian3d::collision::collider::contact_query::contact(collider, pos, rot, other, at.0, *turn, 0.0).ok().flatten()
+        })
+        .map(|c| c.penetration)
+        .fold(0.0, f32::max)
+}
+
 /// How much of `step` the prop at `pos` can move: up to what is in the way
 /// (less a skin), then on along that surface.
 fn swept_step(spatial: &SpatialQuery, collider: &Collider, pos: Vec3, rot: Quat, step: Vec3, filter: &SpatialQueryFilter) -> Vec3 {
@@ -284,12 +337,15 @@ fn swept_step(spatial: &SpatialQuery, collider: &Collider, pos: Vec3, rot: Quat,
     out
 }
 
-/// Walking into a prop gives it a shove along the walking direction.
+/// Walking into a prop gives it a shove along the walking direction, as far
+/// as it has room to go: one already against a wall is not driven into it.
 fn push_props(
+    time: Res<Time<Fixed>>,
     physics: Physics,
     holding: Res<Holding>,
     players: Query<(Entity, &Player)>,
-    mut props: Query<(&RigidBody, &mut LinearVelocity), With<PhysicsProp>>,
+    mut props: Query<(&RigidBody, &mut LinearVelocity, &Position, &Rotation, &Collider), With<PhysicsProp>>,
+    spatial: SpatialQuery,
 ) {
     let Ok((pe, p)) = players.single() else { return };
     let v = p.state.velocity.with_z(0.0);
@@ -305,11 +361,19 @@ fn push_props(
     if holding.entity == Some(hit) {
         return;
     }
-    if let Ok((body, mut lin)) = props.get_mut(hit)
+    if let Ok((body, mut lin, pos, rot, collider)) = props.get_mut(hit)
         && *body == RigidBody::Dynamic
     {
         let along = lin.0.dot(dir);
-        let want = speed * 0.6;
+        let mut want = speed * 0.6;
+        let dt = time.delta_secs().max(1e-4);
+        let filter = SpatialQueryFilter::from_mask(LayerMask(layers::WORLD | layers::MOVER)).with_excluded_entities([hit, pe]);
+        let config = ShapeCastConfig { max_distance: want * dt + HOLD_SKIN, ignore_origin_penetration: true, ..default() };
+        if let Ok(d) = Dir3::new(dir)
+            && let Some(block) = spatial.cast_shape(collider, pos.0, rot.0, d, &config, &filter)
+        {
+            want = want.min((block.distance - HOLD_SKIN).max(0.0) / dt);
+        }
         if along < want {
             lin.0 += dir * (want - along);
         }

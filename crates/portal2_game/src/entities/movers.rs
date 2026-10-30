@@ -284,6 +284,18 @@ fn spawn_brush(world: &mut World, e: Entity) {
     }
 }
 
+/// After a restore: toggled brushes collide as their saved state says (the
+/// spawn code built their collision from the map's keyvalues).
+pub fn restore_brush_collision(world: &mut World) {
+    let mut q = world.query::<(&Toggleable, &MapEntity, &mut portal2_world::collision::Collider)>();
+    for (t, me, mut c) in q.iter_mut(world) {
+        let enabled = t.enabled || me.get_i32("solidity") == Some(2);
+        if c.enabled != enabled {
+            c.enabled = enabled;
+        }
+    }
+}
+
 fn brush_input(world: &mut World, call: &InputCall) -> bool {
     let e = call.target;
     let Some(current) = world.get::<Toggleable>(e).map(|t| t.enabled) else { return false };

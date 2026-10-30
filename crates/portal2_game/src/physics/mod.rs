@@ -43,7 +43,7 @@ impl Plugin for GamePhysicsPlugin {
                 PreUpdate,
                 build_static_world.after(portal2_world::collision::rebuild_on_map_load).before(portal2_core::sets::EntitySpawnSet),
             )
-            .add_systems(Update, (attach_bodies, attach_follower_bodies, attach_player_body, sync_portal_slabs))
+            .add_systems(Update, (attach_bodies, attach_follower_bodies, attach_player_body, sync_portal_slabs, sync_disabled_colliders))
             .add_plugins((carry::CarryPlugin, portal_travel::PortalTravelPlugin));
         inputs::register(app);
         constraints::register(app);
@@ -222,6 +222,21 @@ fn attach_bodies(
         } else {
             // Spawnflag 8 on physics props: start motion disabled.
             commands.entity(e).insert((RigidBody::Kinematic, collider, layers_for(layers::MOVER, layers::PROP | layers::HELD)));
+        }
+    }
+}
+
+/// Collision switched off (a disabled brush) stops props as well as the
+/// player.
+fn sync_disabled_colliders(
+    mut commands: Commands,
+    bodies: Query<(Entity, &TraceCollider, Has<ColliderDisabled>), (With<RigidBody>, Or<(Changed<TraceCollider>, Added<RigidBody>)>)>,
+) {
+    for (e, col, disabled) in &bodies {
+        if col.enabled && disabled {
+            commands.entity(e).remove::<ColliderDisabled>();
+        } else if !col.enabled && !disabled {
+            commands.entity(e).insert(ColliderDisabled);
         }
     }
 }
