@@ -203,6 +203,8 @@ fn spawn_dynamic(world: &mut World, e: Entity) {
         if let Some(rate) = me.get_f32("playbackrate").filter(|r| *r != 0.0) {
             anim.rate = rate;
         }
+        // `sp_a1_intro7`'s socket holds its lock pose, with Wheatley in it.
+        anim.hold = me.get_bool("holdanimation");
         if me.get_bool("randomanimation") {
             anim.cycle = 0.0;
         }

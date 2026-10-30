@@ -58,6 +58,9 @@ pub struct StudioAnimator {
     pub finished: bool,
     /// Sequence to return to after a non-looping one finishes.
     pub default_sequence: Option<usize>,
+    /// A finished sequence stays on its last frame instead of going back
+    /// to the default one (`prop_dynamic`'s `HoldAnimation`).
+    pub hold: bool,
     /// Layered sequences, applied in order after the base sequence.
     layers: Vec<Layer>,
     /// Pose parameter settings (0..=1 across each parameter's range), in
@@ -79,6 +82,7 @@ impl StudioAnimator {
             looping: false,
             finished: false,
             default_sequence: None,
+            hold: false,
             layers: Vec::new(),
             pose,
             dirty: true,
@@ -214,6 +218,7 @@ pub fn animate_models(
                 }
             }
             if anim.finished
+                && !anim.hold
                 && let Some(default) = anim.default_sequence
                 && default != anim.sequence
             {
