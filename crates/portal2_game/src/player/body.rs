@@ -115,7 +115,7 @@ fn movement_sequence(on_ground: bool, ducked: bool, speed: f32) -> &'static str 
     }
 }
 
-fn pose_body(
+pub(crate) fn pose_body(
     time: Res<Time>,
     fixed: Res<Time<Fixed>>,
     input: Res<PlayerInput>,

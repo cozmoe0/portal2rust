@@ -310,7 +310,7 @@ impl Material for WorldMaterial {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, ShaderType)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, ShaderType)]
 pub struct ModelLight {
     /// xyz: position, w: kind (0 point, 1 spot, 2 directional).
     pub position: Vec4,
@@ -322,7 +322,7 @@ pub struct ModelLight {
     pub attenuation: Vec4,
 }
 
-#[derive(Clone, Copy, Debug, Default, ShaderType)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, ShaderType)]
 pub struct ModelParams {
     pub color: Vec4,
     pub envmap_tint: Vec4,
@@ -344,6 +344,10 @@ pub struct ModelParams {
     pub alpha_ref: f32,
     pub num_lights: u32,
     pub _pad: f32,
+    /// World plane (xyz normal, w offset) whose negative side is not drawn:
+    /// a model partly through a portal is cut off at it (see the game's
+    /// `portals::ghosts`). Zero draws everything.
+    pub clip_plane: Vec4,
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]

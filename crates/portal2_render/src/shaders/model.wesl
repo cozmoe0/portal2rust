@@ -38,6 +38,8 @@ struct ModelParams {
     alpha_ref: f32,
     num_lights: u32,
     _pad: f32,
+    // xyz: normal, w: offset; the side below zero is cut away (all zero: none)
+    clip_plane: vec4<f32>,
 }
 
 const FLAG_BUMP: u32 = 1u;
@@ -138,6 +140,11 @@ fn apply_source_fog(color: vec3<f32>, world_position: vec3<f32>) -> vec3<f32> {
 
 @fragment
 fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @location(0) vec4<f32> {
+    // A model partly through a portal is cut off at it; the rest is drawn
+    // by its copy at the other portal.
+    if dot(material.clip_plane.xyz, in.world_position.xyz) + material.clip_plane.w < 0.0 {
+        discard;
+    }
     var uv = vec2<f32>(0.0);
     @if(VERTEX_UVS_A) {
         uv = in.uv;

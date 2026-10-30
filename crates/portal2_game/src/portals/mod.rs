@@ -1,6 +1,7 @@
 //! Portals: placement, linked views rendered through each opening, moving
 //! the player through, and walking into openings cut in walls.
 
+pub mod ghosts;
 pub mod gun;
 pub mod placement;
 pub mod projection;
@@ -47,9 +48,13 @@ impl Plugin for PortalsPlugin {
                     .chain()
                     .after(portal2_core::sets::PlayerCameraSet)
                     .after(portal2_world::camera::sync_camera_transform)
+                    // The views' projections (with the exit's clip plane in
+                    // view space) are worked out from this frame's cameras,
+                    // not left a frame behind them.
+                    .before(bevy::camera::CameraUpdateSystems)
                     .before(TransformSystems::Propagate),
             )
-            .add_plugins(gun::GunPlugin);
+            .add_plugins((gun::GunPlugin, ghosts::GhostsPlugin));
     }
 }
 
@@ -170,6 +175,11 @@ pub enum PortalFx {
 
 /// How far in front of the portal's plane its quad is drawn.
 const QUAD_OFFSET: f32 = 0.4;
+/// How far behind a portal's plane its linked view, and the models cut off
+/// at it, still draw. Past the quad's offset: what lies between the plane
+/// and the quad is hidden behind the quad, so the view through the other
+/// portal must show it, or a model partly through would have a seam there.
+pub const CLIP_BEHIND: f32 = QUAD_OFFSET + 0.1;
 
 fn portal_quad() -> Mesh {
     // In portal local space: X out of the surface, Y left, Z up.
@@ -496,7 +506,7 @@ fn update_portal_cameras(
             // eye less than the bias in front of it would leave the plane
             // behind the camera (and the wall behind the exit in view), so
             // the plane then passes just in front of the eye instead.
-            let plane_world = to.forward.extend(-to.plane_dist() + 0.1);
+            let plane_world = to.forward.extend(-to.plane_dist() + CLIP_BEHIND);
             let world_from_view = Mat4::from(virt);
             let mut plane_view = world_from_view.transpose() * plane_world;
             plane_view.w = plane_view.w.min(-0.01);

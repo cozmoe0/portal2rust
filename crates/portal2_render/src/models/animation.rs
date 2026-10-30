@@ -168,7 +168,7 @@ impl StudioAnimator {
     }
 }
 
-fn animate_models(
+pub fn animate_models(
     time: Res<Time>,
     mut animators: Query<(Entity, &mut StudioAnimator)>,
     mut transforms: Query<&mut Transform>,
