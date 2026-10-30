@@ -91,6 +91,13 @@ pub struct Collider {
     pub solid: bool,
 }
 
+/// A piece of a model's collision that follows one of its animated bones
+/// (the engine's `phys_bone_follower`); traces report the model.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct BoneFollower {
+    pub owner: Entity,
+}
+
 pub fn rebuild_on_map_load(
     mut loaded: MessageReader<MapLoaded>,
     map: Option<Res<CurrentMap>>,
@@ -146,7 +153,7 @@ impl Trace {
 #[derive(SystemParam)]
 pub struct Physics<'w, 's> {
     pub world: Res<'w, CollisionWorld>,
-    colliders: Query<'w, 's, (Entity, &'static Collider, &'static GlobalTransform)>,
+    colliders: Query<'w, 's, (Entity, &'static Collider, &'static GlobalTransform, Option<&'static BoneFollower>)>,
     holes: Option<Res<'w, portal::PortalHoles>>,
 }
 
@@ -154,8 +161,24 @@ impl Physics<'_, '_> {
     /// Sweeps the box `[mins, maxs]` from `start` to `end` against everything
     /// whose contents intersect `mask`, ignoring entities in `ignore`.
     pub fn trace(&self, start: Vec3, end: Vec3, mins: Vec3, maxs: Vec3, mask: u32, ignore: &[Entity]) -> Trace {
+        self.trace_with(start, end, mins, maxs, mask, ignore, false)
+    }
+
+    /// A trace as the engine's own: a solid the trace starts inside and
+    /// leaves does not stop it (it only sets `start_solid`). Used by beams,
+    /// which start inside their emitter's housing.
+    pub fn trace_leaving_start(&self, start: Vec3, end: Vec3, mins: Vec3, maxs: Vec3, mask: u32, ignore: &[Entity]) -> Trace {
+        self.trace_with(start, end, mins, maxs, mask, ignore, true)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn trace_with(&self, start: Vec3, end: Vec3, mins: Vec3, maxs: Vec3, mask: u32, ignore: &[Entity], leave_start: bool) -> Trace {
         let mut best = Trace::empty(end);
         let consider = |hit: volume::VolumeHit, contents: u32, entity: Option<Entity>, normal: Vec3, best: &mut Trace| {
+            if hit.start_solid && leave_start && !hit.all_solid {
+                best.start_solid = true;
+                return;
+            }
             if hit.start_solid {
                 best.start_solid = true;
                 if hit.all_solid {
@@ -206,7 +229,8 @@ impl Physics<'_, '_> {
         }
 
         let reach = SweepReach::new(start, end, mins, maxs);
-        for (e, col, gt) in &self.colliders {
+        for (e, col, gt, follower) in &self.colliders {
+            let e = follower.map_or(e, |f| f.owner);
             if !col.enabled || !col.solid || ignore.contains(&e) {
                 continue;
             }
@@ -265,7 +289,8 @@ impl Physics<'_, '_> {
             out.push(None);
         }
         let reach = SweepReach::new(pos, pos, mins, maxs);
-        for (e, col, gt) in &self.colliders {
+        for (e, col, gt, follower) in &self.colliders {
+            let e = follower.map_or(e, |f| f.owner);
             if !col.enabled || !col.solid {
                 continue;
             }
@@ -285,7 +310,7 @@ impl Physics<'_, '_> {
 
     /// Whether a box overlaps a specific entity's shape (solid or not).
     pub fn touches(&self, entity: Entity, pos: Vec3, mins: Vec3, maxs: Vec3) -> bool {
-        let Ok((_, col, gt)) = self.colliders.get(entity) else { return false };
+        let Ok((_, col, gt, _)) = self.colliders.get(entity) else { return false };
         if !col.enabled {
             return false;
         }

@@ -6,7 +6,7 @@
 //! powers read it back where the player touches the world. The rules follow
 //! the game's (docs/re/paint.md).
 
-mod upload;
+pub mod upload;
 
 use std::collections::HashMap;
 
@@ -189,6 +189,9 @@ pub struct PaintRect {
     pub y: u32,
     pub width: u32,
     pub height: u32,
+    /// Size of one texel in `data` (4 for the paint map's RGBA8, 8 for
+    /// the lightmap atlas's RGBA16F).
+    pub texel_bytes: u32,
     pub data: Vec<u8>,
 }
 
@@ -465,7 +468,7 @@ impl PaintMap {
                     data.extend_from_slice(&[c[0], c[1], c[2], (luxel_amount(b) * 255.0) as u8]);
                 }
             }
-            out.push(PaintRect { image, x: f.origin.x - 1, y: f.origin.y - 1, width: w, height: h, data });
+            out.push(PaintRect { image, x: f.origin.x - 1, y: f.origin.y - 1, width: w, height: h, texel_bytes: 4, data });
         }
         out
     }

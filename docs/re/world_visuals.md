@@ -150,6 +150,47 @@ descriptions are our own; the code in `crates/portal2` is written from them.
   enable it and give each panel a part of the frame with `SetUseCustomUVs`
   and `SetUMin` / `SetUMax` / `SetVMin` / `SetVMax`.
 
+- Movies are drawn by the `Bik` shader, which turns the frame's YUV into
+  RGB and writes it as it is (fogged when fog is on): no lighting, no
+  tone mapping scale and no conversion, so a frame shows at its own
+  brightness whatever the exposure.
+
+## Area portal windows (`func_areaportalwindow`)
+
+- The window takes over the brush model of the entity its `target` names
+  (which stops drawing itself) and draws it blended by distance: `d` is the
+  distance from the view to the brush's bounds (times the zoom factor);
+  with equal fade distances the blend is `TranslucencyLimit` while `d` is
+  below them and 1 from there on, otherwise
+  `lerp(TranslucencyLimit, 1, clamp((d - FadeStartDist) / (FadeDist -
+  FadeStartDist)))`. A blend of 0 draws nothing. Inputs
+  `SetFadeStartDistance` and `SetFadeEndDistance`.
+
+## Light styles
+
+- A face stores one lightmap per light style it is lit by (four for each
+  style on bump-mapped faces, flat first), in the order of its style
+  slots; the lightmap is their sum, each scaled by its style's brightness.
+  A style's pattern is stepped through at ten letters a second; a letter's
+  brightness is `(letter - 'a') × 22 / 264`, so `m` is 1 and `a` is 0.
+  World lights lighting models are scaled the same way.
+
+## Laser beams (`env_portal_laser`)
+
+- The client draws each stretch of the beam (one per portal crossing) as
+  an engine beam with `sprites/purplelaser1` 32 units wide in white
+  (lethal lasers: `sprites/laserbeam`, 2 units, colour 100 255 100). A
+  beam is a strip facing the view, its full width across U and its
+  texture repeating every 100 units of length along V (at least half a
+  repeat), drawn additive. `purplelaser1` is UnlitTwoTexture: the base
+  (a narrow hot core in a wide dark red falloff) times
+  `effects/laserplane_atmosphere` under a texture transform (scale 0.4,
+  rotation 27.5°, offset by a LinearRamp of 0.02 per second) times
+  `$color`, a UniformNoise between 0.9 and 1.05, times the tone mapping
+  scale; it is not fogged.
+- The server's beam trace starts inside the emitter's housing; as with any
+  engine trace a solid it starts inside and leaves does not stop it.
+
 ## Dynamic tone mapping (auto exposure)
 
 - `client.dll` measures the 3D view into a luminance histogram: with the

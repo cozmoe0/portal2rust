@@ -109,6 +109,7 @@ fn blend_of(vmt: &Vmt) -> Blend {
 
 fn alpha_mode(blend: Blend, vmt: &Vmt) -> AlphaMode {
     match blend {
+        Blend::AlphaTest if vmt.get_bool("$allowalphatocoverage") => AlphaMode::AlphaToCoverage,
         Blend::Opaque | Blend::AlphaTest => AlphaMode::Opaque,
         Blend::Translucent => AlphaMode::Blend,
         Blend::Additive => {

@@ -57,9 +57,11 @@ pub struct Schemes {
     pub client: Scheme,
     /// `resource/sourcescheme.res`: the console and engine dialogs.
     pub source: Scheme,
-    /// Bumped whenever the schemes are reloaded (screen size changes), so
-    /// panels redo their layout.
+    /// Bumped whenever the screen size changes (and the schemes are
+    /// reloaded), so panels redo their layout.
     pub generation: u32,
+    /// The screen size the current layouts are for.
+    screen: (i32, i32),
     fonts_registered: bool,
 }
 
@@ -90,6 +92,14 @@ fn track_screen(window: Query<&Window, With<PrimaryWindow>>, mut surface: ResMut
     let (w, h) = (window.physical_width().max(1) as i32, window.physical_height().max(1) as i32);
     surface.wide = w;
     surface.tall = h;
+    if schemes.screen == (w, h) {
+        return;
+    }
+    // Proportional layouts and fonts depend on the exact size, so every
+    // resize lays the panels out again; the schemes only change when the
+    // size crosses into another symbol set.
+    schemes.screen = (w, h);
+    schemes.generation += 1;
     let symbols = Symbols::for_screen(w, h);
     if schemes.symbols == Some(symbols) {
         return;
@@ -121,7 +131,6 @@ fn track_screen(window: Query<&Window, With<PrimaryWindow>>, mut surface: ResMut
         }
     }
     schemes.symbols = Some(symbols);
-    schemes.generation += 1;
 }
 
 fn finish_frame(mut surface: ResMut<Surface>, mut frame: ResMut<render::VguiFrame>, mut images: ResMut<Assets<Image>>) {

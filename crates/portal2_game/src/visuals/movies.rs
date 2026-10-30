@@ -103,7 +103,7 @@ fn spawn_display(world: &mut World, e: Entity) {
     let material = world.resource_mut::<Assets<WorldMaterial>>().add(WorldMaterial {
         params: portal2_render::source_material::WorldParams {
             color: Vec4::ONE,
-            flags: world_flags::UNLIT,
+            flags: world_flags::UNLIT | world_flags::MOVIE,
             lightmap_scale: 1.0,
             envmap_saturation: 1.0,
             ..default()

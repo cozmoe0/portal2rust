@@ -28,7 +28,8 @@ use portal2_render::textures::TextureCache;
 use portal2_world::{CurrentMap, MapObject};
 
 pub fn register(app: &mut App) {
-    app.add_systems(Update, (animation_done_outputs, animation_events)).add_systems(FixedUpdate, button_timers.in_set(ThinkSet));
+    app.add_systems(Update, (animation_done_outputs, animation_events, super::spawner::relight_models))
+        .add_systems(FixedUpdate, button_timers.in_set(ThinkSet));
     let world = app.world_mut();
     {
         let mut s = world.resource_mut::<SpawnHandlers>();
@@ -238,6 +239,11 @@ fn model_inputs(world: &mut World, call: &InputCall) -> bool {
             }
             clear_render_children(world, e);
             attach_entity_model(world, e, true);
+            // Bone followers rode on the old joints.
+            let solid = world.get::<MapEntity>(e).map_or(0, |m| m.get_i32("solid").unwrap_or(6));
+            if solid == 6 && world.get::<portal2_world::collision::Collider>(e).is_none() {
+                super::spawner::attach_bone_followers(world, e);
+            }
             if let Some(mut anim) = world.get_mut::<StudioAnimator>(e) {
                 anim.set_sequence_index(sequence);
                 anim.cycle = cycle;
@@ -312,6 +318,21 @@ fn spawn_chamber_door(world: &mut World, e: Entity) {
         anim.set_sequence("idleclose");
     }
     world.entity_mut(e).insert(ChamberDoor { open: false, locked: false });
+    set_door_window(world, e, false);
+}
+
+/// Opens or closes the area portal window a test chamber door names: open
+/// it never draws (fade distances 10000, or the door's own with
+/// `UseAreaPortalFade`), closed it always does (0 and 0).
+fn set_door_window(world: &mut World, e: Entity, open: bool) {
+    let Some(me) = world.get::<MapEntity>(e) else { return };
+    let Some(name) = me.get("areaportalwindow").filter(|n| !n.is_empty()).map(str::to_owned) else { return };
+    let (start, end) = match (open, me.get_bool("useareaportalfade")) {
+        (false, _) => (0.0, 0.0),
+        (true, true) => (me.get_f32("areaportalfadestart").unwrap_or(0.0), me.get_f32("areaportalfadeend").unwrap_or(0.0)),
+        (true, false) => (10000.0, 10000.0),
+    };
+    super::areaportal::set_window_fades(world, &name, start, end);
 }
 
 fn chamber_door_input(world: &mut World, call: &InputCall) -> bool {
@@ -346,8 +367,12 @@ fn set_door(world: &mut World, e: Entity, open: bool) {
         anim.set_sequence(if open { "open" } else { "close" });
         anim.set_default_sequence(if open { "idleopen" } else { "idleclose" });
     }
-    // Fully open/closed is reported when the sequence ends.
+    // Fully open/closed is reported when the sequence ends; the window
+    // opens as the door starts to and closes once it is shut.
     world.entity_mut(e).insert(PendingDoorReport { open });
+    if open {
+        set_door_window(world, e, true);
+    }
 }
 
 /// Door waiting for its open/close animation to finish.
@@ -431,6 +456,9 @@ fn button_timers(
         if done {
             out.write(FireOutput::new(e, if pending.open { "OnFullyOpen" } else { "OnFullyClosed" }));
             commands.entity(e).remove::<PendingDoorReport>();
+            if !pending.open {
+                commands.queue(move |world: &mut World| set_door_window(world, e, false));
+            }
         }
     }
 }

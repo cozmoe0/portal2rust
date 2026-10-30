@@ -58,7 +58,23 @@ pub struct LightmapAtlas {
     pub height: u32,
     /// Linear RGB, row-major.
     pub texels: Vec<[f32; 3]>,
+    /// Faces lit by more than the normal light style (switchable lights);
+    /// their texels are composed from these at run time.
+    pub styled: Vec<StyledFace>,
 }
+
+/// A face's lightmap rectangle in the atlas (all its bump blocks) with one
+/// layer per light style it carries, each covering the whole rectangle.
+pub struct StyledFace {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+    pub layers: Vec<(u8, Vec<[f32; 3]>)>,
+}
+
+/// Unused light style slot.
+const NO_STYLE: u8 = 255;
 
 #[derive(Clone, Copy)]
 struct AtlasRect {
@@ -138,25 +154,54 @@ fn pack_lightmaps(bsp: &Bsp) -> (LightmapAtlas, HashMap<usize, AtlasRect>) {
     }
     let height = (y + row_h).max(4).next_multiple_of(4);
     let mut texels = vec![[0.0f32; 3]; (width * height) as usize];
-    for &(face_index, bw, _, h, bumped) in &items {
+    let mut styled = Vec::new();
+    for &(face_index, bw, w, h, bumped) in &items {
         let face = &bsp.faces[face_index];
         let rect = rects[&face_index];
         let (iw, ih) = (bw - 2, h - 2);
-        for block in 0..if bumped { 4 } else { 1 } {
-            let Some(samples) = bsp.face_lightmap(face, block) else { continue };
-            let bx = rect.x + block as u32 * bw;
+        let blocks = if bumped { 4 } else { 1 };
+        // Each style slot holds all of the face's blocks in turn.
+        let layer = |slot: usize| -> Vec<[f32; 3]> {
+            let mut out = vec![[0.0f32; 3]; (w * h) as usize];
+            for block in 0..blocks {
+                let Some(samples) = bsp.face_lightmap(face, slot * blocks + block) else { continue };
+                for ty in 0..h {
+                    for tx in 0..bw {
+                        // Clamp into the inner rect so the 1-texel border repeats the edge.
+                        let sx = (tx as i32 - 1).clamp(0, iw as i32 - 1) as u32;
+                        let sy = (ty as i32 - 1).clamp(0, ih as i32 - 1) as u32;
+                        out[(ty * w + block as u32 * bw + tx) as usize] = samples[(sy * iw + sx) as usize].to_array();
+                    }
+                }
+            }
+            out
+        };
+        let slots: Vec<(usize, u8)> = face.styles.iter().copied().enumerate().filter(|&(_, st)| st != NO_STYLE).collect();
+        let layers: Vec<(u8, Vec<[f32; 3]>)> = if slots.iter().any(|&(_, st)| st != 0) {
+            slots.iter().map(|&(slot, st)| (st, layer(slot))).collect()
+        } else {
+            vec![(0, layer(0))]
+        };
+        // Until the lights report their styles only the normal style shows.
+        for (style, data) in &layers {
+            if *style != 0 {
+                continue;
+            }
             for ty in 0..h {
-                for tx in 0..bw {
-                    // Clamp into the inner rect so the 1-texel border repeats the edge.
-                    let sx = (tx as i32 - 1).clamp(0, iw as i32 - 1) as u32;
-                    let sy = (ty as i32 - 1).clamp(0, ih as i32 - 1) as u32;
-                    let s = samples[(sy * iw + sx) as usize];
-                    texels[((rect.y + ty) * width + bx + tx) as usize] = s.to_array();
+                for tx in 0..w {
+                    let t = &mut texels[((rect.y + ty) * width + rect.x + tx) as usize];
+                    let v = data[(ty * w + tx) as usize];
+                    for c in 0..3 {
+                        t[c] += v[c];
+                    }
                 }
             }
         }
+        if layers.len() > 1 || layers.first().is_some_and(|(st, _)| *st != 0) {
+            styled.push(StyledFace { x: rect.x, y: rect.y, width: w, height: h, layers });
+        }
     }
-    (LightmapAtlas { width, height, texels }, rects)
+    (LightmapAtlas { width, height, texels, styled }, rects)
 }
 
 struct FaceMapping {

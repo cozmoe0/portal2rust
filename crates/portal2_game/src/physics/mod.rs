@@ -43,7 +43,7 @@ impl Plugin for GamePhysicsPlugin {
                 PreUpdate,
                 build_static_world.after(portal2_world::collision::rebuild_on_map_load).before(portal2_core::sets::EntitySpawnSet),
             )
-            .add_systems(Update, (attach_bodies, attach_player_body, sync_portal_slabs))
+            .add_systems(Update, (attach_bodies, attach_follower_bodies, attach_player_body, sync_portal_slabs))
             .add_plugins((carry::CarryPlugin, portal_travel::PortalTravelPlugin));
         inputs::register(app);
         constraints::register(app);
@@ -54,18 +54,72 @@ fn layers_for(membership: u32, filters: u32) -> CollisionLayers {
     CollisionLayers::new(LayerMask(membership), LayerMask(filters))
 }
 
-/// Convex hull collider for one of our collision volumes.
-fn volume_collider(v: &ConvexVolume) -> Option<Collider> {
-    let pts = polytope_vertices(&v.planes);
-    if pts.len() < 4 {
-        return None;
+/// Planes closer than this in angle (cosine) and offset are one face.
+const COPLANAR_COS: f32 = 0.999;
+const COPLANAR_DIST: f32 = 0.5;
+/// Points closer than this are one hull corner.
+const WELD_DISTANCE: f32 = 0.1;
+/// Points this close to a plane lie on its face.
+const ON_FACE: f32 = 0.05;
+
+/// Avian colliders for one of our collision volumes.
+///
+/// Model hulls come from triangles whose planes are each pushed out to the
+/// hull's furthest point, so a face made of slightly uneven triangles
+/// becomes a very low dome; nearly coplanar planes are merged into one flat
+/// face first. The contact solver supports a resting box on at most four
+/// corners of the face below it, so on a face with more corners (a floor
+/// button's round plate) props are held up by part of it only and keep
+/// rocking. Such hulls are split into tetrahedra fanned out from their
+/// centre, each face of which is a triangle.
+fn volume_colliders(v: &ConvexVolume) -> Vec<Collider> {
+    let mut planes: Vec<portal2_world::collision::volume::Plane> = Vec::with_capacity(v.planes.len());
+    for p in &v.planes {
+        match planes.iter_mut().find(|q| q.normal.dot(p.normal) > COPLANAR_COS && (q.dist - p.dist).abs() < COPLANAR_DIST) {
+            Some(q) => q.dist = q.dist.max(p.dist),
+            None => planes.push(*p),
+        }
     }
-    Collider::convex_hull(&pts)
+    let mut pts: Vec<Vec3> = Vec::new();
+    for p in polytope_vertices(&planes) {
+        if !pts.iter().any(|q| q.distance_squared(p) < WELD_DISTANCE * WELD_DISTANCE) {
+            pts.push(p);
+        }
+    }
+    if pts.len() < 4 {
+        return Vec::new();
+    }
+    let faces: Vec<Vec<Vec3>> = planes.iter().map(|pl| face_polygon(&pts, pl.normal, pl.dist)).filter(|f| f.len() >= 3).collect();
+    if faces.iter().all(|f| f.len() <= 4) {
+        return Collider::convex_hull(&pts).into_iter().collect();
+    }
+    let centre = pts.iter().copied().sum::<Vec3>() / pts.len() as f32;
+    faces
+        .iter()
+        .flat_map(|f| (1..f.len() - 1).map(move |i| [centre, f[0], f[i], f[i + 1]]))
+        .filter_map(|tet| Collider::convex_hull(&tet))
+        .collect()
+}
+
+/// The corners of the hull on a plane, in order around the face.
+fn face_polygon(pts: &[Vec3], normal: Vec3, dist: f32) -> Vec<Vec3> {
+    let mut on: Vec<Vec3> = pts.iter().copied().filter(|p| (normal.dot(*p) - dist).abs() < ON_FACE).collect();
+    if on.len() < 3 {
+        return on;
+    }
+    let c = on.iter().copied().sum::<Vec3>() / on.len() as f32;
+    let u = (on[0] - c).normalize_or_zero();
+    let w = normal.cross(u);
+    on.sort_by(|a, b| {
+        let (da, db) = (*a - c, *b - c);
+        da.dot(w).atan2(da.dot(u)).total_cmp(&db.dot(w).atan2(db.dot(u)))
+    });
+    on
 }
 
 fn shape_collider(shape: &Shape) -> Option<Collider> {
     let parts: Vec<(Vec3, Quat, Collider)> =
-        shape.volumes.iter().filter_map(volume_collider).map(|c| (Vec3::ZERO, Quat::IDENTITY, c)).collect();
+        shape.volumes.iter().flat_map(volume_colliders).map(|c| (Vec3::ZERO, Quat::IDENTITY, c)).collect();
     (!parts.is_empty()).then(|| Collider::compound(parts))
 }
 
@@ -93,9 +147,7 @@ fn build_static_world(
         if v.contents & solid == 0 || v.planes.first().is_some_and(|p| p.surface == -2) {
             continue;
         }
-        if let Some(c) = volume_collider(v) {
-            hulls.push((Vec3::ZERO, Quat::IDENTITY, c));
-        }
+        hulls.extend(volume_colliders(v).into_iter().map(|c| (Vec3::ZERO, Quat::IDENTITY, c)));
     }
     let count = hulls.len();
     let mut e = commands.spawn((
@@ -174,6 +226,17 @@ fn attach_bodies(
     }
 }
 
+/// Bone followers are kinematic bodies carried by their joints.
+fn attach_follower_bodies(
+    mut commands: Commands,
+    new: Query<(Entity, &TraceCollider), (With<portal2_world::collision::BoneFollower>, Without<RigidBody>)>,
+) {
+    for (e, col) in &new {
+        let Some(collider) = shape_collider(&col.shape) else { continue };
+        commands.entity(e).insert((RigidBody::Kinematic, collider, layers_for(layers::MOVER, layers::PROP | layers::HELD)));
+    }
+}
+
 /// Simulates `e` as a free physics prop from now on.
 pub fn make_dynamic(commands: &mut Commands, e: Entity, collider: Collider, mass: f32) {
     commands.entity(e).insert((
@@ -218,7 +281,7 @@ fn sync_portal_slabs(mut commands: Commands, holes: Res<PortalHoles>, slabs: Que
     }
     for hole in &holes.holes {
         for v in &hole.frame_volumes {
-            if let Some(c) = volume_collider(v) {
+            if let Some(c) = shape_collider(&Shape::new(vec![v.clone()])) {
                 commands.spawn((
                     PortalSlab,
                     MapObject,

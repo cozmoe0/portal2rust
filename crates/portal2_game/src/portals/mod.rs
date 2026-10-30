@@ -41,7 +41,14 @@ impl Plugin for PortalsPlugin {
             .add_message::<PortalFx>()
             .add_systems(Update, (apply_placements, fizzle_portals, clear_on_map_load, animate_portals, update_holes).chain())
             .add_systems(FixedUpdate, (teleport_player, portal_sounds).chain().after(PlayerMoveSet))
-            .add_systems(PostUpdate, update_portal_cameras.after(portal2_core::sets::PlayerCameraSet).before(TransformSystems::Propagate))
+            .add_systems(
+                PostUpdate,
+                (resize_portal_views, update_portal_cameras, update_fix_meshes)
+                    .chain()
+                    .after(portal2_core::sets::PlayerCameraSet)
+                    .after(portal2_world::camera::sync_camera_transform)
+                    .before(TransformSystems::Propagate),
+            )
             .add_plugins(gun::GunPlugin);
     }
 }
@@ -118,8 +125,13 @@ pub struct Portal {
     /// through the pair, and the copies of the surface each view sees.
     pub inner_camera: Entity,
     pub inner_material: Handle<PortalMaterial>,
+    pub inner_texture: Handle<Image>,
     /// Past the last level the portal is drawn full of static.
     pub end_material: Handle<PortalMaterial>,
+    /// Fills the part of the opening the main view's near plane cuts away
+    /// (the game's render fix mesh), in the portal's own space.
+    pub fix: Entity,
+    pub fix_mesh: Handle<Mesh>,
 }
 
 /// The pair of portals (slot 0 and 1).
@@ -156,10 +168,13 @@ pub enum PortalFx {
     Closed { slot: usize, frame: PortalFrame },
 }
 
+/// How far in front of the portal's plane its quad is drawn.
+const QUAD_OFFSET: f32 = 0.4;
+
 fn portal_quad() -> Mesh {
     // In portal local space: X out of the surface, Y left, Z up.
     let (w, h) = (HALF_WIDTH, HALF_HEIGHT);
-    let x = 0.4;
+    let x = QUAD_OFFSET;
     Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD)
         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vec![[x, w, -h], [x, -w, -h], [x, -w, h], [x, w, h]])
         .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[1.0, 0.0, 0.0]; 4])
@@ -291,6 +306,17 @@ fn apply_placements(
         let surface = surface_on(PORTAL_LAYER, &material);
         let inner_surface = surface_on(PORTAL_INNER_LAYER, &inner_material);
         let end_surface = surface_on(PORTAL_END_LAYER, &end_material);
+        let fix_mesh = meshes.add(fix_mesh_from(&[]));
+        let fix = commands
+            .spawn((
+                Mesh3d(fix_mesh.clone()),
+                MeshMaterial3d(material.clone()),
+                RenderLayers::layer(PORTAL_LAYER),
+                Transform::IDENTITY,
+                Visibility::Hidden,
+                bevy::camera::visibility::NoFrustumCulling,
+            ))
+            .id();
         let e = commands
             .spawn((
                 Name::new(format!("portal {}", req.slot)),
@@ -305,12 +331,15 @@ fn apply_placements(
                     opened_at: time.elapsed_secs_f64(),
                     inner_camera,
                     inner_material,
+                    inner_texture,
                     end_material,
+                    fix,
+                    fix_mesh,
                 },
                 Transform::from_translation(req.frame.center).with_rotation(rotation),
                 Visibility::Visible,
             ))
-            .add_children(&[surface, inner_surface, end_surface])
+            .add_children(&[surface, inner_surface, end_surface, fix])
             .id();
         portals.entities[req.slot] = Some(e);
         sounds.write(portal2_audio::SoundRequest::on("Portal.ambient_loop", e));
@@ -411,6 +440,27 @@ fn update_holes(portals: Res<Portals>, query: Query<&Portal>, world: Res<Collisi
     }
 }
 
+/// Keeps the portal views the size of the window: they are sampled in
+/// screen space with the main view's projection.
+fn resize_portal_views(
+    windows: Query<&Window, With<PrimaryWindow>>,
+    portals: Res<Portals>,
+    query: Query<&Portal>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    let Ok(window) = windows.single() else { return };
+    let size = Extent3d { width: window.physical_width().max(1), height: window.physical_height().max(1), depth_or_array_layers: 1 };
+    for p in portals.entities.iter().flatten().filter_map(|e| query.get(*e).ok()) {
+        for handle in [&p.texture, &p.inner_texture] {
+            if images.get(handle).is_some_and(|i| i.texture_descriptor.size != size)
+                && let Some(mut image) = images.get_mut(handle)
+            {
+                image.resize(size);
+            }
+        }
+    }
+}
+
 /// Places each portal's camera where the player's view would be if it were
 /// looking out of the linked portal, clipped at that portal's surface, and
 /// its inner camera one more trip through (the portal seen again inside
@@ -442,10 +492,14 @@ fn update_portal_cameras(
             }
             *t = Transform::from_matrix(virt.into());
             *exposure = *main_exposure;
-            // Exit plane in view space, keeping what lies in front of it.
+            // Exit plane in view space, keeping what lies in front of it. An
+            // eye less than the bias in front of it would leave the plane
+            // behind the camera (and the wall behind the exit in view), so
+            // the plane then passes just in front of the eye instead.
             let plane_world = to.forward.extend(-to.plane_dist() + 0.1);
             let world_from_view = Mat4::from(virt);
-            let plane_view = world_from_view.transpose() * plane_world;
+            let mut plane_view = world_from_view.transpose() * plane_world;
+            plane_view.w = plane_view.w.min(-0.01);
             if let Projection::Custom(custom) = proj.as_mut()
                 && let Some(pp) = custom.get_mut::<PortalProjection>()
             {
@@ -454,6 +508,99 @@ fn update_portal_cameras(
             }
         }
     }
+}
+
+/// The game's render fix: where the main view's near plane lies behind a
+/// portal inside its opening, the opening's quad is cut away and the wall
+/// behind would show (walking slowly through, or with the eye carried
+/// through ahead of the body); that piece of the near plane, just beyond
+/// it, is drawn with the portal's material instead.
+fn update_fix_meshes(
+    portals: Res<Portals>,
+    query: Query<&Portal>,
+    main: Query<(&Transform, &Projection), (With<MainCamera>, Without<Portal>)>,
+    mut visibility: Query<&mut Visibility>,
+    mut meshes: ResMut<Assets<Mesh>>,
+) {
+    let linked = linked_frames(&portals, &query).is_some();
+    let main = main.single().ok().and_then(|(t, p)| match p {
+        Projection::Perspective(pp) => Some((*t, pp.clone())),
+        _ => None,
+    });
+    for p in portals.entities.iter().flatten().filter_map(|e| query.get(*e).ok()) {
+        let polygon = match (&main, linked) {
+            (Some((t, pp)), true) => near_plane_behind(&p.frame, t, pp),
+            _ => Vec::new(),
+        };
+        if let Ok(mut v) = visibility.get_mut(p.fix) {
+            let want = if polygon.len() >= 3 { Visibility::Inherited } else { Visibility::Hidden };
+            if *v != want {
+                *v = want;
+            }
+        }
+        if polygon.len() >= 3
+            && let Some(mut mesh) = meshes.get_mut(&p.fix_mesh)
+        {
+            *mesh = fix_mesh_from(&polygon);
+        }
+    }
+}
+
+/// The part of the camera's near plane (pushed a hair further out) behind
+/// the portal's quad and inside its opening, in the portal's space.
+fn near_plane_behind(frame: &PortalFrame, camera: &Transform, pp: &PerspectiveProjection) -> Vec<Vec3> {
+    let near = pp.near * 1.01;
+    let hy = near * (pp.fov * 0.5).tan();
+    let hx = hy * pp.aspect_ratio;
+    let (right, up, forward) = (camera.rotation * Vec3::X, camera.rotation * Vec3::Y, camera.rotation * Vec3::NEG_Z);
+    let centre = camera.translation + forward * near;
+    let mut poly: Vec<Vec3> = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
+        .iter()
+        .map(|(sx, sy)| frame.to_local(centre + right * (hx * sx) + up * (hy * sy)))
+        .collect();
+    // Keep x <= the quad's plane and |y|, |z| within the opening.
+    let planes =
+        [(Vec3::X, QUAD_OFFSET), (Vec3::Y, HALF_WIDTH), (Vec3::NEG_Y, HALF_WIDTH), (Vec3::Z, HALF_HEIGHT), (Vec3::NEG_Z, HALF_HEIGHT)];
+    for (n, d) in planes {
+        poly = clip_polygon(&poly, n, d);
+        if poly.len() < 3 {
+            return Vec::new();
+        }
+    }
+    poly
+}
+
+/// Keeps the part of a convex polygon where `n · p <= d`.
+fn clip_polygon(poly: &[Vec3], n: Vec3, d: f32) -> Vec<Vec3> {
+    let mut out = Vec::with_capacity(poly.len() + 1);
+    for (i, &a) in poly.iter().enumerate() {
+        let b = poly[(i + 1) % poly.len()];
+        let (da, db) = (n.dot(a) - d, n.dot(b) - d);
+        if da <= 0.0 {
+            out.push(a);
+        }
+        if (da <= 0.0) != (db <= 0.0) {
+            out.push(a + (b - a) * (da / (da - db)));
+        }
+    }
+    out
+}
+
+/// A fan over a convex polygon in portal space, with the quad's texture
+/// coordinates of each point projected onto the opening.
+fn fix_mesh_from(polygon: &[Vec3]) -> Mesh {
+    let points: Vec<Vec3> = if polygon.len() >= 3 { polygon.to_vec() } else { vec![Vec3::ZERO; 3] };
+    let uvs: Vec<[f32; 2]> = points.iter().map(|p| [0.5 - p.y / (2.0 * HALF_WIDTH), 0.5 - p.z / (2.0 * HALF_HEIGHT)]).collect();
+    let mut indices = Vec::with_capacity((points.len() - 2) * 6);
+    for i in 1..points.len() as u32 - 1 {
+        // Both windings: the camera may see it from either side.
+        indices.extend([0, i, i + 1, 0, i + 1, i]);
+    }
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, points.iter().map(|p| p.to_array()).collect::<Vec<_>>())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[1.0, 0.0, 0.0]; points.len()])
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_indices(Indices::U32(indices))
 }
 
 /// Whether any of a portal's opening (with a margin for its rim) might be

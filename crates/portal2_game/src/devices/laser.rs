@@ -1,10 +1,20 @@
 //! Lasers: emitters cast beams that pass through glass and portals, bounce
 //! out of reflection cubes, run through relays, power catchers and targets,
 //! burn the player and destroy turrets.
+//!
+//! The client draws each stretch of the beam as an engine beam: a strip
+//! facing the view, `sprites/purplelaser1` 32 units wide (a narrow hot core
+//! in a wide red glow), or for lethal lasers `sprites/laserbeam` 2 units
+//! wide, tinted (100, 255, 100).
 
+use bevy::asset::RenderAssetUsages;
+use bevy::mesh::{Indices, MeshVertexBufferLayoutRef, PrimitiveTopology};
+use bevy::pbr::{MaterialPipeline, MaterialPipelineKey};
 use bevy::prelude::*;
+use bevy::render::render_resource::{AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError};
+use bevy::shader::ShaderRef;
 
-use super::{BeamSegment, EffectMaterial, linked_frames, segment_transform, trace_beam, tube_mesh, with_ancestors};
+use super::{BeamSegment, linked_frames, trace_beam, with_ancestors};
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{FireOutput, InputCall, InputHandlers};
 use crate::entities::spawner::{ModelOptions, attach_studio_model};
@@ -13,14 +23,23 @@ use crate::player::health::DamagePlayer;
 use crate::portals::{Portal, Portals};
 use portal2_core::entity::MapEntity;
 use portal2_core::sets::PlayerMoveSet;
+use portal2_core::vfs::GameFs;
 use portal2_render::models::StudioAnimator;
+use portal2_render::textures::TextureCache;
 use portal2_world::MapObject;
 use portal2_world::collision::{Collider as TraceCollider, Physics};
 use source_formats::bsp::contents;
 
 /// Lasers pass through glass and grates.
 pub const LASER_MASK: u32 = contents::SOLID | contents::MOVEABLE | contents::MONSTER;
-const BEAM_RADIUS: f32 = 1.5;
+const LASER_SHADER: &str = "embedded://portal2_render/shaders/laser.wesl";
+/// Beam material and width of ordinary lasers (`C_PortalLaser`).
+const BEAM_MATERIAL: &str = "sprites/purplelaser1";
+const BEAM_WIDTH: f32 = 32.0;
+/// Lethal lasers draw a thin green beam instead.
+const LETHAL_BEAM_MATERIAL: &str = "sprites/laserbeam";
+const LETHAL_BEAM_WIDTH: f32 = 2.0;
+const LETHAL_BEAM_COLOR: [f32; 3] = [100.0, 255.0, 100.0];
 /// Beam damage per second while it touches the player.
 const BURN_DPS: f32 = 60.0;
 /// How strongly the beam pushes the player away (units/s added per hit).
@@ -30,7 +49,10 @@ pub struct LaserPlugin;
 
 impl Plugin for LaserPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<LaserHitTurret>().add_systems(FixedUpdate, update_lasers.after(PlayerMoveSet)).add_systems(Update, draw_beams);
+        app.add_plugins(MaterialPlugin::<LaserBeamMaterial>::default())
+            .add_message::<LaserHitTurret>()
+            .add_systems(FixedUpdate, update_lasers.after(PlayerMoveSet))
+            .add_systems(Update, draw_beams);
         let world = app.world_mut();
         {
             let mut s = world.resource_mut::<SpawnHandlers>();
@@ -238,21 +260,151 @@ fn update_lasers(
     }
 }
 
-/// Keeps one glowing tube per beam segment.
+#[derive(Clone, Copy, Debug, Default, ShaderType)]
+pub struct LaserParams {
+    pub color: Vec4,
+    pub shape: Vec4,
+    pub transform: Vec4,
+}
+
+#[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
+pub struct LaserBeamMaterial {
+    #[uniform(0)]
+    pub params: LaserParams,
+    #[texture(1)]
+    #[sampler(2)]
+    pub base: Option<Handle<Image>>,
+    #[texture(3)]
+    #[sampler(4)]
+    pub base2: Option<Handle<Image>>,
+}
+
+impl Material for LaserBeamMaterial {
+    fn vertex_shader() -> ShaderRef {
+        LASER_SHADER.into()
+    }
+
+    fn fragment_shader() -> ShaderRef {
+        LASER_SHADER.into()
+    }
+
+    fn alpha_mode(&self) -> AlphaMode {
+        AlphaMode::Add
+    }
+
+    fn enable_prepass() -> bool {
+        false
+    }
+
+    fn enable_shadows() -> bool {
+        false
+    }
+
+    fn specialize(
+        _pipeline: &MaterialPipeline,
+        descriptor: &mut RenderPipelineDescriptor,
+        _layout: &MeshVertexBufferLayoutRef,
+        _key: MaterialPipelineKey<Self>,
+    ) -> Result<(), SpecializedMeshPipelineError> {
+        descriptor.primitive.cull_mode = None;
+        if let Some(depth) = descriptor.depth_stencil.as_mut() {
+            depth.depth_write_enabled = Some(false);
+        }
+        Ok(())
+    }
+}
+
+fn srgb_to_linear(c: f32) -> f32 {
+    if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+}
+
+/// The beam material for a laser beam VMT: its base texture and, for
+/// UnlitTwoTexture, the second texture with its transform and the
+/// LinearRamp and UniformNoise proxies.
+fn beam_material(
+    fs: &GameFs,
+    textures: &mut TextureCache,
+    images: &mut Assets<Image>,
+    name: &str,
+    width: f32,
+    color: Vec3,
+) -> LaserBeamMaterial {
+    let vmt = portal2_render::materials::load_vmt(fs, &format!("materials/{name}.vmt"));
+    let mut texture =
+        |param: &str| vmt.as_ref().and_then(|v| v.texture_path(param)).and_then(|p| textures.load(fs, images, &p, true)).map(|t| t.handle);
+    let base = texture("$basetexture");
+    let base2 = texture("$texture2");
+    let proxy = |name: &str| vmt.as_ref().and_then(|v| v.proxies.iter().find(|p| p.key.eq_ignore_ascii_case(name)));
+    let noise = proxy("uniformnoise").map(|p| (p.get_f32("minval").unwrap_or(0.0), p.get_f32("maxval").unwrap_or(1.0)));
+    let scale = vmt.as_ref().and_then(|v| v.get_f32("$t2scale")).unwrap_or(1.0);
+    let rotation = vmt.as_ref().and_then(|v| v.get_f32("$t2rot")).unwrap_or(0.0).to_radians();
+    let rate = proxy("linearramp").and_then(|p| p.get_f32("rate")).unwrap_or(0.0);
+    let (lo, hi) = noise.unwrap_or((1.0, 1.0));
+    LaserBeamMaterial {
+        params: LaserParams {
+            color: color.extend(if noise.is_some() { 1.0 } else { 0.0 }),
+            shape: Vec4::new(width * 0.5, lo, hi, if base2.is_some() { 1.0 } else { 0.0 }),
+            transform: Vec4::new(scale, rotation, rate, 0.0),
+        },
+        base,
+        base2,
+    }
+}
+
+/// Strip from (0, -1) to (1, 1): x along the beam, y across it.
+fn beam_quad() -> Mesh {
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0, -1.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0], [1.0, -1.0, 0.0]])
+        .with_inserted_indices(Indices::U16(vec![0, 1, 2, 0, 2, 3]))
+}
+
+/// A beam stretch's placement: at its start, local X along it and scaled
+/// to its length (the shader turns it to face the view).
+fn beam_transform(start: Vec3, end: Vec3) -> Transform {
+    let d = end - start;
+    let len = d.length().max(0.01);
+    Transform { translation: start, rotation: Quat::from_rotation_arc(Vec3::X, d / len), scale: Vec3::new(len, 1.0, 1.0) }
+}
+
+struct BeamAssets {
+    mesh: Handle<Mesh>,
+    normal: Handle<LaserBeamMaterial>,
+    lethal: Handle<LaserBeamMaterial>,
+}
+
+/// Keeps one beam per stretch of each laser.
 fn draw_beams(
     mut commands: Commands,
     mut emitters: Query<&mut LaserEmitter>,
     mut transforms: Query<&mut Transform>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<EffectMaterial>>,
-    mut shared: Local<Option<(Handle<Mesh>, Handle<EffectMaterial>)>>,
+    mut materials: ResMut<Assets<LaserBeamMaterial>>,
+    mut images: ResMut<Assets<Image>>,
+    mut textures: ResMut<TextureCache>,
+    fs: Res<GameFs>,
+    mut shared: Local<Option<BeamAssets>>,
 ) {
-    let (mesh, material) = shared
-        .get_or_insert_with(|| (meshes.add(tube_mesh(8)), materials.add(EffectMaterial::glow(Vec3::new(1.0, 0.08, 0.04) * 4.0, 2.0, 0.01))))
-        .clone();
+    let assets = shared.get_or_insert_with(|| {
+        let lethal_color = Vec3::from_array(LETHAL_BEAM_COLOR.map(|c| srgb_to_linear(c / 255.0)));
+        BeamAssets {
+            mesh: meshes.add(beam_quad()),
+            normal: materials.add(beam_material(&fs, &mut textures, &mut images, BEAM_MATERIAL, BEAM_WIDTH, Vec3::ONE)),
+            lethal: materials.add(beam_material(&fs, &mut textures, &mut images, LETHAL_BEAM_MATERIAL, LETHAL_BEAM_WIDTH, lethal_color)),
+        }
+    });
     for mut laser in &mut emitters {
+        let material = if laser.lethal { assets.lethal.clone() } else { assets.normal.clone() };
         while laser.beams.len() < laser.segments.len() {
-            let e = commands.spawn((Mesh3d(mesh.clone()), MeshMaterial3d(material.clone()), Transform::default(), MapObject)).id();
+            let e = commands
+                .spawn((
+                    Mesh3d(assets.mesh.clone()),
+                    MeshMaterial3d(material.clone()),
+                    Transform::default(),
+                    // The strip is placed in the shader; its mesh bounds say nothing.
+                    bevy::camera::visibility::NoFrustumCulling,
+                    MapObject,
+                ))
+                .id();
             laser.beams.push(e);
         }
         while laser.beams.len() > laser.segments.len() {
@@ -262,7 +414,7 @@ fn draw_beams(
         }
         for (seg, &beam) in laser.segments.iter().zip(&laser.beams) {
             if let Ok(mut t) = transforms.get_mut(beam) {
-                *t = segment_transform(seg.start, seg.end, BEAM_RADIUS, BEAM_RADIUS);
+                *t = beam_transform(seg.start, seg.end);
             }
         }
     }

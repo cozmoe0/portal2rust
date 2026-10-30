@@ -45,6 +45,9 @@ pub mod world_flags {
     /// Paint (gels) drawn over the surface from the map's paint map (see
     /// docs/re/paint.md); set on paintable materials of paint maps.
     pub const PAINT: u32 = 1 << 20;
+    /// A `vgui_movie_display` screen: the gamma-encoded video frame shown
+    /// as it is (the game's Bink shader skips lighting and tone mapping).
+    pub const MOVIE: u32 = 1 << 21;
 }
 
 pub mod model_flags {

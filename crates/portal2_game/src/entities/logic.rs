@@ -46,7 +46,6 @@ pub fn register(app: &mut App) {
             "func_portal_bumper",
             "func_illusionary",
             "func_areaportal",
-            "func_areaportalwindow",
             "info_lighting_relative",
         ] {
             spawn.register(class, |_, _| {});
@@ -70,9 +69,7 @@ pub fn register(app: &mut App) {
     h.register("logic_register_activator", register_activator_input);
     // Classes whose effects are not simulated yet; their inputs are accepted
     // so I/O chains continue.
-    for class in
-        ["logic_achievement", "light", "light_spot", "env_spark", "info_overlay_accessor", "vgui_screen", "move_rope", "keyframe_rope"]
-    {
+    for class in ["logic_achievement", "env_spark", "info_overlay_accessor", "vgui_screen", "move_rope", "keyframe_rope"] {
         h.accept_rest(class);
     }
 }

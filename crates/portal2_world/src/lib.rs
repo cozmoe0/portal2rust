@@ -4,6 +4,7 @@ pub mod bsp_mesh;
 pub mod camera;
 pub mod collision;
 mod commands;
+pub mod lightstyles;
 pub mod paint_map;
 pub mod ropes;
 pub mod sky;
@@ -93,7 +94,7 @@ pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((sky::SkyPlugin, ropes::RopePlugin, paint_map::PaintMapPlugin))
+        app.add_plugins((sky::SkyPlugin, ropes::RopePlugin, paint_map::PaintMapPlugin, lightstyles::LightStylePlugin))
             .add_message::<LoadMap>()
             .add_message::<MapLoaded>()
             .init_resource::<PendingLoad>()
@@ -191,6 +192,10 @@ fn load_map_system(
     let skybox = sky::Skybox3d::from_bsp(&bsp);
     let mut geometry = build_world_geometry(&bsp, skybox.map(|s| s.area));
     let lightmap = images.add(lightmap_image(&geometry.atlas));
+    // Faces lit by switchable lights are composed from their style layers;
+    // the map's lights set their styles as they spawn.
+    commands.insert_resource(lightstyles::LightStyles::default());
+    commands.insert_resource(lightstyles::StyledLightmap::new(lightmap.id(), std::mem::take(&mut geometry.atlas.styled)));
     let mut overlay_batches: Vec<(MeshBatch, bool)> = std::mem::take(&mut geometry.overlays)
         .into_iter()
         .map(|b| (b, false))

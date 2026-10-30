@@ -208,6 +208,17 @@ origin and angles.
   multiplier + phase` (proportional) or `frequency × (multiplier × time +
   phase)`. Rate and frequency are per-particle randoms between their
   bounds. Alpha stays within 0..1.
+- `Remap Control Point to Vector` (also an initializer): each step the
+  control point's position is remapped per axis, clamped, from `input
+  minimum..maximum` to `output minimum..maximum` (turned into `local space
+  CP`'s axes when it is not -1) and written to `output field` for every
+  particle, times its initial value with `output is scalar of initial
+  random range`. Attributes: `input control point number` (0), `input
+  minimum` / `maximum` and `output minimum` / `maximum` (0 0 0), `output
+  field` (0), `offset position` and `accelerate position` (0), `local space
+  CP` (-1). This is how `portal_success`, `portal_projectile_ball` and the
+  tractor beam effects take their colour from control point 2 (0..255 to
+  0.25..1); without it they stay white.
 
 ## Renderers
 

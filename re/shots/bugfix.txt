@@ -1,0 +1,18 @@
+# Views for the bug-fix pass: name map x y z pitch yaw roll (feet origin, as
+# setpos) [console commands]. Capture the game with
+#   python -I re/tools/capture.py re/shots/bugfix.txt --map-settle 20 --settle 4
+# and ours with
+#   cargo run --release -p portal2 -- --shots re/shots/bugfix.txt --shot-settle-time 4 --shot-map-settle 20
+vines_up sp_a1_intro1 -1180.0 4300.0 2680.0 -60.0 100.0 0
+vines_far sp_a1_intro1 -1000.0 4200.0 2680.0 -35.0 140.0 0
+door_open sp_a1_intro1 -832.0 4250.0 2672.0 0.0 90.0 0 ent_fire door_1-testchamber_door open
+door_open2 sp_a1_intro2 -320.0 420.0 -64.0 0.0 90.0 0 ent_fire @exit_door-testchamber_door open
+sign_intro2 sp_a1_intro2 -420.0 -432.0 121.0 0.0 0.0 0 ent_fire info_sign-info_panel SetActive
+sign_intro3 sp_a1_intro3 -257.0 300.0 1104.0 0.0 90.0 0 ent_fire info_sign-info_panel SetActive
+laser_beam sp_a2_laser_intro 80.6 450.2 538.0 16.7 -120.2 0
+laser_side sp_a2_laser_intro -200.0 100.0 450.0 0.0 30.0 0
+dark_flooded sp_a1_intro3 140.0 1100.0 -322.0 35.0 90.0 0
+dark_intro4 sp_a1_intro4 -1840.0 -3052.0 56.0 0.0 270.0 0
+cube_intro2 sp_a1_intro2 93.9 171.6 -8.0 16.7 -164.2 0
+button_intro2 sp_a1_intro2 -448.7 306.7 -58.0 16.7 -173.3 0
+elevator_exit_laser sp_a2_laser_intro 1260.0 -150.0 -200.0 0.0 90.0 0

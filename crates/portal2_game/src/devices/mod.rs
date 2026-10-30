@@ -158,7 +158,7 @@ pub fn trace_beam(
     let mut dir = dir.normalize_or(Vec3::X);
     let mut skip: Vec<Entity> = ignore.to_vec();
     for _ in 0..max_segments {
-        let tr = physics.trace(start, start + dir * 16384.0, Vec3::ZERO, Vec3::ZERO, mask, &skip);
+        let tr = physics.trace_leaving_start(start, start + dir * 16384.0, Vec3::ZERO, Vec3::ZERO, mask, &skip);
         let end = tr.end;
         let mut seg = BeamSegment { start, end, dir, hit_entity: tr.entity, through_portal: false };
         // Into an opening: continue from the other portal.

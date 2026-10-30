@@ -148,12 +148,16 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     if has(FLAG_TRANSLUCENT) || has(FLAG_ALPHATEST) {
         alpha = alpha * base.a;
     }
-    if has(FLAG_ALPHATEST) && alpha < material.alpha_ref {
-        discard;
+    // `$allowalphatocoverage` materials drawn with MSAA turn alpha into
+    // sample coverage instead of testing it (the game's alpha to coverage).
+    @if(!ALPHA_TO_COVERAGE) {
+        if has(FLAG_ALPHATEST) && alpha < material.alpha_ref {
+            discard;
+        }
     }
     if is_shadow_view() {
         // Shadow maps hold the distance to the nearest opaque surface.
-        if has(FLAG_TRANSLUCENT) {
+        if has(FLAG_TRANSLUCENT) || (has(FLAG_ALPHATEST) && alpha < material.alpha_ref) {
             discard;
         }
         return vec4<f32>(distance(view.world_position, in.world_position.xyz), 0.0, 0.0, 1.0);

@@ -25,7 +25,7 @@ use portal2_core::vfs::GameFs;
 use portal2_game::screen::Localization;
 use portal2_ui::vgui::layout::ResFile;
 use portal2_ui::vgui::scheme::proportional;
-use portal2_ui::vgui::{Schemes, Surface, VguiPaint, layer};
+use portal2_ui::vgui::{Schemes, Surface, Symbols, VguiPaint, layer};
 use portal2_ui::video::{VideoId, Videos};
 use portal2_world::CurrentMap;
 use window::Window;
@@ -200,6 +200,8 @@ pub struct GameUi {
     background: Option<(i32, Option<VideoId>)>,
     music: Option<u64>,
     files: HashMap<String, ResFile>,
+    /// The symbols `files` were parsed with (their conditionals).
+    files_symbols: Option<Symbols>,
     /// Set when a window wants the world (commands run in `apply`).
     actions: Vec<Action>,
     enabled: bool,
@@ -225,6 +227,7 @@ impl Default for GameUi {
             background: None,
             music: None,
             files: HashMap::new(),
+            files_symbols: None,
             actions: Vec::new(),
             enabled: true,
             was_active: false,
@@ -792,6 +795,10 @@ fn paint(
     let Some(loc) = loc else { return };
     let generation = schemes.generation;
     let ui = &mut *ui;
+    if ui.files_symbols != Some(symbols) {
+        ui.files.clear();
+        ui.files_symbols = Some(symbols);
+    }
     for open in ui.windows.iter_mut() {
         if open.window.generation != generation {
             let file = open.window.file.clone();

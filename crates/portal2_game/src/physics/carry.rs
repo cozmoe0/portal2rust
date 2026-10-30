@@ -20,6 +20,9 @@ const REACH: f32 = 80.0;
 /// Top speed of the hold controller; larger implied speeds count half
 /// toward the drop error.
 const HOLD_MAX_SPEED: f32 = 1000.0;
+/// Gap the steering leaves between the held prop and what it is pushed
+/// against.
+const HOLD_SKIN: f32 = 0.25;
 
 pub struct CarryPlugin;
 
@@ -208,12 +211,13 @@ fn hold_held(
     console: Res<portal2_core::console::Console>,
     players: Query<(Entity, &Player)>,
     input: Res<PlayerInput>,
-    mut props: Query<(&Position, &Rotation, &mut LinearVelocity, &mut AngularVelocity)>,
+    mut props: Query<(&Position, &Rotation, &mut LinearVelocity, &mut AngularVelocity, &Collider)>,
+    spatial: SpatialQuery,
     mut commands: Commands,
 ) {
     let Some(held) = holding.entity else { return };
     let Ok((pe, p)) = players.single() else { return };
-    let Ok((pos, rot, mut lin, mut ang)) = props.get_mut(held) else {
+    let Ok((pos, rot, mut lin, mut ang, collider)) = props.get_mut(held) else {
         holding.entity = None;
         return;
     };
@@ -241,12 +245,43 @@ fn hold_held(
         release(&mut commands, held);
         return;
     }
-    let wanted = error / dt * 0.5;
-    lin.0 = wanted.clamp_length_max(2000.0);
+    // The game's controller pushes a physics shadow that the world stops;
+    // here the move is swept first so the prop comes to rest against a
+    // wall or pane (and slides along it) instead of being driven into it.
+    let filter = SpatialQueryFilter::from_mask(LayerMask(layers::WORLD | layers::PROP | layers::MOVER)).with_excluded_entities([held, pe]);
+    let step = swept_step(&spatial, collider, pos.0, rot.0, error, &filter);
+    let wanted = step / dt * 0.5;
+    lin.0 = wanted.clamp_length_max(HOLD_MAX_SPEED);
     let target_rot = Quat::from_rotation_z((input.input.angles.y + holding.yaw_offset).to_radians());
     let (axis, angle) = (target_rot * rot.0.inverse()).normalize().to_axis_angle();
     let angle = if angle > std::f32::consts::PI { angle - std::f32::consts::TAU } else { angle };
     ang.0 = axis * (angle / dt * 0.3);
+}
+
+/// How much of `step` the prop at `pos` can move: up to what is in the way
+/// (less a skin), then on along that surface.
+fn swept_step(spatial: &SpatialQuery, collider: &Collider, pos: Vec3, rot: Quat, step: Vec3, filter: &SpatialQueryFilter) -> Vec3 {
+    let mut out = Vec3::ZERO;
+    let mut from = pos;
+    let mut rest = step;
+    for _ in 0..2 {
+        let len = rest.length();
+        if len < 1e-3 {
+            return out + rest;
+        }
+        let Ok(dir) = Dir3::new(rest / len) else { return out };
+        let config = ShapeCastConfig { max_distance: len, ignore_origin_penetration: true, ..default() };
+        let Some(hit) = spatial.cast_shape(collider, from, rot, dir, &config, filter) else { return out + rest };
+        let travel = (hit.distance - HOLD_SKIN).max(0.0);
+        out += dir * travel;
+        from += dir * travel;
+        // The surface normal points out of what was hit: keep only the part
+        // of the remaining move that does not push into it.
+        let n = hit.normal1.normalize_or_zero();
+        let remaining = rest - dir * travel;
+        rest = remaining - n * remaining.dot(n).min(0.0);
+    }
+    out
 }
 
 /// Walking into a prop gives it a shove along the walking direction.

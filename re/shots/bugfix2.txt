@@ -1,0 +1,6 @@
+# Second batch for the bug-fix pass (state forced through the console).
+laser_on sp_a2_laser_intro 300.0 312.0 250.0 -10.0 180.0 0 ent_fire laser_emitter TurnOn
+laser_near sp_a2_laser_intro 90.0 380.0 300.0 -20.0 220.0 0 ent_fire laser_emitter TurnOn
+screens_arrival sp_a2_laser_intro -1312.0 0.0 -300.0 -5.0 90.0 0 ent_fire @arrival_video_master Enable; ent_fire @arrival_sign* Enable
+sign_hud sp_a1_intro2 -400.0 -432.0 121.0 0.0 0.0 0 cl_drawhud 1; ent_fire info_sign-info_panel SetActive
+sign_hud3 sp_a2_laser_intro -496.0 33.0 -96.0 0.0 270.0 0 cl_drawhud 1; ent_fire info_sign-info_panel SetActive

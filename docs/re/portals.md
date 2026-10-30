@@ -135,6 +135,12 @@ in our own words.
   through that portal; likewise right after a teleport if the eye is still
   behind the exit's partner. The view is never inside the wall.
 
+- When the view's near plane reaches behind a portal inside its opening
+  (the eye a little in front of it, or carried through and a little in
+  front of the exit), the opening's quad is cut away by the near plane;
+  the game fills that piece of the near plane with the portal's own
+  material (its render fix mesh), so the wall behind never shows.
+
 ## Sounds
 
 - `PortalPlayer.EnterPortal` plays when a box a quarter the size of the

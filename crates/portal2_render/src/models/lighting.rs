@@ -99,7 +99,7 @@ fn light_at(l: &WorldLight, p: Vec3) -> Option<(f32, Vec3)> {
     Some((atten, dir))
 }
 
-fn to_shader_light(l: &WorldLight) -> ModelLight {
+fn to_shader_light(l: &WorldLight, scale: f32) -> ModelLight {
     // Surface lights are spot lights whose cone covers the hemisphere with a
     // cosine falloff.
     let (kind, inner, outer, exponent) = match l.kind {
@@ -109,7 +109,7 @@ fn to_shader_light(l: &WorldLight) -> ModelLight {
     };
     ModelLight {
         position: l.origin.extend(kind),
-        color: l.intensity.extend(exponent),
+        color: (l.intensity * scale).extend(exponent),
         direction: l.normal.extend(inner),
         attenuation: attenuation_terms(l).extend(outer),
     }
@@ -117,6 +117,12 @@ fn to_shader_light(l: &WorldLight) -> ModelLight {
 
 /// Computes lighting at `p` (usually the model's origin or illumination point).
 pub fn compute(bsp: &Bsp, p: Vec3) -> ModelLighting {
+    compute_styled(bsp, p, &|_| 1.0)
+}
+
+/// Lighting at `p` with each world light scaled by its light style's
+/// brightness (`style value / 264`; switched-off lights give none).
+pub fn compute_styled(bsp: &Bsp, p: Vec3, style: &dyn Fn(i32) -> f32) -> ModelLighting {
     let leaf_cube = bsp.ambient_cube(p);
     // Lights flagged as part of the ambient samples only count when the cube
     // really comes from those samples.
@@ -128,23 +134,29 @@ pub fn compute(bsp: &Bsp, p: Vec3) -> ModelLighting {
         _ => None,
     };
     let luma = |c: Vec3| c.dot(Vec3::new(0.299, 0.587, 0.114));
-    let mut candidates: Vec<(f32, f32, Vec3, &WorldLight)> = bsp
+    let mut candidates: Vec<(f32, f32, Vec3, &WorldLight, f32)> = bsp
         .world_lights
         .iter()
         .filter(|l| matches!(l.kind, emit::POINT | emit::SPOT | emit::SURFACE))
         .filter(|l| !(skip_baked && l.flags & IN_AMBIENT_CUBE != 0))
         .filter(|l| pvs.as_ref().is_none_or(|v| cluster_visible(v, l.cluster)))
-        .filter_map(|l| light_at(l, p).map(|(atten, dir)| (luma(l.intensity) * atten, atten, dir, l)))
-        .filter(|(score, .., l)| l.kind == emit::SURFACE || *score >= WORLD_LIGHT_MIN)
+        .filter_map(|l| {
+            let scale = style(l.style);
+            if scale <= 0.0 {
+                return None;
+            }
+            light_at(l, p).map(|(atten, dir)| (luma(l.intensity) * scale * atten, atten, dir, l, scale))
+        })
+        .filter(|(score, _, _, l, _)| l.kind == emit::SURFACE || *score >= WORLD_LIGHT_MIN)
         .collect();
     candidates.sort_by(|a, b| b.0.total_cmp(&a.0));
     // Lights that do not make the cut still brighten the ambient cube.
-    for (_, atten, dir, l) in candidates.iter().skip(MAX_MODEL_LIGHTS) {
+    for (_, atten, dir, l, scale) in candidates.iter().skip(MAX_MODEL_LIGHTS) {
         for (face, axis) in ambient.iter_mut().zip(CUBE_AXES) {
-            *face += l.intensity * (atten * axis.dot(*dir).max(0.0));
+            *face += l.intensity * (scale * atten * axis.dot(*dir).max(0.0));
         }
     }
-    let lights = candidates.iter().take(MAX_MODEL_LIGHTS).map(|(.., l)| to_shader_light(l)).collect();
+    let lights = candidates.iter().take(MAX_MODEL_LIGHTS).map(|&(_, _, _, l, scale)| to_shader_light(l, scale)).collect();
     ModelLighting { ambient, lights }
 }
 

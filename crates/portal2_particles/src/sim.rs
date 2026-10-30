@@ -6,7 +6,7 @@
 use std::f32::consts::{PI, TAU};
 use std::sync::OnceLock;
 
-use bevy::math::{Quat, Vec3};
+use bevy::math::{Mat3, Quat, Vec3};
 
 #[cfg(test)]
 use super::defs::Op;
@@ -1688,6 +1688,26 @@ impl Collection {
                 for i in 0..n {
                     let o = self.scaled_output(i, output, out, scale_initial, scale_current);
                     self.particles.set(output, i, o);
+                }
+            }
+            OpKind::RemapCpToVector { cp, in_range, output, out_range, scale_initial, local_cp } => {
+                if !is_vector(output) {
+                    return;
+                }
+                let (mut lo, mut hi) = out_range;
+                if local_cp >= 0 {
+                    let c = self.cp(local_cp);
+                    let m = Mat3::from_cols(c.forward, c.left, c.up);
+                    (lo, hi) = (m * lo, m * hi);
+                }
+                let p = self.cp(cp).position;
+                let v = Vec3::new(
+                    remap_clamped(p.x, (in_range.0.x, in_range.1.x), (lo.x, hi.x)),
+                    remap_clamped(p.y, (in_range.0.y, in_range.1.y), (lo.y, hi.y)),
+                    remap_clamped(p.z, (in_range.0.z, in_range.1.z), (lo.z, hi.z)),
+                );
+                for i in 0..n {
+                    self.particles.v[output][i] = if scale_initial { v * self.particles.v0[output][i] } else { v };
                 }
             }
             OpKind::RemapDirectionToCp { cp, output, scale, normalize } => {

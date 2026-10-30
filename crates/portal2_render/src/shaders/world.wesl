@@ -45,6 +45,7 @@ const FLAG_WATER: u32 = 131072u;
 const FLAG_WATER_BASE: u32 = 262144u;
 const FLAG_SOLID_ENERGY: u32 = 524288u;
 const FLAG_PAINT: u32 = 1048576u;
+const FLAG_MOVIE: u32 = 2097152u;
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> material: WorldParams;
 @group(constants::MATERIAL_BIND_GROUP) @binding(1) var base_tex: texture_2d<f32>;
@@ -83,6 +84,12 @@ const BUMP_BASIS_2 = vec3<f32>(-0.40824829, -0.70710678, 0.57735027);
 
 fn has(flag: u32) -> bool {
     return (material.flags & flag) != 0u;
+}
+
+fn decode_srgb(c: vec3<f32>) -> vec3<f32> {
+    let lo = c / 12.92;
+    let hi = pow((c + 0.055) / 1.055, vec3<f32>(2.4));
+    return select(hi, lo, c <= vec3<f32>(0.04045));
 }
 
 fn luminance(c: vec3<f32>) -> f32 {
@@ -291,6 +298,15 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
         }
         return water(in, uv, normalize(in.world_normal));
     }
+    if has(FLAG_MOVIE) {
+        // Bink frames are gamma-encoded and the game's movie shader puts
+        // them on screen as they are: no lighting and no tone mapping scale.
+        if is_shadow_view() {
+            return vec4<f32>(distance(view.world_position, in.world_position.xyz), 0.0, 0.0, 1.0);
+        }
+        let frame = textureSample(base_tex, base_samp, uv).rgb;
+        return vec4<f32>(apply_source_fog(decode_srgb(frame), in.world_position.xyz), 1.0);
+    }
     var base = textureSample(base_tex, base_samp, uv);
     var blend = 0.0;
     @if(VERTEX_COLORS) {
@@ -317,12 +333,16 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     if has(FLAG_TRANSLUCENT) || has(FLAG_ALPHATEST) {
         alpha = alpha * base.a;
     }
-    if has(FLAG_ALPHATEST) && alpha < material.alpha_ref {
-        discard;
+    // `$allowalphatocoverage` materials drawn with MSAA turn alpha into
+    // sample coverage instead of testing it (the game's alpha to coverage).
+    @if(!ALPHA_TO_COVERAGE) {
+        if has(FLAG_ALPHATEST) && alpha < material.alpha_ref {
+            discard;
+        }
     }
     if is_shadow_view() {
         // Shadow maps hold the distance to the nearest opaque surface.
-        if has(FLAG_TRANSLUCENT) {
+        if has(FLAG_TRANSLUCENT) || (has(FLAG_ALPHATEST) && alpha < material.alpha_ref) {
             discard;
         }
         return vec4<f32>(distance(view.world_position, in.world_position.xyz), 0.0, 0.0, 1.0);

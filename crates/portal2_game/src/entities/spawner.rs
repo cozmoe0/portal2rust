@@ -69,12 +69,16 @@ type ModelParams<'w, 's> = (
 /// Loads `path` and spawns its meshes under `e` with dynamic lighting.
 /// Animated models also get a [`StudioAnimator`].
 pub fn attach_studio_model(world: &mut World, e: Entity, path: &str, opts: ModelOptions) -> Option<Arc<LoadedModel>> {
-    let origin = super::world_transform(world, e).translation();
+    let placement = super::world_transform(world, e);
+    let lighting_origin = world.get::<MapEntity>(e).and_then(|m| m.get("lightingorigin")).filter(|n| !n.is_empty()).map(str::to_owned);
     let mut state: SystemState<ModelParams> = SystemState::new(world);
     let (mut commands, fs, map, mut cache, mut mats, mut textures, mut images, mut meshes, mut model_mats, mut refract_mats, mut bindposes) =
         state.get_mut(world).expect("render resources available");
     let model = cache.get(path, &fs, &mut meshes, &mut bindposes)?;
-    let light_point = opts.light_origin.unwrap_or(origin + Vec3::Z * 4.0);
+    // Dynamic models are lit at their illumination point (or the entity
+    // `lightingorigin` names, found once the map has spawned).
+    let illum = model.studio.mdl.illum_position;
+    let light_point = opts.light_origin.unwrap_or(placement.transform_point(illum));
     let light: ModelLighting = lighting::compute(&map.bsp, light_point);
     let envmap = lighting::nearest_cubemap(&map.bsp, &map.name, light_point, &fs, &mut textures, &mut images);
     let mut ctx = MaterialContext { fs: &fs, textures: &mut textures, images: &mut images };
@@ -92,8 +96,63 @@ pub fn attach_studio_model(world: &mut World, e: Entity, path: &str, opts: Model
     if opts.animated {
         commands.entity(e).insert(StudioAnimator::new(model.clone(), joints));
     }
+    commands.entity(e).insert(LitModel { lighting_origin, fixed: opts.light_origin, illum, last: Some(light_point), generation: 0 });
     state.apply(world);
     Some(model)
+}
+
+/// A model lit by the light cache: its lighting is worked out again when
+/// its lighting point moves or a light style changes, as the engine does
+/// for moving models.
+#[derive(Component, Clone, Debug)]
+pub struct LitModel {
+    /// Entity whose origin is the lighting point (`lightingorigin`).
+    lighting_origin: Option<String>,
+    fixed: Option<Vec3>,
+    /// Illumination point in model space.
+    illum: Vec3,
+    last: Option<Vec3>,
+    generation: u32,
+}
+
+/// Lighting points move at least this far before models are lit again.
+const RELIGHT_DISTANCE: f32 = 1.0;
+
+pub fn relight_models(
+    map: Option<Res<CurrentMap>>,
+    styles: Res<portal2_world::lightstyles::LightStyles>,
+    registry: Res<super::EntityRegistry>,
+    mut models: Query<(Entity, &mut LitModel, &GlobalTransform)>,
+    placements: Query<&GlobalTransform>,
+    children: Query<&Children>,
+    mesh_materials: Query<&MeshMaterial3d<ModelMaterial>>,
+    mut materials: ResMut<Assets<ModelMaterial>>,
+) {
+    let Some(map) = map else { return };
+    for (e, mut lit, gt) in &mut models {
+        let point = match (lit.fixed, &lit.lighting_origin) {
+            (Some(p), _) => p,
+            (None, Some(name)) => match registry.first_named(name).and_then(|o| placements.get(o).ok()) {
+                Some(o) => o.translation(),
+                None => gt.transform_point(lit.illum),
+            },
+            (None, None) => gt.transform_point(lit.illum),
+        };
+        let moved = lit.last.is_none_or(|l| l.distance(point) > RELIGHT_DISTANCE);
+        if !moved && lit.generation == styles.generation {
+            continue;
+        }
+        lit.last = Some(point);
+        lit.generation = styles.generation;
+        let light = lighting::compute_styled(&map.bsp, point, &|s| styles.value(s));
+        for c in children.iter_descendants(e) {
+            if let Ok(h) = mesh_materials.get(c)
+                && let Some(mut m) = materials.get_mut(&h.0)
+            {
+                light.apply(&mut m.params);
+            }
+        }
+    }
 }
 
 /// Removes previously attached render children (used by SetModel / skin changes).
@@ -111,6 +170,50 @@ pub fn clear_render_children(world: &mut World, e: Entity) {
 #[derive(Resource, Default)]
 pub struct ShapeCache {
     map: std::collections::HashMap<(String, i32), Option<Arc<portal2_world::collision::Shape>>>,
+    /// Bone-following collision per model: bone index and shape in bone space.
+    followers: std::collections::HashMap<String, Option<Arc<Vec<(usize, Arc<portal2_world::collision::Shape>)>>>>,
+}
+
+/// Gives an animated model collision that follows its bones, as the
+/// engine's dynamic props, floor buttons and chamber doors do when their
+/// model lists `bone_followers` or has more than one collision solid: one
+/// piece per bone, riding on that bone's joint. Returns whether it did.
+pub fn attach_bone_followers(world: &mut World, e: Entity) -> bool {
+    use portal2_world::collision::{BoneFollower, Collider, Shape};
+    let Some(me) = world.get::<MapEntity>(e) else { return false };
+    let Some(path) = me.studio_model() else { return false };
+    let joints = match world.get::<StudioAnimator>(e) {
+        Some(a) if !a.joints.is_empty() => a.joints.clone(),
+        _ => return false,
+    };
+    let key = source_formats::text::normalize_path(&path);
+    let cached = world.get_resource_or_init::<ShapeCache>().followers.get(&key).cloned();
+    let solids = match cached {
+        Some(s) => s,
+        None => {
+            let fs = world.resource::<GameFs>().clone();
+            let s = portal2_world::collision::build::studio_bone_solids(&fs, &key)
+                .map(|v| Arc::new(v.into_iter().map(|(bone, vols)| (bone, Arc::new(Shape::new(vols)))).collect::<Vec<_>>()));
+            world.resource_mut::<ShapeCache>().followers.insert(key, s.clone());
+            s
+        }
+    };
+    let Some(solids) = solids else { return false };
+    for (bone, shape) in solids.iter() {
+        let Some(&joint) = joints.get(*bone) else { continue };
+        let follower = world
+            .spawn((
+                Name::new("bone follower"),
+                BoneFollower { owner: e },
+                Collider { shape: shape.clone(), enabled: true, solid: true },
+                Transform::IDENTITY,
+                Visibility::Inherited,
+            ))
+            .id();
+        world.entity_mut(joint).add_child(follower);
+    }
+    world.entity_mut(e).remove::<Collider>();
+    true
 }
 
 /// Attaches collision to brush entities (solid or touch-only) and to solid
@@ -136,6 +239,9 @@ pub fn attach_collider(world: &mut World, e: Entity) {
     let Some(path) = me.studio_model() else { return };
     // Props default to physics collision.
     let solid = me.get_i32("solid").unwrap_or(6);
+    if solid == 6 && me.classname.starts_with("prop_") && attach_bone_followers(world, e) {
+        return;
+    }
     let key = (source_formats::text::normalize_path(&path), solid);
     let cached = world.get_resource_or_init::<ShapeCache>().map.get(&key).cloned();
     let shape = match cached {

@@ -1,10 +1,12 @@
 //! Map entities: spawning, naming, parenting and the shared input handlers.
 //! Class behaviour lives in the submodules.
 
+pub mod areaportal;
 pub mod buttons;
 pub mod detectors;
 pub mod hints;
 pub mod io;
+pub mod lights;
 pub mod logic;
 pub mod movers;
 pub mod props;
@@ -62,6 +64,8 @@ impl Plugin for EntitiesPlugin {
         transition::register(app);
         props::register(app);
         triggers::register(app);
+        areaportal::register(app);
+        lights::register(app);
     }
 }
 

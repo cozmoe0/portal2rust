@@ -141,6 +141,56 @@ pub fn studio_volumes(fs: &GameFileSystem, path: &str, solid: i32) -> Option<Vec
     None
 }
 
+/// Collision that follows a model's bones (the engine's bone followers):
+/// the bones listed in the model's `bone_followers` keyvalues, or when it
+/// has none and its `.phy` holds more than one solid, every solid on its
+/// own bone. Volumes are in the space of their bone. `None` when the model
+/// collides as one piece.
+pub fn studio_bone_solids(fs: &GameFileSystem, path: &str) -> Option<Vec<(usize, Vec<ConvexVolume>)>> {
+    let bytes = fs.read(&format!("{}.phy", strip_extension(path)))?;
+    let phy = Phy::parse(&bytes).ok()?;
+    let model = source_formats::studio::StudioModel::load(fs, path).ok()?;
+    // Bone of each solid, from the collision keyvalues.
+    let mut solid_bones: Vec<Option<usize>> = vec![None; phy.solids.len()];
+    for r in source_formats::kv::parse_document(&phy.keyvalues).roots {
+        if !r.key.eq_ignore_ascii_case("solid") {
+            continue;
+        }
+        if let (Some(index), Some(bone)) = (r.get_i32("index"), r.get_str("name").and_then(|n| model.mdl.find_bone(n)))
+            && let Some(slot) = solid_bones.get_mut(index.max(0) as usize)
+        {
+            *slot = Some(bone);
+        }
+    }
+    // The model's keyvalues sit in an `mdlkeyvalue` block.
+    let kv = source_formats::kv::parse_document(&model.mdl.keyvalues);
+    let listed: Vec<usize> = kv
+        .roots
+        .iter()
+        .flat_map(|r| std::iter::once(r).chain(r.children()))
+        .find(|r| r.key.eq_ignore_ascii_case("bone_followers"))
+        .map(|r| r.children().iter().filter_map(|c| c.as_str().and_then(|n| model.mdl.find_bone(n))).collect())
+        .unwrap_or_default();
+    if listed.is_empty() && phy.solids.len() < 2 {
+        return None;
+    }
+    let out: Vec<(usize, Vec<ConvexVolume>)> = phy
+        .solids
+        .iter()
+        .zip(&solid_bones)
+        .filter_map(|(s, bone)| {
+            let bone = (*bone)?;
+            if !listed.is_empty() && !listed.contains(&bone) {
+                return None;
+            }
+            let vols: Vec<ConvexVolume> =
+                s.pieces.iter().filter_map(|p| ConvexVolume::from_hull(&p.points, &p.triangles, contents::SOLID, -1)).collect();
+            (!vols.is_empty()).then_some((bone, vols))
+        })
+        .collect();
+    (!out.is_empty()).then_some(out)
+}
+
 fn hull_box(fs: &GameFileSystem, path: &str) -> Option<Vec<ConvexVolume>> {
     let mdl = Mdl::parse(fs.read(path)?).ok()?;
     let (mins, maxs) = (mdl.hull_min, mdl.hull_max);

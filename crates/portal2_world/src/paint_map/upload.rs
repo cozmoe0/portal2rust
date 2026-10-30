@@ -1,6 +1,6 @@
-//! Paint map uploads: only the faces that changed are written into the GPU
-//! texture (the atlas can be thousands of texels wide), straight through
-//! the render queue.
+//! Paint map and lightmap uploads: only the faces that changed are written
+//! into the GPU texture (the atlas can be thousands of texels wide),
+//! straight through the render queue.
 
 use bevy::prelude::*;
 use bevy::render::render_asset::RenderAssets;
@@ -50,7 +50,15 @@ const MAX_WAIT_FRAMES: u32 = 600;
 
 fn extract_uploads(mut pending: ResMut<PendingWrites>, uploads: Extract<Res<PaintUploads>>) {
     pending.0.extend(uploads.rects.iter().map(|r| {
-        let rect = PaintRect { image: r.image, x: r.x, y: r.y, width: r.width, height: r.height, data: r.data.clone() };
+        let rect = PaintRect {
+            image: r.image,
+            x: r.x,
+            y: r.y,
+            width: r.width,
+            height: r.height,
+            texel_bytes: r.texel_bytes,
+            data: r.data.clone(),
+        };
         (rect, 0)
     }));
 }
@@ -79,7 +87,7 @@ fn write_rects(mut pending: ResMut<PendingWrites>, images: Res<RenderAssets<GpuI
                 aspect: TextureAspect::All,
             },
             &rect.data,
-            TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(rect.width * 4), rows_per_image: None },
+            TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(rect.width * rect.texel_bytes), rows_per_image: None },
             Extent3d { width: rect.width, height: rect.height, depth_or_array_layers: 1 },
         );
     }

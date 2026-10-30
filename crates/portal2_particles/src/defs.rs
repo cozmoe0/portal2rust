@@ -515,6 +515,15 @@ pub enum OpKind {
         scale_initial: bool,
         scale_current: bool,
     },
+    RemapCpToVector {
+        cp: i32,
+        in_range: (Vec3, Vec3),
+        output: usize,
+        out_range: (Vec3, Vec3),
+        scale_initial: bool,
+        /// The output range is turned into this control point's space.
+        local_cp: i32,
+    },
     RemapDirectionToCp {
         cp: i32,
         output: usize,
@@ -1222,6 +1231,16 @@ fn operator(op: &ParticleOperator) -> OpKind {
             out_range: (p.f("output minimum", 0.0), p.f("output maximum", 1.0)),
             scale_initial: p.b("output is scalar of initial random range", false),
             scale_current: p.b("output is scalar of current value", false),
+        },
+        // Portal shots and openings take the portal colour from control
+        // point 2 this way.
+        "remap control point to vector" => OpKind::RemapCpToVector {
+            cp: p.cp("input control point number", 0),
+            in_range: (p.v("input minimum", Vec3::ZERO), p.v("input maximum", Vec3::ZERO)),
+            output: p.field("output field", POSITION),
+            out_range: (p.v("output minimum", Vec3::ZERO), p.v("output maximum", Vec3::ZERO)),
+            scale_initial: p.b("output is scalar of initial random range", false),
+            local_cp: p.i("local space CP", -1),
         },
         "remap direction to cp to vector" => OpKind::RemapDirectionToCp {
             cp: p.cp("control point", 0),

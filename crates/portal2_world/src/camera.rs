@@ -24,7 +24,7 @@ impl Plugin for CameraPlugin {
         app.insert_resource(FlyCamera { enabled: true, speed: 400.0 })
             .add_systems(Startup, spawn_camera)
             .add_systems(Update, (place_at_start, grab_cursor, fly_camera, apply_fov).chain())
-            .add_systems(PostUpdate, sync_camera_transform.before(TransformSystems::Propagate));
+            .add_systems(PostUpdate, sync_camera_transform.after(portal2_core::sets::PlayerCameraSet).before(TransformSystems::Propagate));
     }
 }
 

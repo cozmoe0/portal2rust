@@ -1,0 +1,7 @@
+# Third batch for the bug-fix pass: lasers with the emitter forced on,
+# elevator screens with a real movie, and the arrival room's switchable
+# lights forced on.
+laser_on sp_a2_laser_intro 300.0 312.0 250.0 -10.0 180.0 0 ent_fire laser_emitter TurnOn
+laser_near sp_a2_laser_intro 90.0 380.0 300.0 -20.0 220.0 0 ent_fire laser_emitter TurnOn
+screens_movie sp_a2_laser_intro -1312.0 0.0 -300.0 -5.0 90.0 0 ent_fire @arrival_video_master SetMovie media/laser_portal.bik; ent_fire @arrival_video_master Enable; ent_fire @arrival_sign* Enable
+lights_arrival sp_a2_laser_intro -1312.0 0.0 -300.0 -5.0 270.0 0 ent_fire arrival_elevator-light_elevator_fill TurnOn

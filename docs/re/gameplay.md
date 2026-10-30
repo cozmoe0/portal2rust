@@ -209,3 +209,31 @@ The placement check runs in this order and stops at the first failure:
   removed at 2.0 s. `Prop.Fizzled` plays.
 - Personality cores are handled separately, and a list of classes never
   fizzles.
+
+## Bone followers
+
+- Dynamic props (`CDynamicProp`), floor buttons (`CPropFloorButton`) and
+  test chamber doors (`CPropTestChamberDoor`) build their collision the same
+  way: one `phys_bone_follower` per bone listed in the model's
+  `bone_followers` keyvalues, or when the model lists none and its `.phy`
+  holds more than one solid, one per solid on the bone it names. The
+  followers move with the animated bones, so the exit elevator's
+  `spinnydoor_left` / `spinnydoor_right` solids open with `dooropen` and a
+  floor button's `portal_button_top` plate goes down with `down`.
+
+## Test chamber doors and their area portal window
+
+- A door's `AreaPortalWindow` names a `func_areaportalwindow`. When the door
+  spawns it sets the window's fade distances to 0 and 0; when it starts to
+  open (as it plays `prop_portal_door.open`) to 10000 and 10000, or with
+  `UseAreaPortalFade` to its `AreaPortalFadeStart` / `AreaPortalFadeEnd`;
+  once a closing animation finishes, back to 0 and 0.
+
+## Switchable lights (`light`, `light_spot`)
+
+- Named lights carry their own light style (`style`, 32 and up). At spawn
+  a light starting dark (spawn flag 1) sets its style to `a`, otherwise to
+  its `pattern` or `m`. `TurnOn` sets the pattern (or `m`) and clears the
+  flag, `TurnOff` sets `a`, `Toggle` swaps, `SetPattern` takes a new
+  pattern, `FadeToPattern` steps the style one letter every 0.1 s from the
+  current pattern's first letter to the new one's, then sets the pattern.
