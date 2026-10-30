@@ -2,6 +2,7 @@
 //! map's embedded pakfile, searched in priority order like the original
 //! engine's search paths.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
@@ -11,7 +12,7 @@ use crate::zip::ZipArchive;
 use crate::{Error, Result};
 
 pub enum Source {
-    Dir(PathBuf),
+    Dir(LooseDir),
     Vpk(Arc<Vpk>),
     Pak(Arc<ZipArchive>),
 }
@@ -19,7 +20,7 @@ pub enum Source {
 impl Source {
     fn read(&self, path: &str) -> Option<Vec<u8>> {
         match self {
-            Source::Dir(dir) => std::fs::read(dir.join(path)).ok(),
+            Source::Dir(dir) => dir.has(path).then(|| std::fs::read(dir.path.join(path)).ok()).flatten(),
             Source::Vpk(v) => v.contains(path).then(|| v.read(path).ok()).flatten(),
             Source::Pak(z) => z.contains(path).then(|| z.read(path).ok()).flatten(),
         }
@@ -27,10 +28,50 @@ impl Source {
 
     fn exists(&self, path: &str) -> bool {
         match self {
-            Source::Dir(dir) => dir.join(path).is_file(),
+            Source::Dir(dir) => dir.has(path) && dir.path.join(path).is_file(),
             Source::Vpk(v) => v.contains(path),
             Source::Pak(z) => z.contains(path),
         }
+    }
+}
+
+/// A loose folder of the game, with the files in it listed once when it is
+/// mounted: most lookups are for files that live in the VPKs searched after
+/// it, and those then cost no filesystem access. Files added to the folder
+/// later are not seen until it is mounted again.
+pub struct LooseDir {
+    pub path: PathBuf,
+    /// Normalised paths of the files under `path`.
+    files: HashSet<String>,
+}
+
+impl LooseDir {
+    pub fn new(path: PathBuf) -> Self {
+        let mut files = HashSet::new();
+        let mut stack = vec![path.clone()];
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+            for entry in entries.flatten() {
+                let full = entry.path();
+                // Follow links the way opening the file would.
+                let is_dir = match entry.file_type() {
+                    Ok(t) if t.is_symlink() => full.is_dir(),
+                    Ok(t) => t.is_dir(),
+                    Err(_) => continue,
+                };
+                if is_dir {
+                    stack.push(full);
+                } else if let Ok(rel) = full.strip_prefix(&path) {
+                    files.insert(normalize_path(&rel.to_string_lossy()));
+                }
+            }
+        }
+        Self { path, files }
+    }
+
+    /// Whether the folder held the (normalised) file when it was mounted.
+    pub fn has(&self, path: &str) -> bool {
+        self.files.contains(path)
     }
 }
 
@@ -120,7 +161,7 @@ impl GameFileSystem {
     }
 
     pub fn add_dir(&self, name: &str, dir: PathBuf) {
-        self.paths.write().unwrap().push(SearchPath { name: name.to_owned(), source: Source::Dir(dir) });
+        self.paths.write().unwrap().push(SearchPath { name: name.to_owned(), source: Source::Dir(LooseDir::new(dir)) });
     }
 
     pub fn add_vpk(&self, name: &str, vpk: Arc<Vpk>) {
@@ -175,7 +216,8 @@ impl GameFileSystem {
             match &sp.source {
                 Source::Vpk(v) => out.extend(v.paths().filter(|p| matches(p)).map(str::to_owned)),
                 Source::Pak(z) => out.extend(z.paths().filter(|p| matches(p)).map(str::to_owned)),
-                Source::Dir(base) => {
+                Source::Dir(loose) => {
+                    let base = &loose.path;
                     let start = base.join(&dir);
                     let mut stack = vec![start];
                     while let Some(d) = stack.pop() {
