@@ -33,13 +33,18 @@ struct FxGlobals {
     reserved1: vec4<f32>,
     shadow_from_world: array<mat4x4<f32>, 4>,
     sun_from_world: mat4x4<f32>,
-    // x: shadow map size, y: sun shadow map size
+    // x: shadow map size, y: sun shadow map size, z: tan of half the
+    // shadow views' field of view
     shadow_info: vec4<f32>,
     reserved2: array<vec4<f32>, 3>,
     lights: array<FxLight, 64>,
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(37) var<storage, read> fx: FxGlobals;
+@group(constants::MATERIAL_BIND_GROUP) @binding(38) var fx_shadow0: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(39) var fx_shadow1: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(40) var fx_shadow2: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(41) var fx_shadow3: texture_2d<f32>;
 
 // Feature bits (visuals/fx/mod.rs `features`).
 const FX_LIGHTS: u32 = 1u;
@@ -85,6 +90,8 @@ struct FxSurface {
     pos: vec3<f32>,
     // Shading normal (bumped), facing the viewer.
     n: vec3<f32>,
+    // The surface's own normal (for shadow offsets).
+    geometric_n: vec3<f32>,
     // Toward the eye.
     v: vec3<f32>,
     // Perceptual roughness and specular reflectance at normal incidence.
@@ -140,6 +147,54 @@ fn fx_clamp_ellipse(q: vec3<f32>, c: vec3<f32>, right: vec3<f32>, up: vec3<f32>,
         e = e / len;
     }
     return c + right * (e.x * hw) + up * (e.y * hh);
+}
+
+fn fx_shadow_distance(slot: u32, texel: vec2<i32>) -> f32 {
+    switch slot {
+        case 0u: { return textureLoad(fx_shadow0, texel, 0).r; }
+        case 1u: { return textureLoad(fx_shadow1, texel, 0).r; }
+        case 2u: { return textureLoad(fx_shadow2, texel, 0).r; }
+        default: { return textureLoad(fx_shadow3, texel, 0).r; }
+    }
+}
+
+// Share of a shadowed light reaching `pos` (whose normal is `n`) from the
+// light at `origin`: a 4x4 bilinearly weighted comparison against the
+// light's distance map, which the world and model shaders draw like the
+// projected textures' ones. Outside the map's view the light is unshadowed.
+fn fx_shadow(slot: u32, origin: vec3<f32>, pos: vec3<f32>, n: vec3<f32>) -> f32 {
+    let size = f32(textureDimensions(fx_shadow0).x);
+    let to_light = origin - pos;
+    let dist = length(to_light);
+    let n_l = saturate(dot(n, to_light / max(dist, 1e-4)));
+    // Pushed off the surface by about a texel at this distance.
+    let texel_world = dist * fx.shadow_info.z / size;
+    let offset_pos = pos + n * (texel_world * (1.0 + 2.0 * (1.0 - n_l)));
+    let clip = fx.shadow_from_world[slot] * vec4<f32>(offset_pos, 1.0);
+    if clip.w <= 0.0 {
+        return 1.0;
+    }
+    let ndc = clip.xy / clip.w;
+    if abs(ndc.x) >= 1.0 || abs(ndc.y) >= 1.0 {
+        return 1.0;
+    }
+    let d = distance(origin, offset_pos);
+    let bias = 0.5 + texel_world;
+    let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+    let p = uv * size - 0.5;
+    let base = vec2<i32>(floor(p));
+    let f = fract(p);
+    let max_texel = vec2<i32>(i32(size) - 1);
+    var lit = 0.0;
+    for (var y = -1; y <= 2; y++) {
+        for (var x = -1; x <= 2; x++) {
+            let t = clamp(base + vec2<i32>(x, y), vec2<i32>(0), max_texel);
+            let wx = select(select(1.0, f.x, x == 2), 1.0 - f.x, x == -1);
+            let wy = select(select(1.0, f.y, y == 2), 1.0 - f.y, y == -1);
+            lit += select(0.0, 1.0, d - bias <= fx_shadow_distance(slot, t)) * wx * wy;
+        }
+    }
+    return lit / 9.0;
 }
 
 fn fx_d_ggx(n_h: f32, a: f32) -> f32 {
@@ -257,6 +312,13 @@ fn fx_lighting(s: FxSurface) -> FxLit {
         atten *= fx_window(dl, range);
         if atten <= 0.0 {
             continue;
+        }
+        let slot = i32(l.params.z);
+        if slot >= 0 && fx_on(FX_SHADOWS) {
+            atten *= fx_shadow(u32(slot), l.position.xyz, s.pos, s.geometric_n);
+            if atten <= 0.0 {
+                continue;
+            }
         }
         let ld = (lp - s.pos) / max(dl, 1e-4);
         let n_l = dot(s.n, ld);

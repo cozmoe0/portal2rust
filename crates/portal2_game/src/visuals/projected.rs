@@ -45,7 +45,7 @@ use portal2_core::view::MainCamera;
 pub const MAX_LIGHTS: usize = 8;
 pub const MAX_SHADOWS: usize = 4;
 /// `r_flashlightdepthres`.
-const SHADOW_SIZE: u32 = 1024;
+pub(crate) const SHADOW_SIZE: u32 = 1024;
 const COOKIE_SIZE: u32 = 512;
 /// Flashlight brightness is `r_flashlightbrightness` (0.25; the first map
 /// raises it for the container ride) × 2.5 for sRGB-correct blending.
@@ -211,7 +211,7 @@ fn cookie_array(fs: &GameFs) -> (Image, Vec<String>) {
     (image, kept)
 }
 
-fn shadow_image() -> Image {
+pub(crate) fn shadow_image() -> Image {
     let mut image = Image::new_fill(
         Extent3d { width: SHADOW_SIZE, height: SHADOW_SIZE, depth_or_array_layers: 1 },
         TextureDimension::D2,
@@ -224,7 +224,7 @@ fn shadow_image() -> Image {
 }
 
 /// The fog shadow views carry: exponential falloff marks them for the shaders.
-fn shadow_fog() -> DistanceFog {
+pub(crate) fn shadow_fog() -> DistanceFog {
     DistanceFog {
         color: Color::NONE,
         directional_light_color: Color::NONE,
@@ -234,7 +234,7 @@ fn shadow_fog() -> DistanceFog {
 }
 
 /// Distances the shadow maps start out with (beyond any light).
-const SHADOW_CLEAR: f32 = 60000.0;
+pub(crate) const SHADOW_CLEAR: f32 = 60000.0;
 
 fn spawn_shadow_cameras(mut commands: Commands, gpu: Res<ProjectedGpu>) {
     for (slot, image) in gpu.shadows.iter().enumerate() {

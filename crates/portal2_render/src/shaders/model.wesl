@@ -250,6 +250,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
                 var s: FxSurface;
                 s.pos = p;
                 s.n = n;
+                s.geometric_n = select(-1.0, 1.0, is_front) * normalize(in.world_normal);
                 s.v = v;
                 var rough = 0.7;
                 if has(FLAG_PHONG) {

@@ -240,6 +240,14 @@ pub struct WorldMaterial {
     /// The visual overhaul's switches and lights (see [`crate::fx`]).
     #[storage(37, read_only)]
     pub fx_buffer: Handle<ShaderBuffer>,
+    #[texture(38)]
+    pub fx_shadow0: Option<Handle<Image>>,
+    #[texture(39)]
+    pub fx_shadow1: Option<Handle<Image>>,
+    #[texture(40)]
+    pub fx_shadow2: Option<Handle<Image>>,
+    #[texture(41)]
+    pub fx_shadow3: Option<Handle<Image>>,
     pub alpha_mode: AlphaMode,
     pub cull: Option<Face>,
     pub depth_bias: i32,
@@ -250,6 +258,7 @@ pub struct WorldMaterial {
 impl Default for WorldMaterial {
     fn default() -> Self {
         let (projected_lights, cookies, [shadow0, shadow1, shadow2, shadow3]) = projected_handles();
+        let [fx_shadow0, fx_shadow1, fx_shadow2, fx_shadow3] = crate::fx::fx_shadows();
         Self {
             params: WorldParams {
                 color: Vec4::ONE,
@@ -282,6 +291,10 @@ impl Default for WorldMaterial {
             shadow2,
             shadow3,
             fx_buffer: crate::fx::fx_buffer(),
+            fx_shadow0,
+            fx_shadow1,
+            fx_shadow2,
+            fx_shadow3,
             alpha_mode: AlphaMode::Opaque,
             cull: Some(Face::Back),
             depth_bias: 0,
@@ -406,6 +419,14 @@ pub struct ModelMaterial {
     /// The visual overhaul's switches and lights (see [`crate::fx`]).
     #[storage(37, read_only)]
     pub fx_buffer: Handle<ShaderBuffer>,
+    #[texture(38)]
+    pub fx_shadow0: Option<Handle<Image>>,
+    #[texture(39)]
+    pub fx_shadow1: Option<Handle<Image>>,
+    #[texture(40)]
+    pub fx_shadow2: Option<Handle<Image>>,
+    #[texture(41)]
+    pub fx_shadow3: Option<Handle<Image>>,
     pub alpha_mode: AlphaMode,
     pub cull: Option<Face>,
     pub depth_bias: i32,
@@ -416,6 +437,7 @@ pub struct ModelMaterial {
 impl Default for ModelMaterial {
     fn default() -> Self {
         let (projected_lights, cookies, [shadow0, shadow1, shadow2, shadow3]) = projected_handles();
+        let [fx_shadow0, fx_shadow1, fx_shadow2, fx_shadow3] = crate::fx::fx_shadows();
         Self {
             params: ModelParams {
                 color: Vec4::ONE,
@@ -443,6 +465,10 @@ impl Default for ModelMaterial {
             shadow2,
             shadow3,
             fx_buffer: crate::fx::fx_buffer(),
+            fx_shadow0,
+            fx_shadow1,
+            fx_shadow2,
+            fx_shadow3,
             alpha_mode: AlphaMode::Opaque,
             cull: Some(Face::Back),
             depth_bias: 0,

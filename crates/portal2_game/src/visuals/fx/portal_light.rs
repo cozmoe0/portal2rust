@@ -99,6 +99,7 @@ fn portal_lights(
             flags: light_flags::DIFFUSE | light_flags::SPECULAR | light_flags::VOLUMETRIC,
             radius: HALF_WIDTH,
             priority: 3.0,
+            shadow: true,
         });
     }
 }

@@ -422,6 +422,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
                 var s: FxSurface;
                 s.pos = in.world_position.xyz;
                 s.n = light_n;
+                s.geometric_n = n;
                 s.v = normalize(view.world_position - in.world_position.xyz);
                 s.roughness = select(0.75, 0.4, has(FLAG_ENVMAP));
                 s.f0 = vec3<f32>(0.04);

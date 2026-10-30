@@ -30,6 +30,8 @@ pub const MAX_SHADOWS: usize = 4;
 #[derive(Clone, Debug)]
 pub struct FxHandles {
     pub buffer: Handle<ShaderBuffer>,
+    /// Distance-to-light maps drawn like the projected textures' ones.
+    pub shadows: [Handle<Image>; MAX_SHADOWS],
 }
 
 pub static FX: OnceLock<FxHandles> = OnceLock::new();
@@ -47,4 +49,11 @@ pub fn set_fx_enabled(on: bool) {
 
 pub(crate) fn fx_buffer() -> Handle<ShaderBuffer> {
     FX.get().map(|h| h.buffer.clone()).unwrap_or_default()
+}
+
+pub(crate) fn fx_shadows() -> [Option<Handle<Image>>; MAX_SHADOWS] {
+    match FX.get() {
+        Some(h) => h.shadows.clone().map(Some),
+        None => [None, None, None, None],
+    }
 }

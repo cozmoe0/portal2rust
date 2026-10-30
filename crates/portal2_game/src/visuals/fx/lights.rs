@@ -76,6 +76,8 @@ pub struct FxLightData {
     pub radius: f32,
     /// Scales the light's score against the others.
     pub priority: f32,
+    /// Wants one of the overhaul's shadow maps.
+    pub shadow: bool,
 }
 
 const KIND_POINT: f32 = 0.0;
@@ -246,6 +248,7 @@ fn load_fixtures(mut loaded: MessageReader<MapLoaded>, map: Option<Res<CurrentMa
                 flags,
                 radius: 4.0,
                 priority: 0.5,
+                shadow: false,
             },
             cluster: l.cluster,
             style: l.style,
@@ -324,6 +327,7 @@ fn laser_lights(settings: Res<FxSettings>, emitters: Query<&LaserEmitter>, mut l
                 flags: both,
                 radius: 6.0,
                 priority: 2.0,
+                shadow: false,
             });
         }
         let first = e.segments[0];
@@ -335,6 +339,7 @@ fn laser_lights(settings: Res<FxSettings>, emitters: Query<&LaserEmitter>, mut l
             flags: both,
             radius: 8.0,
             priority: 2.5,
+            shadow: false,
         });
         // The last segment ends on whatever stops the beam (not a portal).
         if let Some(last) = e.segments.last().filter(|s| !s.through_portal) {
@@ -346,6 +351,7 @@ fn laser_lights(settings: Res<FxSettings>, emitters: Query<&LaserEmitter>, mut l
                 flags: both,
                 radius: 6.0,
                 priority: 2.0,
+                shadow: false,
             });
         }
     }
@@ -360,7 +366,7 @@ fn score(light: &FxLightData, viewpoints: &[Vec3]) -> f32 {
     light.priority * luma / (reach * reach)
 }
 
-fn gather(
+pub(super) fn gather(
     settings: Res<FxSettings>,
     lights: Res<FxLights>,
     camera: Query<&GlobalTransform, With<MainCamera>>,
@@ -400,6 +406,7 @@ mod tests {
             flags: light_flags::DIFFUSE,
             radius: 2.0,
             priority: 1.0,
+            shadow: false,
         };
         let packed = line.pack(Some(3));
         assert_eq!(packed.len(), 20);

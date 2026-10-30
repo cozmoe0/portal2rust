@@ -16,6 +16,8 @@ pub mod lights;
 pub mod material;
 pub mod portal_light;
 pub mod postfx;
+pub mod screen;
+pub mod shadows;
 
 use std::path::PathBuf;
 
@@ -267,7 +269,14 @@ impl Plugin for VisualFxPlugin {
             .add_plugins(ExtractResourcePlugin::<FxSettings>::default())
             .add_systems(Startup, run_settings_file)
             .add_systems(PreUpdate, update_settings.after(ConsoleSet))
-            .add_plugins((material::FxMaterialPlugin, lights::FxLightsPlugin, portal_light::PortalLightingPlugin, postfx::PostFxPlugin));
+            .add_plugins((
+                material::FxMaterialPlugin,
+                lights::FxLightsPlugin,
+                portal_light::PortalLightingPlugin,
+                shadows::FxShadowsPlugin,
+                screen::FxScreenPlugin,
+                postfx::PostFxPlugin,
+            ));
     }
 }
 
