@@ -6,7 +6,7 @@ pub mod placement;
 pub mod projection;
 
 use bevy::asset::RenderAssetUsages;
-use bevy::camera::{Exposure, Hdr, RenderTarget, visibility::RenderLayers};
+use bevy::camera::{CameraProjection, Exposure, Hdr, RenderTarget, visibility::RenderLayers};
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use bevy::render::render_resource::{AsBindGroup, Extent3d, ShaderType, TextureDimension, TextureFormat, TextureUsages};
@@ -191,7 +191,6 @@ fn settle_on_surface(physics: &portal2_world::collision::Physics, frame: &mut Po
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn apply_placements(
     mut commands: Commands,
     mut requests: MessageReader<PlacePortal>,
@@ -420,18 +419,27 @@ fn update_portal_cameras(
     portals: Res<Portals>,
     query: Query<&Portal>,
     main: Query<(&Transform, &Projection, &Exposure), (With<MainCamera>, Without<Portal>)>,
-    mut cameras: Query<(&mut Transform, &mut Projection, &mut Exposure), (Without<MainCamera>, Without<Portal>)>,
+    mut cameras: Query<(&mut Camera, &mut Transform, &mut Projection, &mut Exposure), (Without<MainCamera>, Without<Portal>)>,
 ) {
     let Some(frames) = linked_frames(&portals, &query) else { return };
     let Ok((main_t, main_proj, main_exposure)) = main.single() else { return };
     let Projection::Perspective(base) = main_proj else { return };
+    // The portals' views are only ever seen on the portals themselves (the
+    // inner views inside the outer ones), so while neither portal is on
+    // screen their four cameras need not draw the world again.
+    let clip_from_world = base.get_clip_from_view() * main_t.compute_affine().inverse();
+    let on_screen = frames.iter().any(|f| might_be_visible(f, clip_from_world));
     for slot in 0..2 {
         let Some(p) = portals.entities[slot].and_then(|e| query.get(e).ok()) else { continue };
         let (from, to) = (frames[slot], frames[1 - slot]);
         let m = transfer(&from, &to);
         let outer = m * main_t.compute_affine();
         for (camera, virt) in [(p.camera, outer), (p.inner_camera, m * outer)] {
-            let Ok((mut t, mut proj, mut exposure)) = cameras.get_mut(camera) else { continue };
+            let Ok((mut cam, mut t, mut proj, mut exposure)) = cameras.get_mut(camera) else { continue };
+            if !on_screen {
+                cam.is_active = false;
+                continue;
+            }
             *t = Transform::from_matrix(virt.into());
             *exposure = *main_exposure;
             // Exit plane in view space, keeping what lies in front of it.
@@ -446,6 +454,16 @@ fn update_portal_cameras(
             }
         }
     }
+}
+
+/// Whether any of a portal's opening (with a margin for its rim) might be
+/// in front of the camera and inside its view; false only when every
+/// corner is past the same side of the view or behind the camera.
+fn might_be_visible(frame: &PortalFrame, clip_from_world: Mat4) -> bool {
+    let (w, h) = (HALF_WIDTH + 8.0, HALF_HEIGHT + 8.0);
+    let corners = [(w, h), (-w, h), (-w, -h), (w, -h)].map(|(y, z)| clip_from_world * frame.to_world(Vec3::new(0.4, y, z)).extend(1.0));
+    let all = |f: &dyn Fn(Vec4) -> bool| corners.iter().all(|c| f(*c));
+    !(all(&|c| c.w <= 0.0) || all(&|c| c.x < -c.w) || all(&|c| c.x > c.w) || all(&|c| c.y < -c.w) || all(&|c| c.y > c.w))
 }
 
 /// Ticks after a teleport during which the player cannot teleport again,
@@ -490,7 +508,6 @@ fn min_exit_speed(to: &PortalFrame, center: Vec3, half_height: f32, gravity: f32
 /// Moves the player through a linked portal when their centre passes
 /// behind it inside the opening, the way `CPortalGameMovement` does
 /// (facts in `docs/re/portals.md`, "Player transit").
-#[allow(clippy::too_many_arguments)]
 fn teleport_player(
     time: Res<Time<Fixed>>,
     portals: Res<Portals>,
