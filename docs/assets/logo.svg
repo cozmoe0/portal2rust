@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="portal2rust logo">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#151c28"/><stop offset="1" stop-color="#07090d"/></linearGradient>
+    <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse"><rect x=".5" y=".5" width="63" height="63" rx="2" fill="none" stroke="#fff" stroke-opacity=".05"/></pattern>
+    <filter id="glow" x="-50%" y="-30%" width="200%" height="160%"><feGaussianBlur stdDeviation="9"/></filter>
+    <radialGradient id="inB"><stop offset="0" stop-color="#06182c"/><stop offset="1" stop-color="#0b2d52"/></radialGradient>
+    <radialGradient id="inO"><stop offset="0" stop-color="#2a1204"/><stop offset="1" stop-color="#4d2306"/></radialGradient>
+    <clipPath id="clip"><rect width="512" height="512" rx="112"/></clipPath>
+  </defs>
+  <g clip-path="url(#clip)">
+    <rect width="512" height="512" fill="url(#tile)"/>
+    <rect width="512" height="512" fill="url(#grid)"/>
+    <ellipse cx="190" cy="256" rx="92" ry="164" fill="url(#inB)"/>
+    <ellipse cx="322" cy="256" rx="92" ry="164" fill="url(#inO)"/>
+    <ellipse cx="190" cy="256" rx="92" ry="164" fill="none" stroke="#3aa6ff" stroke-width="16" filter="url(#glow)"/>
+    <ellipse cx="322" cy="256" rx="92" ry="164" fill="none" stroke="#ff8a1c" stroke-width="16" filter="url(#glow)"/>
+    <ellipse cx="190" cy="256" rx="92" ry="164" fill="none" stroke="#3aa6ff" stroke-width="11"/>
+    <ellipse cx="322" cy="256" rx="92" ry="164" fill="none" stroke="#ff8a1c" stroke-width="11"/>
+    <!-- Blue passes over orange at the top crossing, under it at the bottom. -->
+    <path d="M 236 114 A 92 164 0 0 1 271.2 179" fill="none" stroke="#3aa6ff" stroke-width="11"/>
+  </g>
+</svg>
