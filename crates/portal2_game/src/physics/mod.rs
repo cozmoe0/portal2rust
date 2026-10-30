@@ -295,6 +295,8 @@ fn sync_portal_slabs(
     holes: Res<PortalHoles>,
     slabs: Query<Entity, With<PortalSlab>>,
     sleepers: Query<(Entity, &TraceCollider, &Position, &Rotation), With<Sleeping>>,
+    props: Query<(), With<PhysicsProp>>,
+    mut contacts: ResMut<ContactGraph>,
 ) {
     if !holes.is_changed() {
         return;
@@ -308,6 +310,17 @@ fn sync_portal_slabs(
             commands.entity(e).remove::<Sleeping>();
         }
     }
+    // A prop that has hardly moved keeps the contacts worked out before
+    // (the narrow phase recycles them without asking the contact hooks),
+    // so the floor under one at rest would still hold it up: its contacts
+    // are worked out afresh against the new openings.
+    let forget = |pairs: &mut [ContactPair]| {
+        for pair in pairs.iter_mut().filter(|p| props.contains(p.collider1) || props.contains(p.collider2)) {
+            pair.recycling_cache = None;
+        }
+    };
+    forget(contacts.active_pairs_mut());
+    forget(contacts.sleeping_pairs_mut());
     for e in &slabs {
         commands.entity(e).despawn();
     }

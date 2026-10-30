@@ -264,7 +264,11 @@ fn fire_gun(
     let mut bumpers = Vec::new();
     let mut cleansers = Vec::new();
     let mut helpers = Vec::new();
+    let mut ignore = vec![pe];
     for (e, me, gt) in &entities {
+        if super::placement::shot_ignores(&me.classname) {
+            ignore.push(e);
+        }
         match me.classname.as_str() {
             "func_noportal_volume" if me.get_i32("startactive").unwrap_or(1) != 0 => noportal.push(e),
             "func_portal_bumper" => bumpers.push(e),
@@ -303,7 +307,7 @@ fn fire_gun(
     let other = portals.entities[1 - slot].and_then(|e| portal_query.get(e).ok()).map(|p| p.frame);
     let ctx = PlacementContext {
         physics: &physics,
-        ignore: &[pe],
+        ignore: &ignore,
         portalable: &portalable,
         noportal_volumes: &noportal,
         bumpers: &bumpers,
@@ -329,7 +333,7 @@ fn fire_gun(
         }
         Err(e) => {
             info!("portal {slot} shot failed: {e:?}");
-            let tr = physics.trace(eye, eye + dir * 56756.0, Vec3::ZERO, Vec3::ZERO, portal2_world::collision::mask::SOLID_ALL, &[pe]);
+            let tr = physics.trace(eye, eye + dir * 56756.0, Vec3::ZERO, Vec3::ZERO, portal2_world::collision::mask::SOLID_ALL, &ignore);
             sounds.write(portal2_audio::SoundRequest::at("Portal.fizzle_invalid_surface", tr.end));
             fx.write(super::PortalFx::Shot { slot, start: muzzle, end: tr.end, aim: dir });
             if tr.fraction < 1.0 {

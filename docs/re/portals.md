@@ -164,6 +164,20 @@ in our own words.
   function returning it the first time one is built and 32 from data;
   `Portals_ResizeAll` changes both.
 
+## Shots
+
+- The shot and every placement trace (the settle above included) use a
+  class filter (`UTIL_Portal_Trace_Filter`, server.dll `sub_10375A00`,
+  `AddClassnameToIgnore` for each) that passes through `prop_physics`,
+  `prop_weighted_cube`, `prop_monster_box`, `func_physbox`,
+  `npc_portal_turret_floor`, `prop_energy_ball`, `npc_security_camera`,
+  `simple_physics_prop`, `simple_physics_brush`, `prop_ragdoll`,
+  `prop_glados_core`, `player` / `Player`, `projected_wall_entity`,
+  `prop_paint_bomb`, `prop_exploding_futbol` and `npc_personality_core`,
+  with mask `0x2004003` (solid, window, moveable, monster). So a portal
+  goes onto the floor under a cube resting there (`sp_a1_intro5`'s
+  pedestal), and the cube then drops in.
+
 ## Views
 
 - Portal views nest two deep (`r_portal_stencil_depth 2`): a portal seen

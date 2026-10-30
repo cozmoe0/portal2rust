@@ -208,9 +208,9 @@ fn view_texture(width: u32, height: u32) -> Image {
 /// A map-placed portal moves onto the surface behind it, 1/32 unit out, as
 /// the game's placement check does (`sp_a1_intro1`'s orange portal is
 /// placed 2 units in front of its wall and ends up on it).
-fn settle_on_surface(physics: &portal2_world::collision::Physics, frame: &mut PortalFrame) {
+fn settle_on_surface(physics: &portal2_world::collision::Physics, ignore: &[Entity], frame: &mut PortalFrame) {
     let start = frame.center + frame.forward;
-    let tr = physics.trace(start, start - frame.forward * 17.0, Vec3::ZERO, Vec3::ZERO, placement::SHOT_MASK, &[]);
+    let tr = physics.trace(start, start - frame.forward * 17.0, Vec3::ZERO, Vec3::ZERO, placement::SHOT_MASK, ignore);
     if tr.fraction < 1.0 && !tr.start_solid && tr.normal.dot(frame.forward) > 0.99 {
         frame.center = tr.end + frame.forward / 32.0;
     }
@@ -231,16 +231,18 @@ fn apply_placements(
     mut materials: ResMut<Assets<PortalMaterial>>,
     mut sounds: MessageWriter<portal2_audio::SoundRequest>,
     mut fx: MessageWriter<PortalFx>,
-    (fs, mut textures, physics): (
+    (fs, mut textures, physics, entities): (
         Res<portal2_core::vfs::GameFs>,
         ResMut<portal2_render::textures::TextureCache>,
         portal2_world::collision::Physics,
+        Query<(Entity, &portal2_core::entity::MapEntity)>,
     ),
 ) {
     for req in requests.read() {
         let mut req = *req;
         if req.settle {
-            settle_on_surface(&physics, &mut req.frame);
+            let ignore: Vec<Entity> = entities.iter().filter(|(_, me)| placement::shot_ignores(&me.classname)).map(|(e, _)| e).collect();
+            settle_on_surface(&physics, &ignore, &mut req.frame);
         }
         let rotation = req.frame.rotation();
         fx.write(PortalFx::Opened { slot: req.slot, frame: req.frame });

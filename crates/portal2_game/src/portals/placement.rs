@@ -12,6 +12,34 @@ pub const MAX_SHOT_DISTANCE: f32 = 32768.0;
 /// Shots pass through grates and player clips but stop at glass.
 pub const SHOT_MASK: u32 = contents::SOLID | contents::MOVEABLE | contents::WINDOW | contents::MONSTER;
 
+/// Classes the game's portal traces pass through (`UTIL_Portal_Trace_Filter`,
+/// used by the shot and every placement check): a portal goes onto the floor
+/// under a cube resting on it, or onto the wall behind a turret.
+pub const SHOT_IGNORED_CLASSES: [&str; 17] = [
+    "prop_physics",
+    "prop_weighted_cube",
+    "prop_monster_box",
+    "func_physbox",
+    "npc_portal_turret_floor",
+    "prop_energy_ball",
+    "npc_security_camera",
+    "simple_physics_prop",
+    "simple_physics_brush",
+    "prop_ragdoll",
+    "prop_glados_core",
+    "player",
+    "Player",
+    "projected_wall_entity",
+    "prop_paint_bomb",
+    "prop_exploding_futbol",
+    "npc_personality_core",
+];
+
+/// Whether portal shots and placement pass through entities of `classname`.
+pub fn shot_ignores(classname: &str) -> bool {
+    SHOT_IGNORED_CLASSES.contains(&classname)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlacementFail {
     NoSurface,
