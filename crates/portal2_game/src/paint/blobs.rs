@@ -22,6 +22,7 @@ use portal2_core::sets::ThinkSet;
 use portal2_core::vfs::GameFs;
 use portal2_render::textures::TextureCache;
 use portal2_world::CurrentMap;
+use portal2_world::collision::portal::transfer;
 use portal2_world::collision::{Physics, mask};
 use portal2_world::paint_map::{PaintMap, PaintType, SplatSettings};
 
@@ -375,6 +376,7 @@ fn move_blobs(
     current: Option<Res<CurrentMap>>,
     brushes: Query<(&MapEntity, &GlobalTransform)>,
     (mut sounds, mut painted): (MessageWriter<SoundRequest>, MessageWriter<super::props::PaintEntity>),
+    (portals, portal_query): (Res<crate::portals::Portals>, Query<&crate::portals::Portal>),
 ) {
     let Some(mut map) = map else {
         blobs.list.clear();
@@ -391,6 +393,7 @@ fn move_blobs(
     let paint_radius = console.f32("sv_paint_surface_sphere_radius");
     let erase_radius = console.f32("sv_erase_surface_sphere_radius");
     let bsp = current.as_ref().map(|m| m.bsp.as_ref());
+    let frames = crate::portals::linked_frames(&portals, &portal_query);
     blobs.noise_budget = (blobs.noise_budget + NOISY_PER_SECOND * TICK).min(NOISY_PER_SECOND);
     let mut noise_budget = blobs.noise_budget;
     let mut list = std::mem::take(&mut blobs.list);
@@ -424,6 +427,26 @@ fn move_blobs(
         let v1 = v0 - Vec3::Z * gravity * TICK;
         let next = b.pos + (v0 + v1) * 0.5 * TICK;
         b.vel = v1 * (1.0 - drag * TICK);
+        // Into a linked portal's opening: on out of the other one.
+        if let Some(frames) = &frames
+            && let Some(slot) = (0..2).find(|&slot| {
+                let f = &frames[slot];
+                let (lb, la) = (f.to_local(b.pos), f.to_local(next));
+                lb.x >= 0.0 && la.x < 0.0 && f.in_opening(lb.lerp(la, lb.x / (lb.x - la.x)), 0.0)
+            })
+        {
+            // Nothing in the way up to just in front of the opening.
+            let f = &frames[slot];
+            let (lb, la) = (f.to_local(b.pos), f.to_local(next));
+            let crossing = b.pos.lerp(next, lb.x / (lb.x - la.x)) + f.forward * 0.5;
+            if !physics.trace(b.pos, crossing, Vec3::ZERO, Vec3::ZERO, mask::SOLID_ALL, &[]).hit() {
+                let m = transfer(f, &frames[1 - slot]);
+                b.pos = m.transform_point3(next);
+                b.vel = m.transform_vector3(b.vel);
+                trace!("paint blob went through portal {slot}: now at {:.0?} moving {:.0?}", b.pos, b.vel);
+                return true;
+            }
+        }
         let tr = physics.trace(b.pos, next, Vec3::ZERO, Vec3::ZERO, mask::SOLID_ALL, &[]);
         if !tr.hit() {
             b.pos = next;

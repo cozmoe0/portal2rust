@@ -263,6 +263,9 @@ pub fn make_dynamic(commands: &mut Commands, e: Entity, collider: Collider, mass
         LinearDamping(0.05),
         AngularDamping(0.2),
         SweptCcd::default(),
+        // Drawn eased between physics ticks, like the player's view; a
+        // carried prop would otherwise judder against it at high frame rates.
+        TransformInterpolation,
         layers_for(layers::PROP, layers::WORLD | layers::PROP | layers::PLAYER | layers::MOVER | layers::HELD),
         ActiveCollisionHooks::MODIFY_CONTACTS,
         portal_travel::PortalTraveler::default(),

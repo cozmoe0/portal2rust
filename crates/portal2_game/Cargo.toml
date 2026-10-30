@@ -19,6 +19,7 @@ serde.workspace = true
 ciborium.workspace = true
 flate2.workspace = true
 avian3d.workspace = true
+bevy_transform_interpolation.workspace = true
 
 [lints]
 workspace = true

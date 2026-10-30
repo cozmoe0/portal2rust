@@ -664,6 +664,7 @@ fn teleport_player(
     mut input: ResMut<PlayerInput>,
     mut cooldown: Local<u32>,
     mut env: ResMut<PortalEnvironment>,
+    mut holding: ResMut<crate::physics::carry::Holding>,
     console: Res<portal2_core::console::Console>,
 ) {
     let Some(frames) = linked_frames(&portals, &query) else { return };
@@ -755,6 +756,7 @@ fn teleport_player(
             }
         }
         *cooldown = TELEPORT_COOLDOWN_TICKS;
+        holding.player_crossed(slot);
         // The view keeps moving smoothly: last tick's position comes along.
         p.previous_origin = m.transform_point3(p.previous_origin + half) - half_new;
         p.state.velocity = v;

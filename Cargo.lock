@@ -4587,6 +4587,7 @@ version = "0.1.0"
 dependencies = [
  "avian3d",
  "bevy",
+ "bevy_transform_interpolation",
  "ciborium",
  "flate2",
  "portal2_audio",

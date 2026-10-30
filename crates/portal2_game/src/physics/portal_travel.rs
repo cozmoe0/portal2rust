@@ -4,11 +4,12 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
-use super::carry::{Holding, release};
+use super::carry::Holding;
 use crate::entities::io::FireOutput;
 use crate::entities::props::PhysicsProp;
 use crate::entities::triggers::{Trigger, TriggerKind};
 use crate::portals::{Portal, Portals};
+use bevy_transform_interpolation::{RotationEasingState, TranslationEasingState};
 use portal2_world::collision::portal::transfer;
 use portal2_world::collision::{Collider as TraceCollider, Physics};
 
@@ -99,7 +100,6 @@ fn teleport_props(
     portals: Res<Portals>,
     portal_query: Query<&Portal>,
     mut holding: ResMut<Holding>,
-    mut commands: Commands,
     mut props: Query<(
         Entity,
         &TraceCollider,
@@ -108,6 +108,8 @@ fn teleport_props(
         &mut LinearVelocity,
         &mut AngularVelocity,
         &mut PortalTraveler,
+        Option<&mut TranslationEasingState>,
+        Option<&mut RotationEasingState>,
     )>,
 ) {
     let frames = match (portals.entities[0], portals.entities[1]) {
@@ -117,7 +119,7 @@ fn teleport_props(
         },
         _ => None,
     };
-    for (e, col, mut pos, mut rot, mut lin, mut ang, mut traveler) in &mut props {
+    for (e, col, mut pos, mut rot, mut lin, mut ang, mut traveler, mut eased_at, mut eased_turn) in &mut props {
         let local_center = (col.shape.mins + col.shape.maxs) * 0.5;
         let center = pos.0 + rot.0 * local_center;
         let previous = traveler.previous_center.replace(center);
@@ -140,10 +142,18 @@ fn teleport_props(
             lin.0 = turn * lin.0;
             ang.0 = turn * ang.0;
             traveler.previous_center = Some(new_center);
+            // Drawn at the exit straight away, not eased across from the
+            // entrance.
+            if let Some(state) = eased_at.as_deref_mut() {
+                state.start = None;
+            }
+            if let Some(state) = eased_turn.as_deref_mut() {
+                state.start = None;
+            }
             info!("prop {e} went through portal {slot}: now at {:.0?} moving {:.0?}", new_center, lin.0);
+            // A carried prop stays in the player's hands.
             if holding.entity == Some(e) {
-                holding.entity = None;
-                release(&mut commands, e);
+                holding.prop_crossed(slot);
             }
             break;
         }

@@ -11,6 +11,7 @@ use crate::player::{Player, PlayerInput};
 use portal2_core::coords::{angles_forward, quat_to_angles};
 use portal2_core::events::{EventValue, GameEvent};
 use portal2_core::sets::PlayerMoveSet;
+use portal2_world::collision::portal::{PortalHoles, transfer};
 use portal2_world::collision::{Collider as TraceCollider, Physics, mask};
 
 /// Horizontal radius of the player's hull, part of the hold distance.
@@ -30,6 +31,10 @@ const HOLD_MAX_PENETRATION: f32 = 0.5;
 /// A held prop that moved further than this in one tick went through a
 /// portal: its new place counts as clear.
 const HOLD_TELEPORT_DISTANCE: f32 = 64.0;
+/// Half size of the box traced along the view to the hold point and to the
+/// held prop: a box, not a ray, so that it passes into a portal's opening
+/// (ray traces stop at the wall behind it, which portal beams rely on).
+const SIGHT_BOX: Vec3 = Vec3::splat(0.5);
 
 pub struct CarryPlugin;
 
@@ -62,6 +67,34 @@ pub struct Holding {
     /// The held prop's last placement clear of the world.
     #[serde(skip)]
     pub clear: Option<(Vec3, Quat)>,
+    /// The portal the player sees the held prop through, when it is on the
+    /// other side of the pair from them (the game's held object on the
+    /// opposite side of a portal): its hold point is carried through.
+    #[serde(default)]
+    pub portal: Option<usize>,
+}
+
+impl Holding {
+    /// The held prop crossed portal `slot`: it is now seen through that
+    /// portal, or (coming back) no longer through any.
+    pub fn prop_crossed(&mut self, slot: usize) {
+        self.portal = if self.portal.is_some() { None } else { Some(slot) };
+        self.clear = None;
+    }
+
+    /// The player crossed portal `slot`: a prop beyond it is with them
+    /// again, one left behind is now seen through the exit portal.
+    pub fn player_crossed(&mut self, slot: usize) {
+        if self.entity.is_none() {
+            return;
+        }
+        self.portal = match self.portal {
+            Some(k) if k == slot => None,
+            None => Some(1 - slot),
+            other => other,
+        };
+        self.clear = None;
+    }
 }
 
 fn prop_radius(col: &TraceCollider) -> f32 {
@@ -123,6 +156,7 @@ fn use_or_grab(
             holding.error = 0.0;
             holding.lift = 0.0;
             holding.clear = None;
+            holding.portal = None;
             commands.entity(target).insert((GravityScale(0.0), layers_for(layers::HELD, layers::WORLD | layers::PROP | layers::MOVER)));
             sounds.write(portal2_audio::SoundRequest::on("Weapon_Portalgun.HoldSound", pe));
             out.write(FireOutput::new(target, "OnPlayerPickup").with_activator(Some(pe)));
@@ -191,7 +225,7 @@ fn hold_point(
     let raise = if holding.cube { console.f32("player_held_object_offset_up_cube") * (1.0 - view.x.abs() / 75.0) } else { 0.0 };
     let end = eye + forward * distance + up * raise;
     let mask = mask::SOLID_BRUSH_ONLY;
-    let tr = physics.trace(eye, end, Vec3::ZERO, Vec3::ZERO, mask, ignore);
+    let tr = physics.trace(eye, end, -SIGHT_BOX, SIGHT_BOX, mask, ignore);
     let dir = (end - eye).normalize_or(forward);
     let mut target = eye + dir * (tr.fraction * distance).max(radii) + up * raise;
     // Keep the prop above a floor under the hold point.
@@ -224,7 +258,10 @@ fn hold_held(
     input: Res<PlayerInput>,
     mut props: Query<(&Position, &Rotation, &mut LinearVelocity, &mut AngularVelocity, &Collider, &TraceCollider), With<PhysicsProp>>,
     solids: Query<(&Collider, &Position, &Rotation), Without<PhysicsProp>>,
-    holes: Res<portal2_world::collision::portal::PortalHoles>,
+    statics: Query<(), With<super::StaticWorld>>,
+    holes: Res<PortalHoles>,
+    portals: Res<crate::portals::Portals>,
+    portal_query: Query<&crate::portals::Portal>,
     spatial: SpatialQuery,
     mut commands: Commands,
 ) {
@@ -254,10 +291,22 @@ fn hold_held(
         ang.0 = Vec3::ZERO;
         return;
     }
+    // Held beyond a portal, the hold point (and the prop's facing) are
+    // carried through it; the prop is let go when that portal closes.
+    let through = match (holding.portal, crate::portals::linked_frames(&portals, &portal_query)) {
+        (Some(k), Some(frames)) => Some(transfer(&frames[k], &frames[1 - k])),
+        (Some(_), None) => {
+            holding.entity = None;
+            release(&mut commands, held);
+            return;
+        }
+        (None, _) => None,
+    };
     let dt = time.delta_secs().max(1e-4);
     let eye = p.state.origin + Vec3::Z * p.state.eye_offset();
     let ignore = [pe, held];
-    let target = hold_point(&physics, &ignore, &console, &mut holding, &p.state, input.input.angles);
+    let seen_at = hold_point(&physics, &ignore, &console, &mut holding, &p.state, input.input.angles);
+    let target = through.map_or(seen_at, |m| m.transform_point3(seen_at));
     let error = target - pos.0;
 
     // The drop error averages the trailing distance over about a second;
@@ -268,7 +317,8 @@ fn hold_held(
         d *= 0.5;
     }
     holding.error = (1.0 - t) * holding.error + t * d;
-    if physics.trace(eye, pos.0, Vec3::ZERO, Vec3::ZERO, mask::SOLID_BRUSH_ONLY, &ignore).fraction < 1.0 {
+    let apparent = through.map_or(pos.0, |m| m.inverse().transform_point3(pos.0));
+    if physics.trace(eye, apparent, -SIGHT_BOX, SIGHT_BOX, mask::SOLID_BRUSH_ONLY, &ignore).fraction < 1.0 {
         holding.error *= 3.0;
     }
     trace!("hold: target {target:.0?} at {:.0?} lift {:.1} error {:.1}", pos.0, holding.lift, holding.error);
@@ -282,10 +332,12 @@ fn hold_held(
     // here the move is swept first so the prop comes to rest against a
     // wall or pane (and slides along it) instead of being driven into it.
     let filter = SpatialQueryFilter::from_mask(LayerMask(layers::WORLD | layers::PROP | layers::MOVER)).with_excluded_entities([held, pe]);
-    let step = swept_step(&spatial, collider, pos.0, rot.0, error, &filter);
+    let blockers = Blockers { spatial: &spatial, holes: &holes, statics: &statics };
+    let step = swept_step(&blockers, collider, pos.0, rot.0, error, &filter);
     let wanted = step / dt * 0.5;
     lin.0 = wanted.clamp_length_max(HOLD_MAX_SPEED);
-    let target_rot = Quat::from_rotation_z((input.input.angles.y + holding.yaw_offset).to_radians());
+    let turn = through.map_or(Quat::IDENTITY, |m| Quat::from_mat3a(&m.matrix3));
+    let target_rot = turn * Quat::from_rotation_z((input.input.angles.y + holding.yaw_offset).to_radians());
     let (axis, angle) = (target_rot * rot.0.inverse()).normalize().to_axis_angle();
     let angle = if angle > std::f32::consts::PI { angle - std::f32::consts::TAU } else { angle };
     ang.0 = axis * (angle / dt * 0.3);
@@ -311,9 +363,43 @@ fn sunk_depth(
         .fold(0.0, f32::max)
 }
 
+/// What stops a prop moved by the player: everything solid except the wall
+/// behind a linked portal's opening, which props pass into (the contact
+/// hooks let them, and the frame slabs keep them inside the tunnel).
+struct Blockers<'a, 'w, 's> {
+    spatial: &'a SpatialQuery<'w, 's>,
+    holes: &'a PortalHoles,
+    statics: &'a Query<'w, 's, (), With<super::StaticWorld>>,
+}
+
+impl Blockers<'_, '_, '_> {
+    fn cast(
+        &self,
+        collider: &Collider,
+        from: Vec3,
+        rot: Quat,
+        dir: Dir3,
+        config: &ShapeCastConfig,
+        filter: &SpatialQueryFilter,
+    ) -> Option<ShapeHitData> {
+        let hit = self.spatial.cast_shape(collider, from, rot, dir, config, filter)?;
+        let into_opening = self.statics.contains(hit.entity)
+            && self.holes.holes.iter().any(|h| {
+                let l = h.frame.to_local(hit.point1);
+                l.x < 2.0 && h.frame.in_opening(l, -2.0)
+            });
+        if !into_opening {
+            return Some(hit);
+        }
+        let mut past = filter.clone();
+        past.excluded_entities.insert(hit.entity);
+        self.spatial.cast_shape(collider, from, rot, dir, config, &past)
+    }
+}
+
 /// How much of `step` the prop at `pos` can move: up to what is in the way
 /// (less a skin), then on along that surface.
-fn swept_step(spatial: &SpatialQuery, collider: &Collider, pos: Vec3, rot: Quat, step: Vec3, filter: &SpatialQueryFilter) -> Vec3 {
+fn swept_step(blockers: &Blockers, collider: &Collider, pos: Vec3, rot: Quat, step: Vec3, filter: &SpatialQueryFilter) -> Vec3 {
     let mut out = Vec3::ZERO;
     let mut from = pos;
     let mut rest = step;
@@ -324,7 +410,7 @@ fn swept_step(spatial: &SpatialQuery, collider: &Collider, pos: Vec3, rot: Quat,
         }
         let Ok(dir) = Dir3::new(rest / len) else { return out };
         let config = ShapeCastConfig { max_distance: len, ignore_origin_penetration: true, ..default() };
-        let Some(hit) = spatial.cast_shape(collider, from, rot, dir, &config, filter) else { return out + rest };
+        let Some(hit) = blockers.cast(collider, from, rot, dir, &config, filter) else { return out + rest };
         let travel = (hit.distance - HOLD_SKIN).max(0.0);
         out += dir * travel;
         from += dir * travel;
@@ -345,6 +431,8 @@ fn push_props(
     holding: Res<Holding>,
     players: Query<(Entity, &Player)>,
     mut props: Query<(&RigidBody, &mut LinearVelocity, &Position, &Rotation, &Collider), With<PhysicsProp>>,
+    statics: Query<(), With<super::StaticWorld>>,
+    holes: Res<PortalHoles>,
     spatial: SpatialQuery,
 ) {
     let Ok((pe, p)) = players.single() else { return };
@@ -370,7 +458,8 @@ fn push_props(
         let filter = SpatialQueryFilter::from_mask(LayerMask(layers::WORLD | layers::MOVER)).with_excluded_entities([hit, pe]);
         let config = ShapeCastConfig { max_distance: want * dt + HOLD_SKIN, ignore_origin_penetration: true, ..default() };
         if let Ok(d) = Dir3::new(dir)
-            && let Some(block) = spatial.cast_shape(collider, pos.0, rot.0, d, &config, &filter)
+            && let Some(block) =
+                (Blockers { spatial: &spatial, holes: &holes, statics: &statics }).cast(collider, pos.0, rot.0, d, &config, &filter)
         {
             want = want.min((block.distance - HOLD_SKIN).max(0.0) / dt);
         }

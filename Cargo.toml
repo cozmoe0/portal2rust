@@ -37,6 +37,9 @@ bevy = { version = "0.20", default-features = false, features = [
 # Rigid bodies, joints and contact hooks; no debug rendering, picking or
 # scene support.
 avian3d = { version = "0.8", default-features = false, features = ["3d", "parry-f32", "xpbd_joints", "parallel"] }
+# Avian's transform easing between physics ticks (its easing states are not
+# re-exported, and teleports reset them).
+bevy_transform_interpolation = "0.6"
 glam = "0.33"
 thiserror = "2"
 log = "0.4"
