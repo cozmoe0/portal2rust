@@ -338,6 +338,7 @@ pub fn set_parent_attachment(world: &mut World, child: Entity, attachment: &str,
     };
     world.entity_mut(child).insert((ChildOf(joint), local));
     movers::rebase(world, child, old_parent, joint_world.affine());
+    crate::physics::on_parented(world, child);
     true
 }
 
@@ -372,6 +373,7 @@ pub fn set_parent(world: &mut World, child: Entity, parent: &str) {
     let local = Transform::from_matrix(local.into());
     world.entity_mut(child).insert((ChildOf(p), local));
     movers::rebase(world, child, old_parent, parent_world.affine());
+    crate::physics::on_parented(world, child);
 }
 
 /// World placement of an entity's current parent (identity when unparented).
@@ -504,6 +506,7 @@ fn generic_inputs(world: &mut World, call: &InputCall) -> bool {
             let t = world_transform(world, e).compute_transform();
             world.entity_mut(e).remove::<ChildOf>().insert(t);
             movers::rebase(world, e, old_parent, bevy::math::Affine3A::IDENTITY);
+            crate::physics::on_unparented(world, e);
             true
         }
         _ => false,

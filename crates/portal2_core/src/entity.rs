@@ -57,6 +57,13 @@ impl MapEntity {
         self.spawnflags() & bit != 0
     }
 
+    /// Sets or clears spawnflag bits (state the game keeps in them, such as
+    /// a prop's motion or pickup being switched off, so saves carry it).
+    pub fn set_flag(&mut self, bit: u32, on: bool) {
+        let flags = if on { self.spawnflags() | bit } else { self.spawnflags() & !bit };
+        self.set("spawnflags", &flags.to_string());
+    }
+
     pub fn origin(&self) -> Vec3 {
         self.get_vec3("origin").unwrap_or(Vec3::ZERO)
     }

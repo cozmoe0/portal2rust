@@ -21,6 +21,10 @@ pub struct ConvexVolume {
     pub mins: Vec3,
     pub maxs: Vec3,
     pub contents: u32,
+    /// Corners of the volume (a hull's points; for a volume made from
+    /// planes, their intersections), so physics bodies can be built from
+    /// them without solving for them again.
+    pub points: Vec<Vec3>,
 }
 
 /// Result of sweeping a box against one volume.
@@ -49,7 +53,7 @@ impl ConvexVolume {
             mins = mins.min(*v);
             maxs = maxs.max(*v);
         }
-        Some(Self { planes, mins, maxs, contents })
+        Some(Self { planes, mins, maxs, contents, points: verts })
     }
 
     /// Builds a volume from a convex point set's triangles, adding axial bevel
@@ -84,7 +88,7 @@ impl ConvexVolume {
             maxs = maxs.max(*p);
         }
         add_axial_bevels(&mut planes, mins, maxs, surface);
-        (planes.len() >= 4).then_some(Self { planes, mins, maxs, contents })
+        (planes.len() >= 4).then_some(Self { planes, mins, maxs, contents, points: points.to_vec() })
     }
 
     /// Exact volume for a single triangle (zero thickness): the separating
@@ -115,14 +119,15 @@ impl ConvexVolume {
         }
         let mins = tri[0].min(tri[1]).min(tri[2]);
         let maxs = tri[0].max(tri[1]).max(tri[2]);
-        Some(Self { planes, mins, maxs, contents })
+        Some(Self { planes, mins, maxs, contents, points: tri.to_vec() })
     }
 
     /// Axis-aligned box volume.
     pub fn from_box(mins: Vec3, maxs: Vec3, contents: u32, surface: i32) -> Self {
         let mut planes = Vec::with_capacity(6);
         add_axial_bevels(&mut planes, mins, maxs, surface);
-        Self { planes, mins, maxs, contents }
+        let points = (0..8).map(|i| Vec3::select(bevy::math::BVec3::new(i & 1 != 0, i & 2 != 0, i & 4 != 0), maxs, mins)).collect();
+        Self { planes, mins, maxs, contents, points }
     }
 
     /// Sweeps the box `[mins, maxs]` from `start` to `end`.

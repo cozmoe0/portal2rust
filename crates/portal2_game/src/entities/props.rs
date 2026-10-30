@@ -53,6 +53,7 @@ pub fn register(app: &mut App) {
         h.register(class, dynamic_input);
     }
     h.register("prop_testchamber_door", chamber_door_input);
+    h.register("npc_personality_core", personality_core_input);
     for class in ["prop_weighted_cube", "prop_physics", "prop_physics_override", "prop_physics_multiplayer"] {
         h.register(class, physics_prop_input);
     }
@@ -117,6 +118,9 @@ fn spawn_personality_core(world: &mut World, e: Entity) {
         }
     }
     attach_entity_model(world, e, true);
+    // A physics prop the player carries (`CNPC_PersonalityCore` is one):
+    // it rides its parent until let go, then falls.
+    world.entity_mut(e).insert(PhysicsProp);
     if let Some(mut anim) = world.get_mut::<StudioAnimator>(e) {
         let idle =
             anim.model.studio.find_sequence_by_activity("ACT_IDLE").or_else(|| anim.model.studio.find_sequence("sphere_idle_neutral"));
@@ -125,6 +129,35 @@ fn spawn_personality_core(world: &mut World, e: Entity) {
             anim.default_sequence = Some(i);
         }
     }
+}
+
+/// Physics prop spawnflag: the player cannot pick it up. `EnablePickup` and
+/// `DisablePickup` keep it up to date, so a saved game knows too.
+pub const SF_PREVENT_PICKUP: u32 = 512;
+
+/// Personality core inputs: pickup switched on and off, `ForcePickup` (into
+/// the player's hands, as `sp_a1_wakeup` starts) and the scenes it plays
+/// going into a socket (`PlayAttach`, `PlayLock`).
+fn personality_core_input(world: &mut World, call: &InputCall) -> bool {
+    let e = call.target;
+    match call.input.as_str() {
+        "enablepickup" | "disablepickup" => {
+            if let Some(mut me) = world.get_mut::<MapEntity>(e) {
+                me.set_flag(SF_PREVENT_PICKUP, call.input == "disablepickup");
+            }
+        }
+        "forcepickup" => world.resource_mut::<crate::physics::carry::ForcedPickup>().0 = Some(e),
+        "playattach" | "playlock" => {
+            let scene = if call.input == "playattach" { "sphere_plug_attach" } else { "sphere_plug_lock" };
+            let file = format!("scenes/npc/sp_proto_sphere/{scene}.vcd");
+            let s = super::spawn_runtime_entity(world, "logic_choreographed_scene", &[("scenefile", file.as_str())]);
+            world.resource_mut::<EventQueue>().push(0.0, EventTarget::Entity(s), "start", "", call.activator, Some(e));
+        }
+        // No detach scene is among the game's scene names.
+        "playdetach" => {}
+        _ => return false,
+    }
+    true
 }
 
 /// Default handling for `prop_*` classes without a dedicated spawner.

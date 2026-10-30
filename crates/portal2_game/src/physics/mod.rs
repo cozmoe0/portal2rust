@@ -31,6 +31,11 @@ pub mod layers {
     pub const PLAYER: u32 = 1 << 2;
     pub const HELD: u32 = 1 << 3;
     pub const MOVER: u32 = 1 << 4;
+    /// Collision riding a model's bones (a prop_dynamic's moving parts).
+    /// Props resting on it collide with it, but not one the player holds:
+    /// in the game Wheatley goes into his socket's claws while carried,
+    /// though he bounces off them dropped.
+    pub const FOLLOWER: u32 = 1 << 5;
 }
 
 pub struct GamePhysicsPlugin;
@@ -115,6 +120,30 @@ fn face_polygon(pts: &[Vec3], normal: Vec3, dist: f32) -> Vec<Vec3> {
         da.dot(w).atan2(da.dot(u)).total_cmp(&db.dot(w).atan2(db.dot(u)))
     });
     on
+}
+
+/// A physics prop's own body: one convex hull per piece, from its corners.
+/// (The hulls of what props rest on are split up instead, see
+/// [`volume_colliders`].) A rounded model kept whole stays cheap to sweep:
+/// Wheatley's sphere split into hundreds of thin tetrahedra made every
+/// physics tick sweep each of them against the map as a fast, thin body.
+pub fn prop_collider(shape: &Shape) -> Option<Collider> {
+    let parts: Vec<(Vec3, Quat, Collider)> = shape
+        .volumes
+        .iter()
+        .filter_map(|v| {
+            let solved;
+            let points = if v.points.len() >= 4 {
+                &v.points
+            } else {
+                solved = polytope_vertices(&v.planes);
+                &solved
+            };
+            Collider::convex_hull(points)
+        })
+        .map(|c| (Vec3::ZERO, Quat::IDENTITY, c))
+        .collect();
+    (!parts.is_empty()).then(|| Collider::compound(parts))
 }
 
 fn shape_collider(shape: &Shape) -> Option<Collider> {
@@ -214,16 +243,46 @@ fn attach_bodies(
         if !col.solid {
             continue;
         }
-        let Some(collider) = shape_collider(&col.shape) else { continue };
-        if is_prop && !parented && !me.has_flag(8) {
-            let mass = me.get_f32("massscale").filter(|s| *s > 0.0).unwrap_or(1.0)
-                * me.studio_model().and_then(|p| model_mass(&fs, &p)).unwrap_or(40.0);
-            make_dynamic(&mut commands, e, collider, mass);
+        let collider = if is_prop { prop_collider(&col.shape) } else { shape_collider(&col.shape) };
+        let Some(collider) = collider else { continue };
+        if is_prop && !parented && !me.has_flag(SF_MOTION_DISABLED) {
+            make_dynamic(&mut commands, e, collider, prop_mass(&fs, me));
         } else {
             // Spawnflag 8 on physics props: start motion disabled.
             commands.entity(e).insert((RigidBody::Kinematic, collider, layers_for(layers::MOVER, layers::PROP | layers::HELD)));
         }
     }
+}
+
+/// Physics prop spawnflag: motion disabled. `DisableMotion` and
+/// `EnableMotion` keep it up to date, so a saved game knows too.
+pub const SF_MOTION_DISABLED: u32 = 8;
+
+/// A physics prop's mass: its model's (40 without one) times `massscale`.
+pub fn prop_mass(fs: &GameFs, me: &MapEntity) -> f32 {
+    me.get_f32("massscale").filter(|s| *s > 0.0).unwrap_or(1.0) * me.studio_model().and_then(|p| model_mass(fs, &p)).unwrap_or(40.0)
+}
+
+/// A physics prop given a parent rides it rather than falling.
+pub fn on_parented(world: &mut World, e: Entity) {
+    if world.get::<PhysicsProp>(e).is_some() && world.get::<RigidBody>(e).is_some_and(|b| b.is_dynamic()) {
+        world.entity_mut(e).insert((RigidBody::Kinematic, LinearVelocity::ZERO, AngularVelocity::ZERO));
+    }
+}
+
+/// A physics prop its parent lets go of falls free, unless its motion is
+/// disabled (`sp_a1_intro7`'s Wheatley popping off his management rail).
+pub fn on_unparented(world: &mut World, e: Entity) {
+    let Some(me) = world.get::<MapEntity>(e) else { return };
+    let frozen = me.has_flag(SF_MOTION_DISABLED);
+    if frozen || world.get::<PhysicsProp>(e).is_none() || world.get::<RigidBody>(e).is_none_or(|b| b.is_dynamic()) {
+        return;
+    }
+    let mass = prop_mass(world.resource::<GameFs>(), me);
+    let Some(collider) = world.get::<TraceCollider>(e).and_then(|c| prop_collider(&c.shape)) else { return };
+    let mut commands = world.commands();
+    make_dynamic(&mut commands, e, collider, mass);
+    world.flush();
 }
 
 /// Collision switched off (a disabled brush) stops props as well as the
@@ -248,7 +307,7 @@ fn attach_follower_bodies(
 ) {
     for (e, col) in &new {
         let Some(collider) = shape_collider(&col.shape) else { continue };
-        commands.entity(e).insert((RigidBody::Kinematic, collider, layers_for(layers::MOVER, layers::PROP | layers::HELD)));
+        commands.entity(e).insert((RigidBody::Kinematic, collider, layers_for(layers::FOLLOWER, layers::PROP)));
     }
 }
 
@@ -266,15 +325,10 @@ pub fn make_dynamic(commands: &mut Commands, e: Entity, collider: Collider, mass
         // Drawn eased between physics ticks, like the player's view; a
         // carried prop would otherwise judder against it at high frame rates.
         TransformInterpolation,
-        layers_for(layers::PROP, layers::WORLD | layers::PROP | layers::PLAYER | layers::MOVER | layers::HELD),
+        layers_for(layers::PROP, layers::WORLD | layers::PROP | layers::PLAYER | layers::MOVER | layers::FOLLOWER | layers::HELD),
         ActiveCollisionHooks::MODIFY_CONTACTS,
         portal_travel::PortalTraveler::default(),
     ));
-}
-
-/// Collider for one of our collision shapes, if it has any volume.
-pub fn collider_for(shape: &Shape) -> Option<Collider> {
-    shape_collider(shape)
 }
 
 /// The player pushes props through a kinematic box that follows them.

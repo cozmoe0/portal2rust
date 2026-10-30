@@ -5,7 +5,8 @@
 //! `r1` strafe, `j` jump tap, `d1` crouch, `t90` turn (degrees), `e` use,
 //! `@12.5` wait until the map clock reads 12.5 s, `c<text>` run console
 //! text (for replaying a timed run of the original game), `h1` / `h0`
-//! hold forward on / off across the steps that follow.
+//! hold forward on / off across the steps that follow. Frame times are
+//! logged every half second (average and worst), for performance runs.
 
 use bevy::prelude::*;
 
@@ -21,7 +22,8 @@ impl Plugin for AutopilotPlugin {
             .init_resource::<AutoUse>()
             .add_systems(Startup, setup)
             .add_systems(FixedUpdate, drive.before(PlayerMoveSet))
-            .add_systems(FixedUpdate, log_state.after(PlayerMoveSet));
+            .add_systems(FixedUpdate, log_state.after(PlayerMoveSet))
+            .add_systems(Update, log_frame_times);
     }
 }
 
@@ -237,5 +239,21 @@ fn log_state(
             .collect();
         cubes.truncate(4);
         info!("  cubes {} holding {}", cubes.join(" "), holding.and_then(|h| h.entity).is_some());
+    }
+}
+
+/// Average and worst frame time over each half second.
+fn log_frame_times(time: Res<Time<Real>>, ap: Option<Res<Autopilot>>, mut acc: Local<(f32, u32, f32)>) {
+    if ap.is_none() {
+        return;
+    }
+    let dt = time.delta_secs();
+    let (total, frames, worst) = &mut *acc;
+    *total += dt;
+    *frames += 1;
+    *worst = worst.max(dt);
+    if *total >= 0.5 {
+        info!("frames: {:.1} ms average, {:.1} ms worst over {frames}", *total * 1000.0 / *frames as f32, *worst * 1000.0);
+        *acc = (0.0, 0, 0.0);
     }
 }

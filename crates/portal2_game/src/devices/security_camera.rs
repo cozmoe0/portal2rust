@@ -149,7 +149,7 @@ fn knock_off(
         c.mounted = false;
         c.mode = Mode::Idle;
         sounds.write(portal2_audio::SoundRequest::at("SecurityCamera.Detachment", t.translation));
-        if let Some(collider) = crate::physics::collider_for(&col.shape) {
+        if let Some(collider) = crate::physics::prop_collider(&col.shape) {
             let mass = me.studio_model().and_then(|p| crate::physics::model_mass(&fs, &p)).unwrap_or(10.0);
             commands.entity(e).insert(crate::entities::props::PhysicsProp);
             crate::physics::make_dynamic(&mut commands, e, collider, mass);

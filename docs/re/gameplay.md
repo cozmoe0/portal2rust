@@ -149,6 +149,21 @@ and horizontally slower than 64 u/s:
   portal that is no longer looked through). The object drops when the
   error exceeds 40 (12 with `player_held_object_collide_with_player`), or
   when the player stands on it.
+- `logic_playerproxy`'s `SetDropEnabled 0` stops `+use` letting go (set on
+  picking up Wheatley); it is a flag on the player (server.dll writes it in
+  `sub_10195940`), set back to allowed only when the player spawns.
+- A held object passes through bone followers (below): measured in the game
+  in `sp_a1_intro7` with `ForcePickup`, Wheatley held at his socket's
+  trigger sits with his centre inside the socket's arm and housing solids,
+  while dropped onto the socket from above he bounces off them.
+- Personality cores (`npc_personality_core`) are physics props: hanging on a
+  parent they ride it, and `ClearParent` lets them fall (Wheatley popping
+  off his management rail is the `@sphere ClearParent` the scene fires).
+  `EnablePickup` / `DisablePickup` switch carrying on and off,
+  `ForcePickup` puts the core in the player's hands (`sp_a1_wakeup` starts
+  so) and `PlayAttach` / `PlayLock` play
+  `scenes/npc/sp_proto_sphere/sphere_plug_attach.vcd` / `sphere_plug_lock.vcd`.
+  Triggers that admit NPCs (spawnflag 2) take them.
 
 ## Portal placement checks (server)
 

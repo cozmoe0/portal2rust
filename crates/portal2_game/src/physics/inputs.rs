@@ -30,6 +30,7 @@ pub fn register(app: &mut App) {
         "prop_physics",
         "prop_physics_override",
         "prop_physics_multiplayer",
+        "npc_personality_core",
     ] {
         h.register(class, motion_input);
     }
@@ -44,10 +45,13 @@ fn motion_input(world: &mut World, call: &InputCall) -> bool {
     let e = call.target;
     match call.input.as_str() {
         "enablemotion" | "wake" => {
+            if let Some(mut me) = world.get_mut::<MapEntity>(e) {
+                me.set_flag(super::SF_MOTION_DISABLED, false);
+            }
             let dynamic = world.get::<RigidBody>(e).is_some_and(|b| b.is_dynamic());
             if !dynamic && let Some(shape) = world.get::<TraceCollider>(e).map(|c| c.shape.clone()) {
-                let Some(collider) = super::collider_for(&shape) else { return true };
-                let mass = world.get::<MapEntity>(e).and_then(|me| me.get_f32("massscale")).filter(|s| *s > 0.0).unwrap_or(1.0) * 40.0;
+                let Some(collider) = super::prop_collider(&shape) else { return true };
+                let mass = world.get::<MapEntity>(e).map_or(40.0, |me| super::prop_mass(world.resource::<portal2_core::vfs::GameFs>(), me));
                 // A frozen prop may hang from a parent; it falls free now.
                 if let Some(gt) = world.get::<GlobalTransform>(e).copied() {
                     world.entity_mut(e).remove::<ChildOf>().insert(gt.compute_transform());
@@ -61,6 +65,11 @@ fn motion_input(world: &mut World, call: &InputCall) -> bool {
             true
         }
         "disablemotion" | "sleep" => {
+            if call.input == "disablemotion"
+                && let Some(mut me) = world.get_mut::<MapEntity>(e)
+            {
+                me.set_flag(super::SF_MOTION_DISABLED, true);
+            }
             if world.get::<RigidBody>(e).is_some() {
                 world.entity_mut(e).insert((RigidBody::Kinematic, LinearVelocity::ZERO, AngularVelocity::ZERO));
             }

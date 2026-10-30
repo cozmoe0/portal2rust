@@ -180,22 +180,34 @@ pub fn animate_models(
     for (entity, mut anim) in &mut animators {
         let duration = anim.duration();
         let previous = anim.cycle;
-        if !anim.finished && anim.rate != 0.0 && duration > 0.0 {
+        // A sequence that does not loop stops at the end it plays toward, and
+        // runs back from there when its rate turns negative (`SetPlaybackRate
+        // -1`: `sp_a1_intro6`'s exit ramps unfold by playing their folding
+        // animation backwards).
+        let backwards = anim.rate < 0.0;
+        let at_end = !anim.looping && if backwards { anim.cycle <= 0.0 } else { anim.cycle >= 1.0 };
+        if anim.rate != 0.0 && duration > 0.0 && !at_end {
             let mut cycle = anim.cycle + dt * anim.rate / duration;
             if anim.looping {
                 cycle = cycle.rem_euclid(1.0);
-            } else if cycle >= 1.0 {
-                cycle = 1.0;
+            } else if !(0.0..1.0).contains(&cycle) {
+                cycle = cycle.clamp(0.0, 1.0);
                 anim.finished = true;
                 finished.write(AnimationFinished { entity, sequence: anim.sequence });
+            } else {
+                anim.finished = false;
             }
             anim.cycle = cycle;
             anim.dirty = true;
             // Report events whose cycle was crossed this frame.
             if let Some((owner, local)) = anim.model.studio.sequence(anim.sequence) {
                 for e in &owner.mdl.sequences[local].events {
-                    let crossed =
-                        if cycle >= previous { e.cycle > previous && e.cycle <= cycle } else { e.cycle > previous || e.cycle <= cycle };
+                    let crossed = match (backwards, cycle >= previous) {
+                        (false, true) => e.cycle > previous && e.cycle <= cycle,
+                        (false, false) => e.cycle > previous || e.cycle <= cycle,
+                        (true, false) => e.cycle < previous && e.cycle >= cycle,
+                        (true, true) => e.cycle < previous || e.cycle >= cycle,
+                    };
                     if crossed {
                         events.write(AnimationEvent { entity, event: e.event, name: e.name.clone(), options: e.options.clone() });
                     }

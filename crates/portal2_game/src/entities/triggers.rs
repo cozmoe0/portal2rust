@@ -149,6 +149,8 @@ fn trigger_input(world: &mut World, call: &InputCall) -> bool {
 struct Toucher {
     entity: Entity,
     is_player: bool,
+    /// An NPC class (`npc_personality_core`): triggers that admit NPCs take it.
+    is_npc: bool,
     center: Vec3,
     half: Vec3,
 }
@@ -214,7 +216,8 @@ fn filter_named(
     result != negate
 }
 
-/// spawnflags that admit physics objects.
+/// spawnflags that admit NPCs and physics objects.
+const SF_NPCS: u32 = 2;
 const SF_PHYSICS: u32 = 8;
 /// trigger_teleport: keep the toucher's view angles.
 const SF_PRESERVE_ANGLES: u32 = 32;
@@ -245,12 +248,19 @@ fn touch_triggers(
     let origin = player.state.origin;
     let mut touchers = Vec::new();
     if !player.noclip {
-        touchers.push(Toucher { entity: pe, is_player: true, center: origin + (mins + maxs) * 0.5, half: (maxs - mins) * 0.5 });
+        touchers.push(Toucher {
+            entity: pe,
+            is_player: true,
+            is_npc: false,
+            center: origin + (mins + maxs) * 0.5,
+            half: (maxs - mins) * 0.5,
+        });
     }
     for (e, col, gt) in &props {
         let t = gt.compute_transform();
         let (lo, hi) = crate::physics::world_bounds(&col.shape, t.translation, t.rotation);
-        touchers.push(Toucher { entity: e, is_player: false, center: (lo + hi) * 0.5, half: (hi - lo) * 0.5 });
+        let is_npc = entities.get(e).is_ok_and(|m| m.classname.starts_with("npc_"));
+        touchers.push(Toucher { entity: e, is_player: false, is_npc, center: (lo + hi) * 0.5, half: (hi - lo) * 0.5 });
     }
     // Destination, view angles to snap to, whether velocity is kept.
     let mut teleport: Option<(Vec3, Option<Vec3>, bool)> = None;
@@ -260,8 +270,9 @@ fn touch_triggers(
         }
         let flags = entities.get(te).map(|m| m.spawnflags()).unwrap_or(0);
         let allow_props = flags & (SF_PHYSICS | SF_EVERYTHING) != 0;
+        let allow_npcs = flags & SF_NPCS != 0;
         for toucher in &touchers {
-            let allowed = if toucher.is_player { t.allow_players } else { allow_props };
+            let allowed = if toucher.is_player { t.allow_players } else { allow_props || (toucher.is_npc && allow_npcs) };
             let inside = allowed
                 && physics.touches(te, toucher.center - toucher.half, Vec3::ZERO, toucher.half * 2.0)
                 && passes_filter(&t.filter, toucher.entity, toucher.is_player, &registry, &entities, held);

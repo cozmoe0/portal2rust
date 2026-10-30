@@ -133,14 +133,18 @@ fn player_proxy_outputs(
 
 /// Inputs that change how the player holds things or looks are accepted;
 /// their effects come with the systems they belong to.
-fn proxy_input(_world: &mut World, call: &InputCall) -> bool {
+fn proxy_input(world: &mut World, call: &InputCall) -> bool {
+    if call.input == "setdropenabled" {
+        let enabled = source_formats::kv::parse_i32_lenient(call.param.trim()) != 0;
+        world.resource_mut::<crate::physics::carry::Holding>().drop_locked = !enabled;
+        return true;
+    }
     matches!(
         call.input.as_str(),
         "setmotionbluramount"
             | "forcevmgrabcontroller"
             | "forcephysicsgrabcontroller"
             | "resetgrabcontroller"
-            | "setdropenabled"
             | "addpotatostoportalgun"
             | "removepotatosfromportalgun"
             | "lowerweapon"

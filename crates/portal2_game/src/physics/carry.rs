@@ -41,6 +41,8 @@ pub struct CarryPlugin;
 impl Plugin for CarryPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Holding>()
+            .init_resource::<ForcedPickup>()
+            .add_systems(PreUpdate, forget_on_map_load.after(portal2_core::sets::LoadMapSet).before(portal2_core::sets::EntitySpawnSet))
             .add_systems(Update, use_or_grab)
             .add_systems(FixedUpdate, (hold_held, push_props).after(PlayerMoveSet));
     }
@@ -72,6 +74,24 @@ pub struct Holding {
     /// opposite side of a portal): its hold point is carried through.
     #[serde(default)]
     pub portal: Option<usize>,
+    /// `logic_playerproxy`'s `SetDropEnabled 0`: `+use` no longer lets go
+    /// (Wheatley, once picked up). The game resets it when the player spawns.
+    #[serde(default)]
+    pub drop_locked: bool,
+}
+
+/// A prop to put in the player's hands (`ForcePickup`), taken as soon as it
+/// can be held.
+#[derive(Resource, Default)]
+pub struct ForcedPickup(pub Option<Entity>);
+
+/// A new map starts with nothing held and dropping allowed (a saved game
+/// then restores what it had).
+fn forget_on_map_load(mut loaded: MessageReader<portal2_world::MapLoaded>, mut holding: ResMut<Holding>, mut forced: ResMut<ForcedPickup>) {
+    if loaded.read().last().is_some() {
+        *holding = Holding::default();
+        forced.0 = None;
+    }
 }
 
 impl Holding {
@@ -114,20 +134,40 @@ fn use_or_grab(
     mut auto: ResMut<crate::player::autopilot::AutoUse>,
     mut sounds: MessageWriter<portal2_audio::SoundRequest>,
     mut events: MessageWriter<GameEvent>,
+    mut forced: ResMut<ForcedPickup>,
 ) {
     let pressed = buttons.just_pressed("use") || std::mem::take(&mut auto.0);
+    let Ok((pe, p)) = players.single() else { return };
+    if let Some(target) = forced.0 {
+        match props.get(target) {
+            Ok((col, gt, body, me)) if *body == RigidBody::Dynamic => {
+                forced.0 = None;
+                if let Some(held) = holding.entity.take() {
+                    release(&mut commands, held);
+                }
+                let yaw = quat_to_angles(gt.compute_transform().rotation).y;
+                grab(&mut holding, &mut commands, &mut out, &mut sounds, pe, target, col, yaw - input.input.angles.y, me);
+            }
+            Ok(_) => {}
+            Err(_) => forced.0 = None,
+        }
+    }
     if !pressed {
         return;
     }
-    let Ok((pe, p)) = players.single() else { return };
     // `player_use` / `player_drop` for the instructor's carry lessons.
     let event = |name: &str, e: Entity| {
         GameEvent::new(name).with("userid", EventValue::Entity(Some(pe))).with("entity", EventValue::Entity(Some(e)))
     };
-    if let Some(held) = holding.entity.take() {
+    if let Some(held) = holding.entity {
+        if holding.drop_locked {
+            return;
+        }
+        holding.entity = None;
         sounds.write(portal2_audio::SoundRequest::stop("Weapon_Portalgun.HoldSound", pe));
         release(&mut commands, held);
         out.write(FireOutput::new(held, "OnPhysGunDrop").with_activator(Some(pe)));
+        out.write(FireOutput::new(held, "OnPlayerDrop").with_activator(Some(pe)));
         events.write(event("player_drop", held));
         return;
     }
@@ -147,23 +187,39 @@ fn use_or_grab(
     };
     events.write(event("player_use", target));
     match props.get(target) {
-        Ok((col, gt, body, me)) if *body == RigidBody::Dynamic => {
-            let prop_yaw = quat_to_angles(gt.compute_transform().rotation).y;
-            holding.entity = Some(target);
-            holding.yaw_offset = prop_yaw - input.input.angles.y;
-            holding.radius = prop_radius(col);
-            holding.cube = me.classname == "prop_weighted_cube";
-            holding.error = 0.0;
-            holding.lift = 0.0;
-            holding.clear = None;
-            holding.portal = None;
-            commands.entity(target).insert((GravityScale(0.0), layers_for(layers::HELD, layers::WORLD | layers::PROP | layers::MOVER)));
-            sounds.write(portal2_audio::SoundRequest::on("Weapon_Portalgun.HoldSound", pe));
-            out.write(FireOutput::new(target, "OnPlayerPickup").with_activator(Some(pe)));
-            out.write(FireOutput::new(target, "OnPhysGunPickup").with_activator(Some(pe)));
+        Ok((col, gt, body, me)) if *body == RigidBody::Dynamic && !me.has_flag(crate::entities::props::SF_PREVENT_PICKUP) => {
+            let yaw = quat_to_angles(gt.compute_transform().rotation).y;
+            grab(&mut holding, &mut commands, &mut out, &mut sounds, pe, target, col, yaw - input.input.angles.y, me);
         }
         _ => queue.push(0.0, EventTarget::Entity(target), "use", "", Some(pe), Some(pe)),
     }
+}
+
+/// Takes `target` into the player's hands, turned `yaw_offset` from their view.
+#[allow(clippy::too_many_arguments)]
+fn grab(
+    holding: &mut Holding,
+    commands: &mut Commands,
+    out: &mut MessageWriter<FireOutput>,
+    sounds: &mut MessageWriter<portal2_audio::SoundRequest>,
+    pe: Entity,
+    target: Entity,
+    col: &TraceCollider,
+    yaw_offset: f32,
+    me: &portal2_core::entity::MapEntity,
+) {
+    holding.entity = Some(target);
+    holding.yaw_offset = yaw_offset;
+    holding.radius = prop_radius(col);
+    holding.cube = me.classname == "prop_weighted_cube";
+    holding.error = 0.0;
+    holding.lift = 0.0;
+    holding.clear = None;
+    holding.portal = None;
+    commands.entity(target).insert((GravityScale(0.0), layers_for(layers::HELD, layers::WORLD | layers::PROP | layers::MOVER)));
+    sounds.write(portal2_audio::SoundRequest::on("Weapon_Portalgun.HoldSound", pe));
+    out.write(FireOutput::new(target, "OnPlayerPickup").with_activator(Some(pe)));
+    out.write(FireOutput::new(target, "OnPhysGunPickup").with_activator(Some(pe)));
 }
 
 /// Puts a prop back in the player's hands (a restored saved game): no
@@ -190,7 +246,7 @@ pub fn release(commands: &mut Commands, prop: Entity) {
     if let Ok(mut e) = commands.get_entity(prop) {
         e.insert((
             GravityScale(1.0),
-            layers_for(layers::PROP, layers::WORLD | layers::PROP | layers::PLAYER | layers::MOVER | layers::HELD),
+            layers_for(layers::PROP, layers::WORLD | layers::PROP | layers::PLAYER | layers::MOVER | layers::FOLLOWER | layers::HELD),
         ));
     }
 }
@@ -265,9 +321,25 @@ fn hold_held(
     portal_query: Query<&crate::portals::Portal>,
     spatial: SpatialQuery,
     mut commands: Commands,
+    (bodies, mut out, mut sounds, followers): (
+        Query<(&RigidBody, Has<ChildOf>)>,
+        MessageWriter<FireOutput>,
+        MessageWriter<portal2_audio::SoundRequest>,
+        Query<&portal2_world::collision::BoneFollower>,
+    ),
 ) {
     let Some(held) = holding.entity else { return };
     let Ok((pe, p)) = players.single() else { return };
+    // Frozen or given a parent (Wheatley plugged into his socket), it leaves
+    // the player's hands.
+    if bodies.get(held).is_ok_and(|(body, parented)| !body.is_dynamic() || parented) {
+        holding.entity = None;
+        release(&mut commands, held);
+        sounds.write(portal2_audio::SoundRequest::stop("Weapon_Portalgun.HoldSound", pe));
+        out.write(FireOutput::new(held, "OnPhysGunDrop").with_activator(Some(pe)));
+        out.write(FireOutput::new(held, "OnPlayerDrop").with_activator(Some(pe)));
+        return;
+    }
     let Ok((pos, rot, mut lin, mut ang, collider, shape)) = props.get_mut(held) else {
         holding.entity = None;
         return;
@@ -305,7 +377,14 @@ fn hold_held(
     };
     let dt = time.delta_secs().max(1e-4);
     let eye = p.state.origin + Vec3::Z * p.state.eye_offset();
-    let ignore = [pe, held];
+    // Models with collision on their bones do not hold a carried prop back
+    // (see `layers::FOLLOWER`), so neither do they move its hold point.
+    let mut ignore = vec![pe, held];
+    for f in &followers {
+        if !ignore.contains(&f.owner) {
+            ignore.push(f.owner);
+        }
+    }
     let seen_at = hold_point(&physics, &ignore, &console, &mut holding, &p.state, input.input.angles);
     let target = through.map_or(seen_at, |m| m.transform_point3(seen_at));
     let error = target - pos.0;
@@ -463,7 +542,8 @@ fn push_props(
         let along = lin.0.dot(dir);
         let mut want = speed * 0.6;
         let dt = time.delta_secs().max(1e-4);
-        let filter = SpatialQueryFilter::from_mask(LayerMask(layers::WORLD | layers::MOVER)).with_excluded_entities([hit, pe]);
+        let filter =
+            SpatialQueryFilter::from_mask(LayerMask(layers::WORLD | layers::MOVER | layers::FOLLOWER)).with_excluded_entities([hit, pe]);
         let config = ShapeCastConfig { max_distance: want * dt + HOLD_SKIN, ignore_origin_penetration: true, ..default() };
         if let Ok(d) = Dir3::new(dir)
             && let Some(block) = (Blockers { spatial: &spatial, holes: &holes, statics: &statics, brushes: &brushes })
