@@ -20,8 +20,6 @@ ciborium.workspace = true
 [features]
 # `--probe` also lists the rendered meshes the view ray passes through.
 probe-mesh = ["bevy/mesh_picking"]
-# Faster iteration: links Bevy dynamically (`cargo run -p portal2 --features dev`).
-dev = ["bevy/dynamic_linking"]
 # Writes a Chrome trace of every system's timing (open it in ui.perfetto.dev).
 trace = ["bevy/trace_chrome"]
 
