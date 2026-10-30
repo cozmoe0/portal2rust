@@ -4632,6 +4632,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "portal2_tools"
+version = "0.1.0"
+dependencies = [
+ "glam 0.33.12",
+ "source_formats",
+]
+
+[[package]]
 name = "portal2_ui"
 version = "0.1.0"
 dependencies = [

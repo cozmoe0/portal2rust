@@ -8,7 +8,7 @@ and from watching the game; descriptions are our own and the code in
 
 ```bash
 python -I re/tools/particle_defaults.py > re/out/particle_defaults.tsv   # every operator's attributes and defaults
-cargo run -p source_formats --example particlesurvey                    # systems the SP maps start, and what they need
+cargo run -p portal2_tools -- particlesurvey                    # systems the SP maps start, and what they need
 ```
 
 ## Operator defaults

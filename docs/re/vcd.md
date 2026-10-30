@@ -10,7 +10,7 @@ The facts below come from reading the installed data files and from watching
 how `scenefilecache.dll` and `server.dll` consume them. They are written in
 our own words; nothing here is transcribed from the binaries. The readers are
 `source_formats::vcd` (text) and `source_formats::scenes_image` (compiled),
-and `cargo run -p source_formats --example vcddump -- <scene>` prints one.
+and `cargo run -p portal2_tools -- vcddump <scene>` prints one.
 
 ## Where scenes come from
 

@@ -6,9 +6,9 @@ system definitions. `source_formats::dmx` reads the container and
 `source_formats::pcf` turns it into `ParticleSystemDefinition`s.
 
 ```bash
-cargo run -p source_formats --example pcfdump                  # every system with its operator names
-cargo run -p source_formats --example pcfdump -- portal_close   # one system in full
-cargo run -p source_formats --example pcfdump -- --census       # the tables at the end of this page
+cargo run -p portal2_tools -- pcfdump                  # every system with its operator names
+cargo run -p portal2_tools -- pcfdump portal_close   # one system in full
+cargo run -p portal2_tools -- pcfdump --census       # the tables at the end of this page
 ```
 
 Everything below was checked against the installed game. All 78 files parse
