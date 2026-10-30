@@ -1,48 +1,201 @@
-# portal2rust
+<div align="center">
 
-An engine reimplementation that plays **your own copy of Portal 2**, written from
-scratch in Rust on top of [Bevy](https://bevyengine.org/).
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/banner-light.svg">
+  <img alt="portal2rust: a Portal 2 engine, rebuilt from scratch in Rust" src="docs/assets/banner-dark.svg" width="100%">
+</picture>
 
-## What this is (and is not)
+<p>
+  <strong>A from-scratch reimplementation of the Portal 2 engine in Rust and Bevy<br>that plays <em>your own copy</em> of the game.</strong>
+</p>
 
-This project is a new engine, in the spirit of OpenMW or OpenRCT2. It reads the
-original game's data files (maps, models, textures, materials, sounds, scripts)
-from a local Portal 2 installation at runtime and aims to reproduce the game's
-behaviour as closely as possible.
+<p>
+  <a href="https://github.com/cozmoe0/portal2rust/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cozmoe0/portal2rust/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="Rust 2024" src="https://img.shields.io/badge/Rust-2024_edition-dea584?logo=rust&logoColor=white">
+  <img alt="Bevy 0.20" src="https://img.shields.io/badge/Bevy-0.20-232326?logo=bevy&logoColor=white">
+  <img alt="License: MIT or Apache-2.0" src="https://img.shields.io/badge/license-MIT%20%7C%20Apache--2.0-3aa6ff">
+  <img alt="Platform: Windows" src="https://img.shields.io/badge/platform-Windows-0078d4">
+  <br>
+  <img alt="Lines of Rust" src="https://img.shields.io/badge/Rust-68k_lines-ff8a1c">
+  <img alt="Built with Claude Code" src="https://img.shields.io/badge/built_with-Claude_Code-d97757?logo=claude&logoColor=white">
+  <img alt="Reverse engineered with IDA Pro" src="https://img.shields.io/badge/reverse_engineering-IDA_Pro-4b6584">
+</p>
 
-- **A Portal 2 installation is required.** Nothing from the game ships with this
-  repository: no maps, models, textures, sounds, scripts, text or code.
-- **All code here is original.** File-format readers are written from public
-  format knowledge. Reverse engineering of the installed binaries (IDA, REA) is
-  used only to learn facts such as file layouts, console-variable defaults and
-  gameplay constants; decompiled code is not translated into this codebase.
-- **No game content is recreated.** Characters, levels, dialogue, art and music
-  come only from your installation. Anything missing is drawn as a generic
-  placeholder (a magenta/black checkerboard or a plain box).
+<p>
+  <a href="#-whats-inside">What's inside</a> •
+  <a href="#-gallery">Gallery</a> •
+  <a href="#-side-by-side-with-the-original">Parity</a> •
+  <a href="#-quick-start">Quick start</a> •
+  <a href="#-architecture">Architecture</a> •
+  <a href="#-how-it-was-built">How it was built</a> •
+  <a href="#-status">Status</a> •
+  <a href="#-development">Development</a>
+</p>
 
-Because of this, the result cannot become a standalone copy of Portal 2; it is
-a different engine for the game you already own.
+<img src="docs/media/portals.webp" width="100%" alt="portal2rust running Portal 2's first portal test chamber: the orange portal hops to a new spot, the player walks through the pair and turns to look back through the blue portal">
+<br>
+<sub><em>Recorded in portal2rust from the author's copy of Portal 2: the first chamber's portal hop, a walk through the pair and the view back through it.</em></sub>
 
-## Running
+</div>
+
+---
+
+**portal2rust** is a new engine for Portal 2, in the spirit of [OpenMW](https://openmw.org) and
+[OpenRCT2](https://openrct2.io). It reads the maps, models, materials, textures, sounds, particle
+systems, scripts and interface files of a Portal 2 installation you own, and runs them the way the
+original does: the same server tick, the same entity I/O, the same movement rules, the same sound
+operator stacks, the same VGUI layouts drawn with the same fonts. Nothing from the game ships with
+this repository.
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+**🎮 Your own copy**<br>
+Every asset is read from your Steam install at runtime: VPKs, BSPs, models, sounds, scripts.
+Without the game there is nothing to run.
+
+</td>
+<td width="33%" valign="top">
+
+**🧪 Clean-room engine**<br>
+All 68k lines are original Rust. Reverse engineering was used for facts (constants, defaults,
+file layouts), never to translate code.
+
+</td>
+<td width="33%" valign="top">
+
+**🎯 Faithful by measurement**<br>
+A parity harness captures the same views in the real game and in ours and diffs them; campaign
+runs check every level transition.
+
+</td>
+</tr>
+</table>
+
+## ✨ What's inside
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+<img src="docs/assets/icons/rendering.svg" width="28" align="left">&nbsp;**Source rendering on Bevy**<br>
+Lightmapped brushes and displacements with blend-modulated floors, studio models with ambient cubes,
+overlays, the 2D sky and 3D sky box, ropes, sprites and glows, spotlight beams, flowing goo and water,
+refracting glass, projected-texture shadows and the game's dynamic tone mapping.
+
+<img src="docs/assets/icons/portals.svg" width="28" align="left">&nbsp;**Portals**<br>
+Placement that fits, nudges and snaps like the game's, recursive portal views with the game's rim,
+static and opening shader, and travel that carries momentum and turns falls into flings.
+
+<img src="docs/assets/icons/physics.svg" width="28" align="left">&nbsp;**Movement, physics and devices**<br>
+The player's air control and funneling, carrying, faith plates with exact arcs, hard light bridges,
+excursion funnels, lasers and catchers, fizzlers, and floor turrets with their thinks and voices.
+
+<img src="docs/assets/icons/gels.svg" width="28" align="left">&nbsp;**Gels**<br>
+A paint map on the lightmap atlas, sprayers and blobs, paint bombs, painted props and the bounce,
+speed and portal gel rules.
+
+<img src="docs/assets/icons/particles.svg" width="28" align="left">&nbsp;**Particle systems**<br>
+The game's own `.pcf` effects run on reimplemented operators with the defaults read from the game,
+drawn as SpriteCard sprites with texture sheets.
+
+<img src="docs/assets/icons/video.svg" width="28" align="left">&nbsp;**Bink video**<br>
+A pure Rust Bink 1 decoder plays the intro, the menu backgrounds and the elevator screens.
+
+</td>
+<td width="50%" valign="top">
+
+<img src="docs/assets/icons/audio.svg" width="28" align="left">&nbsp;**Sound and dialogue**<br>
+Sound scripts, operator stacks and mixers with ducking under dialogue, soundscapes, footsteps, and
+choreographed scenes from `scenes.image` with close captions.
+
+<img src="docs/assets/icons/scripting.svg" width="28" align="left">&nbsp;**VScript**<br>
+A Squirrel 2.2 interpreter written from the language reference, with the game's VScript bindings,
+runs every map script; tables keep the original slot layout, so iteration order matches.
+
+<img src="docs/assets/icons/interface.svg" width="28" align="left">&nbsp;**The game's interface**<br>
+VGUI schemes, `.res` layouts and fonts rasterized with GDI like the game: main menu, chapter select,
+loading screens, pause menu, HUD, instructor hints and the ending credits.
+
+<img src="docs/assets/icons/saves.svg" width="28" align="left">&nbsp;**Saved games**<br>
+Save, load, quick saves, autosaves, dangerous autosaves and reload after death, with the map's
+entities, the script VM and the player restored slot for slot.
+
+<img src="docs/assets/icons/console.svg" width="28" align="left">&nbsp;**The developer console**<br>
+Console variables with the game's defaults, commands, aliases, binds, `exec`, and the startup
+sequence through your own `config.cfg`.
+
+<img src="docs/assets/icons/formats.svg" width="28" align="left">&nbsp;**Readers for Source formats**<br>
+VPK, BSP, MDL/VVD/VTX/PHY, VTF, VMT, KeyValues, FGD, PCF/DMX, VCD and `scenes.image`, WAV, sound
+scripts, soundscapes and captions, all engine-agnostic.
+
+</td>
+</tr>
+</table>
+
+## 🖼 Gallery
+
+<table>
+<tr>
+<td width="50%"><img src="docs/media/gallery/portals.webp" alt="A linked pair of portals in an overgrown test chamber"><br><sub>A linked portal pair, drawn with the rim, static and opening of the game's compiled portal shader</sub></td>
+<td width="50%"><img src="docs/media/gallery/gels.webp" alt="Blue repulsion gel painted across a wall"><br><sub>Repulsion gel on a wall, painted into the paint map on the lightmap atlas</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/media/gallery/fizzler.webp" alt="An emancipation grill with a turret behind it"><br><sub>An emancipation grill, a turret and its laser sight</sub></td>
+<td width="50%"><img src="docs/media/gallery/industrial.webp" alt="Floodlights and gantries in a huge underground space"><br><sub>Floodlights and gantries deep in the facility</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/media/gallery/overgrown.webp" alt="Daylight falling through a vine-covered shaft"><br><sub>Daylight through a vine-choked shaft</sub></td>
+<td width="50%"><img src="docs/media/gallery/drips.webp" alt="A ruined, overgrown test chamber"><br><sub>A ruined, overgrown chamber, with the game's particle drips</sub></td>
+</tr>
+</table>
+
+<sub>Screenshots show portal2rust running the author's own copy of Portal 2. Portal 2 and all of
+its content are © Valve Corporation.</sub>
+
+## 🔍 Side by side with the original
+
+The parity harness takes the same view in the original game (driven over its network console) and in
+portal2rust, then compares them. Each image below is one view split down the middle: the original game on one
+side, portal2rust on the other.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/media/parity/portal_linked_far.webp" alt="A portal in the original game and in portal2rust, split down the middle"><br><sub>Portals: the opening, its rim and the view through it</sub></td>
+<td width="50%"><img src="docs/media/parity/paint_wall_far.webp" alt="Gel on a wall in portal2rust and in the original game"><br><sub>Gels (portal2rust on the left here)</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/media/parity/mainmenu.webp" alt="The main menu in the original game and in portal2rust"><br><sub>The main menu: layout, fonts and blending</sub></td>
+<td width="50%"><img src="docs/media/parity/lamps_jump.webp" alt="Floodlights in the original game and in portal2rust"><br><sub>Floodlight sprites and glows</sub></td>
+</tr>
+</table>
+
+## 🚀 Quick start
+
+You need [Rust](https://rustup.rs) (stable, 2024 edition) and Portal 2 installed through Steam.
 
 ```bash
+git clone https://github.com/cozmoe0/portal2rust
+cd portal2rust
 cargo run --release -p portal2
 ```
 
-Without a map the game starts like the original: the Valve intro video, then
-the main menu over its background movie, with Single Player (Continue, New
-Game with chapter select, Load Game), the pause menu in a game (`Esc`), the
-quit confirmation and the loading screens. Give a map to go straight into it:
+The game starts like the original: the intro video, then the main menu over its background movie.
+Pass a map to go straight into it:
 
 ```bash
 cargo run --release -p portal2 -- sp_a2_laser_intro
 ```
 
-The installation is found in the default Steam library, any library listed in
-Steam's `libraryfolders.vdf`, or the folder given by the `PORTAL2_DIR`
-environment variable (the folder that contains `portal2.exe`).
+The installation is found in the default Steam library, any library listed in Steam's
+`libraryfolders.vdf`, or the folder given by `PORTAL2_DIR` (the one that contains `portal2.exe`).
+Controls come from your own `portal2/cfg/config.cfg`; `Esc` opens the pause menu, `` ` `` the
+console, `V` toggles noclip.
 
-Useful options:
+<details>
+<summary><strong>Command-line options</strong></summary>
 
 | Option | Meaning |
 | --- | --- |
@@ -51,148 +204,190 @@ Useful options:
 | `--pos x,y,z` / `--ang p,y,r` | Override the start view (Source units / degrees) |
 | `--exposure <scale>` | Fixed exposure instead of the dynamic tone map |
 | `--fullbright` | Ignore lighting (debugging) |
-| `--screenshot <file> --frames <n>` | Capture a screenshot after `n` frames and exit |
-| `--noclip` | Start in free flight (toggle in game with `V`) |
-| `--autopilot f2,j,w1` | Scripted input for movement tests (`f/b/l/r` move, `j` jump, `d` crouch, `t` turn, `w` wait) |
-| `--spawn class@x,y,z` | Spawn an entity after the map loads (repeatable), e.g. `prop_weighted_cube@0,0,64` |
-| `--io-debug` | Log every entity output as it fires |
-| `--probe` | Log what the view ray hits (distance and owning entity) |
-| `--no-static-props` / `--no-entity-models` | Skip prop rendering (debugging) |
+| `--noclip` | Start in free flight |
+| `--portalgun none\|blue\|both` | Override the portal gun |
 | `+command args` | Console command run once the first map has loaded, e.g. `+sv_cheats 1 +setpos 0 0 64` |
-| `--shots <file>` | Visit each view in a shot list and save `re/out/ours/<name>.png` (parity checks) |
+| `--nosound` | No audio output |
+| `--snd-record <file.wav> [--snd-seconds n]` | Also write the first `n` seconds of the mix to a WAV file |
+| `--screenshot <file> --frames <n>` | Capture a screenshot after `n` frames and exit |
+| `--shots <file>` | Visit each view of a shot list and save `re/out/ours/<name>.png` |
+| `--bench <file>` | Visit each view of a shot list and append frame-time statistics to `re/out/bench.txt` |
+| `--record <dir>` | Save every frame of `--record-seconds` of play, `--record-fps` frames per second of game time |
+| `--autopilot f2,j,w1` | Scripted input (`f/b/l/r` move, `j` jump, `t` turn, `a` look at, `1`/`2` fire, `e` use, `w` wait) |
+| `--spawn class@x,y,z` | Spawn an entity after the map loads (repeatable) |
 | `--smoke sp\|<maps>` | Run each map briefly and write `re/out/smoke.txt` (script errors, unhandled inputs) |
-| `--chain <map>` | Take every level's exit from `<map>` on through the campaign at `--chain-speed` (default 8) times real time, for `--chain-count` maps; writes `re/out/chain.txt` (ride times, next maps, arrival placement) |
-| `--nosound` | No audio output (the batch modes above never open the device) |
-| `--snd-record <file.wav> [--snd-seconds n]` | Also write the first `n` seconds (default 10) of the mixed output to a WAV file |
+| `--chain <map>` | Take every level's exit through the campaign; writes `re/out/chain.txt` |
+| `--save-test <maps>` | Check that saving, loading and saving again gives the same save |
+| `--io-debug` / `--probe` | Log every entity output / what the view ray hits |
 
-Controls come from your own `portal2/cfg/config.cfg` key bindings, as in the
-original game (`+forward`, `+jump`, `+attack`, `+use`, ...). `Esc` opens the
-pause menu, the console key (`` ` ``) the developer console, `V` toggles
-noclip.
+</details>
 
-The interface is drawn like the game's: its schemes, layout files, fonts
-(rasterized with GDI the same way, effects included) and localized text,
-blended the way the game blends it. The HUD shows the portal crosshair,
-close captions (`closecaption 1`) and chapter titles; `cl_drawhud 0` hides
-it.
+## 🏗 Architecture
 
-## Rendering
+The engine is a Cargo workspace of small crates with a strict layering: the three format crates
+know nothing about Bevy, `portal2_core` holds what every system shares, the engine crates build on
+it side by side, and `portal2_game` brings them together into Portal 2.
 
-The world is drawn from the map's own data with the game's materials:
-lightmapped brushes and displacements (including the blend-modulated
-WorldVertexTransition floors), static and dynamic models, overlays,
-the 2D sky and the 3D sky box (seen through the `sky_camera` with its own
-fog), ropes and cables settled with the game's rope simulation, sprites and
-glows, spotlight beams, flowing goo and water, refracting glass, and the
-elevator movie screens playing the game's Bink videos. `env_projectedtexture`
-lights (the main light of most chambers) project their cookie with shadows
-using the engine's flashlight falloff and brightness. The exposure follows
-the game's dynamic tone mapping and the maps' `env_tonemap_controller`
-settings (`--exposure <scale>` or `mat_force_tonemap_scale` fix it). See
-`docs/re/world_visuals.md` for the details and what is approximated.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/architecture-light.svg">
+  <img alt="The workspace's crates and their dependencies" src="docs/assets/architecture-dark.svg" width="100%">
+</picture>
 
-Particle effects are the game's own `.pcf` systems, simulated with the
-behaviour and defaults of the game's particle operators and drawn with their
-SpriteCard materials and texture sheets: `info_particle_system` entities,
-and the effects code starts (portal shots and portals opening, failing or
-closing, laser emitter glows, powered catchers and relays, emancipation
-field scan lines). `docs/re/particles.md` has the details.
+| Crate | What it is |
+| --- | --- |
+| [`source_formats`](crates/source_formats) | Readers for Source formats: VPK, BSP, MDL/VVD/VTX/PHY, VTF, VMT, KeyValues, FGD, PCF, VCD, WAV, sound scripts, captions. No Bevy. |
+| [`squirrel`](crates/squirrel) | A Squirrel 2.2 interpreter: lexer, compiler, VM, standard library and VM snapshots for saved games. No Bevy. |
+| [`bink`](crates/bink) | A pure Rust Bink 1 video and audio decoder. No Bevy. |
+| [`portal2_core`](crates/portal2_core) | The tick clock, the console, the game filesystem, the save registry, the system sets that order every frame, and the shared vocabulary. |
+| [`portal2_render`](crates/portal2_render) | Source materials as Bevy materials, the texture cache, studio models with animation and lighting, and all WESL shaders. |
+| [`portal2_audio`](crates/portal2_audio) | The sound engine: sound scripts, operator stacks, mixers and the output device. |
+| [`portal2_ui`](crates/portal2_ui) | The VGUI toolkit (schemes, layouts, GDI fonts, painter), close captions and Bink playback. |
+| [`portal2_world`](crates/portal2_world) | Map loading, the sky, ropes, the collision world, portal geometry, the paint map and the main camera. |
+| [`portal2_particles`](crates/portal2_particles) | The particle engine: `.pcf` definitions, simulation and SpriteCard rendering. |
+| [`portal2_game`](crates/portal2_game) | Gameplay: entities and I/O, the player, physics, portals, devices, gels, VScript, saves. |
+| [`portal2`](crates/portal2) | The application: plugin assembly, menus, HUD and the test harness. |
+| [`portal2_tools`](crates/portal2_tools) | `p2tools`, sixty command-line probes into the game's files. |
 
-## Console and scripts
+Every gameplay tick follows the original server's frame:
 
-The engine has the original's console: console variables with the game's
-defaults, commands (`map`, `changelevel`, `setpos`, `ent_fire`, `noclip`,
-`give_portalgun`, ...), aliases, `bind`, `exec`, `wait`, and the startup
-sequence (`config.cfg`, then `valve.rc`). Map scripts run on
-`crates/squirrel`, an interpreter for Squirrel 2.2 (the version the game
-embeds), with the game's VScript bindings in `crates/portal2/src/script`.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/tick-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/tick-light.svg">
+  <img alt="One server tick and one rendered frame" src="docs/assets/tick-dark.svg" width="100%">
+</picture>
 
-The portal gun is available from the start unless the map has one to pick
-up; override with `--portalgun none|blue|both`.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/stats-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/stats-light.svg">
+  <img alt="Lines of Rust per crate" src="docs/assets/stats-dark.svg" width="100%">
+</picture>
 
-## Sound
+## 🤖 How it was built
 
-Sounds play from the installed WAV and MP3 files through the game's own
-sound scripts, sound operator stacks (`scripts/sound_operator_stacks.txt`)
-and mixers (`scripts/soundmixers.txt`, including the mix layers that duck
-everything else under dialogue), on a software mixer in `crates/portal2/src/audio`.
-`ambient_generic`, soundscapes, footsteps, the portal gun and portals,
-buttons and script `EmitSound` calls are wired up; room DSP and occlusion
-are not yet.
+This project was built with heavy use of AI. Most of the code was written by
+[Claude](https://www.anthropic.com/claude) through [Claude Code](https://claude.com/claude-code),
+directed and reviewed by a human: most commits carry Claude as a co-author. The game's own binaries
+were studied with [IDA Pro](https://hex-rays.com/ida-pro) (through an MCP server, so the AI could
+query the disassembly directly) to learn facts the engine needs: console-variable defaults, gameplay
+constants, file layouts, the order in which things happen in a frame.
 
-Dialogue plays through choreographed scenes (`logic_choreographed_scene` and
-script `CreateSceneEntity`), read from the game's compiled
-`scenes/scenes.image`: speak events play the lines on their actors, trigger
-events fire the scene's outputs and scenes complete at their real length.
-Gestures layer onto the actors (Wheatley and the other cores now appear
-with their model). Models blend their sequences by pose parameter, with
-per-bone weights and automatic and autoplay layers; security cameras use
-this to turn and watch the player. The single-player scenes have no look-at,
-flex or lip-sync data, so nothing of that kind is played.
-`closecaption 1` shows captions in the game's own panel layout and font. `snd_list` lists the playing channels, `play <sound>` plays one.
-The volume comes from your `config.cfg` (`volume`). Portal openings are drawn
-with a simple coloured ring around the linked view.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/workflow-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/workflow-light.svg">
+  <img alt="The loop the engine is built in" src="docs/assets/workflow-dark.svg" width="100%">
+</picture>
 
-Games save and load like the original: `save <name>` / `load <name>`, the
-quick save and load keys from your binds, autosaves from the maps' autosave
-entities and on level transitions, and a reload of the latest save a few
-seconds after dying. Saves go to `%LOCALAPPDATA%\portal2rust\save` (set
-`P2R_SAVE_DIR` to change it), never to the game's own save folder; a save
-holds the map's entities, the script state and the player, and loading
-carries on from there. `--save-test <maps>` checks that loading a save and
-saving again gives the same save.
+- **Facts, not code.** What the reverse engineering found is written up in our own words in
+  [`docs/re`](docs/re) (24 notes, from the particle simulation to the save format); decompiled code
+  is never translated into the engine.
+- **Measured against the real game.** [`re/tools`](re/tools) drives the installed game over its
+  password-protected network console to capture reference screenshots and to run VScript snippets in
+  its VM, then compares them with ours (your settings files are backed up and restored).
+- **The whole campaign as a test.** `--smoke sp` loads every single-player map and reports script
+  errors and inputs nothing handles; `--chain` rides each level's exit and checks that the map's own
+  logic changes to the right next level; `--save-test` round-trips saved games.
 
-## Layout
+## 📍 Status
 
-- `crates/source_formats` – engine-agnostic readers: KeyValues, VPK, VTF, VMT,
-  BSP, MDL/VVD/VTX, map pakfiles and the layered game filesystem, plus sounds,
-  sound scripts, soundscapes, captions, choreographed scenes (VCD and
-  `scenes.image`) and particle definitions (DMX/PCF).
-- `crates/squirrel` – the Squirrel 2.2 interpreter (tables keep the original's
-  slot layout, so iteration order matches).
-- `crates/bink` – a Bink 1 video and audio decoder.
-- `crates/portal2` – the Bevy game: rendering, world loading, entities and
-  I/O, scripting, console, cameras, the interface (`vgui`), HUD, menus
-  (`gameui`) and video playback.
-- `re/tools` – analysis and parity helpers: `convar_dump.py` (console
-  variables and defaults from a game DLL), `capture.py` (reference screenshots
-  from the installed game at the views of a shot list, driven through its
-  password-protected local network console; your settings files are backed up
-  and restored), `capture_ui.py` (the same for the menus and HUD, driving the
-  menus with keys posted to the game window), `imgdiff.py` (side-by-side
-  comparison with ours), `imgcrop.py` (the same region of both, enlarged),
-  `particle_defaults.py` (every particle operator's attributes and defaults
-  from `client.dll`),
-  `vscript_oracle.py` (runs Squirrel snippets in the game's VM and ours).
-- `re/shots/` – shot lists for parity checks.
-- `docs/` – notes on formats and engine behaviour, written in our own words.
+Every single-player map loads and runs its scripts without errors, the campaign's level transitions
+chain from map to map, and the ending credits roll; what remains is mostly set pieces and polish.
+Milestones so far:
 
-## Parity checks
+| | Milestone | |
+| --- | --- | --- |
+| M0 | Foundations: tick clock, console, parity harness | ✅ |
+| M1 | Squirrel 2.2 virtual machine | ✅ |
+| M2 | VScript bindings | ✅ |
+| M3 | Campaign flow: level changes, trains, templates, fades | ✅ |
+| M4 | Sound: operator stacks, mixers, soundscapes | ✅ |
+| M5 | Choreographed scenes, captions, gestures, pose parameters | ✅ |
+| M6 | Saved games | ✅ |
+| M7 | Interface: VGUI, HUD, menus, Bink video | ✅ |
+| M8 | Visual parity: overlays, sky, ropes, projected textures, tone mapping | ✅ |
+| M9 | Particle systems | ✅ |
+| M10 | Gameplay parity: movement, carrying, fizzling, turrets, portal rendering | ✅ |
+| M11 | Set pieces: gels, credits, finale | 🚧 |
+
+Not there yet: room DSP and sound occlusion, the options and save dialogs, bloom and color
+correction, real-time water reflections, and some finale set pieces.
+
+## 🛠 Development
 
 ```bash
-python -I re/tools/capture.py re/shots/chapter1.txt
-cargo run --release -p portal2 -- --shots re/shots/chapter1.txt
-python -I re/tools/imgdiff.py re/out/ref re/out/ours re/out/diff
+cargo test --workspace                          # tests; the ones that read game files skip without an install
+cargo run --profile fast -p portal2             # optimised build without LTO, quick to rebuild
+cargo run -p portal2 --features trace           # also write a Chrome trace of every system's timings
+cargo run --release -p portal2_tools -- help    # the p2tools probes
+python -I docs/assets/generate.py               # redraw the README's diagrams from the workspace
 ```
 
-A shot line may end with console commands to run at that view, for example
-`r_drawviewmodel 1` to include the first-person weapon (see
-`re/shots/models.txt`, which checks model shading). `re/shots/m8.txt`
-covers the world visuals; capture it with `--map-settle 45` so the opening
-fall of `sp_a3_01` is over. Both sides adjust their exposure to the scene
-over a few seconds, so a shot taken soon after a jump can differ in
-brightness while the scale settles.
+<details open>
+<summary><strong>Build and frame times</strong></summary>
 
-Particle shots (`re/shots/m9*.txt`) start effects with `ent_fire` and are
-taken a set time later; give our side the same timing with
-`--shot-settle-time <seconds>` (wait at each view) and `--shot-map-settle
-<seconds>` (wait after each map load), matching `capture.py --settle` and
-`--map-settle`.
+<br>
 
-Campaign checks: `--smoke sp` loads every single-player map and reports
-script errors and inputs nothing handles; `--chain sp_a1_intro1` rides each
-level's exit elevator (or takes its transition trigger) and reports whether
-the map's own logic changed to the right next level.
+Measured on the author's machine (16 threads, Windows 11, Rust 1.98) before and after the workspace
+was split into crates and its build trimmed (LLD linking, line-table debug info, only the Bevy
+features the engine uses):
 
-Copies of game binaries and analysis databases used during reverse engineering
-live in `re/bin/`, which is git-ignored and must never be committed.
+| | Before | After |
+| --- | ---: | ---: |
+| Clean debug build | 10 min 32 s | **5 min 4 s** |
+| Rebuild after changing a gameplay function | 69 s | **24 s** |
+| Rebuild after changing a HUD function | 68 s | **22 s** |
+| Build the tests (dependencies already built) | 42 s | **13 s** |
+| Clean release build | 9 min 15 s | **5 min 20 s** |
+| Crates compiled from scratch | 516 | **399** |
+| Debug info for the game (PDB) | 1.84 GB | **155 MB** |
+
+Frames are bound by Bevy's render thread, so most views run as before; portal views now pause while
+neither portal is in sight:
+
+| Release build, vsync off, median of 3 interleaved runs | Before | After |
+| --- | ---: | ---: |
+| Both portals open, behind the camera | 16.7 ms | **15.0 ms** |
+| Both portals open, in view | 13.2 ms | **12.1 ms** |
+| Lasers and an emancipation grill | 16.0 ms | 15.5 ms |
+| A stream of paint blobs | 19.0 ms | 19.1 ms |
+| A large underground vista | 16.8 ms | 16.6 ms |
+
+</details>
+
+<details>
+<summary><strong>Parity, campaign and benchmark runs</strong></summary>
+
+```bash
+python -I re/tools/capture.py re/shots/chapter1.txt              # reference shots from the real game
+cargo run --release -p portal2 -- --shots re/shots/chapter1.txt  # the same views in portal2rust
+python -I re/tools/imgdiff.py re/out/ref re/out/ours re/out/diff # compare
+python -I re/tools/splitview.py <original> <ours> <out.webp>     # one split-view image
+
+cargo run --release -p portal2 -- --smoke sp                     # every single-player map
+cargo run --release -p portal2 -- --chain sp_a1_intro1           # ride the campaign's level exits
+cargo run --release -p portal2 -- --bench re/shots/bench.txt     # frame times at four views
+```
+
+A shot line is `name map x y z pitch yaw roll [console commands]`; see [`re/shots`](re/shots).
+Copies of game binaries and analysis databases used during reverse engineering live in `re/bin/`,
+which is git-ignored and must never be committed. When working in several git worktrees, pointing
+`CARGO_TARGET_DIR` at one shared folder avoids building every dependency again in each.
+
+</details>
+
+## ⚖️ Legal
+
+portal2rust is not affiliated with, endorsed by or sponsored by Valve Corporation. Portal, Portal 2,
+Source and Steam are trademarks of Valve Corporation. This repository contains no game content: no
+maps, models, textures, sounds, scripts, text or code from the game. You need your own copy of
+Portal 2 to run it. Screenshots and clips in this README show the engine running the author's own
+copy.
+
+## 📄 License
+
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT)
+at your option.
+
+<div align="center">
+<sub>Made with Rust, Bevy, a lot of Claude, and IDA Pro.</sub>
+</div>
