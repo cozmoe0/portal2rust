@@ -11,4 +11,4 @@ portal2_core.workspace = true
 portal2_render.workspace = true
 source_formats.workspace = true
 serde.workspace = true
-half = "2"
+half.workspace = true

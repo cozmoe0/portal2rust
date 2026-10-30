@@ -8,13 +8,46 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-bevy = { version = "0.20", features = ["serialize"] }
+# Only the parts of Bevy the engine uses: the default features would also
+# build UI, text, sprites, glTF, animation, scenes, gizmos, picking, gamepads
+# and Bevy's own audio, none of which the game needs.
+bevy = { version = "0.20", default-features = false, features = [
+    # App, assets, logging and the multithreaded executor.
+    "std",
+    "async_executor",
+    "multi_threaded",
+    "bevy_log",
+    "bevy_asset",
+    # Window and input (X11 and Wayland apply on Linux only).
+    "bevy_winit",
+    "keyboard",
+    "mouse",
+    "x11",
+    "wayland",
+    # 3D rendering with custom materials (every camera tonemaps itself, so
+    # no tonemapping LUTs).
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    # Screenshots are written as PNG.
+    "png",
+    # Saved games serialize Bevy types.
+    "serialize",
+] }
+# Rigid bodies, joints and contact hooks; no debug rendering, picking or
+# scene support.
+avian3d = { version = "0.8", default-features = false, features = ["3d", "parry-f32", "xpbd_joints", "parallel"] }
 glam = "0.33"
 thiserror = "2"
 log = "0.4"
 bytemuck = { version = "1", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 ciborium = "0.2"
+flate2 = "1"
+half = "2"
+cpal = "0.17"
+symphonia = { version = "0.5.4", default-features = false, features = ["mp3"] }
+windows-sys = "0.61"
 
 # Workspace crates.
 source_formats = { path = "crates/source_formats" }
@@ -29,17 +62,36 @@ portal2_particles = { path = "crates/portal2_particles" }
 portal2_game = { path = "crates/portal2_game" }
 
 # Engine crates build fast in dev; dependencies (Bevy, wgpu, physics) get full
-# optimisation so the game stays playable in debug builds.
+# optimisation so the game stays playable in debug builds. Line tables are
+# enough for backtraces and keep the debug info (and link times) small.
 [profile.dev]
 opt-level = 1
+debug = "line-tables-only"
 
 [profile.dev.package."*"]
 opt-level = 3
+debug = false
 
-# Video decoding runs every frame of the menus.
+# Video decoding runs every frame of the menus; parsing game files, sampling
+# animations and running map scripts happen every frame or tick too, and
+# these crates change rarely.
 [profile.dev.package.bink]
+opt-level = 3
+
+[profile.dev.package.source_formats]
+opt-level = 3
+
+[profile.dev.package.squirrel]
 opt-level = 3
 
 [profile.release]
 codegen-units = 16
 lto = "thin"
+
+# Optimised like release but incremental and without LTO, for quick
+# optimised runs while working (`cargo run --profile fast -p portal2`).
+[profile.fast]
+inherits = "release"
+lto = false
+incremental = true
+codegen-units = 256

@@ -16,9 +16,6 @@ portal2_particles.workspace = true
 source_formats.workspace = true
 squirrel = { workspace = true, features = ["serde"] }
 serde.workspace = true
-# Saved games restore components in place, leaving skipped (runtime-only)
-# fields as the spawn code built them.
-serde_derive = { version = "1", features = ["deserialize_in_place"] }
 ciborium.workspace = true
-flate2 = "1"
-avian3d = "0.8"
+flate2.workspace = true
+avian3d.workspace = true

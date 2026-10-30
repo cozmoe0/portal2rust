@@ -35,9 +35,7 @@ fn main() {
                 .set(bevy::log::LogPlugin {
                     filter: std::env::var("PORTAL2_LOG").unwrap_or_else(|_| "wgpu=error,naga=warn,bevy_render=info,portal2=info".into()),
                     ..default()
-                })
-                // Sound has its own mixer (portal2_audio).
-                .disable::<bevy::audio::AudioPlugin>(),
+                }),
         )
         .insert_resource(entities::io::IoDebug(args.io_debug))
         .insert_resource(args)

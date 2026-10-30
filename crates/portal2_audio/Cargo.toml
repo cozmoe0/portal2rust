@@ -9,5 +9,5 @@ description = "The portal2rust sound engine: Source sound scripts, operator stac
 bevy.workspace = true
 portal2_core.workspace = true
 source_formats.workspace = true
-cpal = "0.17"
-symphonia = { version = "0.5.4", default-features = false, features = ["mp3"] }
+cpal.workspace = true
+symphonia.workspace = true
