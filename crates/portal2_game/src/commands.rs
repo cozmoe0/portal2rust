@@ -29,6 +29,7 @@ fn register(c: &mut Console) {
     c.register_command("kill", kill);
     c.register_command("explode", kill);
     c.register_command("ent_fire", ent_fire);
+    c.register_command("give", give);
     c.register_command("give_portalgun", give_portalgun);
     c.register_command("upgrade_portalgun", upgrade_portalgun);
     c.register_command("upgrade_potatogun", upgrade_portalgun);
@@ -154,18 +155,28 @@ fn ent_fire(world: &mut World, args: &CommandArgs) {
     world.resource_mut::<EventQueue>().push(delay, EventTarget::Name(target), args.arg(2), &param, player, player);
 }
 
-fn gun(world: &mut World) -> Mut<'_, crate::portals::gun::PortalGun> {
-    world.resource_mut::<crate::portals::gun::PortalGun>()
+/// `give <classname>`: hands the player an item. The only one Portal 2's
+/// player carries is `weapon_portalgun`, which (as the game constructs it)
+/// fires the first portal only; a gun already held keeps what it had. Maps
+/// give the gun this way through a `point_servercommand`.
+fn give(world: &mut World, args: &CommandArgs) {
+    if !cheats(world, args) {
+        return;
+    }
+    match args.arg(1).to_ascii_lowercase().as_str() {
+        "weapon_portalgun" => crate::portals::gun::enable_portals(world, [true, false]),
+        other => print(world, format!("give: {other} is not an item the player can hold")),
+    }
 }
 
 fn give_portalgun(world: &mut World, args: &CommandArgs) {
     if cheats(world, args) {
-        gun(world).can_fire[0] = true;
+        crate::portals::gun::enable_portals(world, [true, false]);
     }
 }
 
 fn upgrade_portalgun(world: &mut World, args: &CommandArgs) {
     if cheats(world, args) {
-        gun(world).can_fire = [true, true];
+        crate::portals::gun::enable_portals(world, [true, true]);
     }
 }
