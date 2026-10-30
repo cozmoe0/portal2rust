@@ -158,16 +158,16 @@ fn spring_forces(world: &mut World) {
         }
         let dir = span / distance;
         let mut q = world.query::<Forces>();
-        let speed1 = q.get(world, b1).map(|f| f.velocity_at_point(p1.into()).dot(dir)).unwrap_or(0.0);
-        let speed2 = b2.and_then(|b| q.get(world, b).ok()).map_or(0.0, |f| f.velocity_at_point(p2.into()).dot(dir));
+        let speed1 = q.get(world, b1).map(|f| f.velocity_at_point(p1).dot(dir)).unwrap_or(0.0);
+        let speed2 = b2.and_then(|b| q.get(world, b).ok()).map_or(0.0, |f| f.velocity_at_point(p2).dot(dir));
         let force = dir * (constant * (distance - length) - damping * (speed1 - speed2));
         if let Ok(mut f) = q.get_mut(world, b1) {
-            f.apply_force_at_point(force, p1.into());
+            f.apply_force_at_point(force, p1);
         }
         if let Some(b) = b2
             && let Ok(mut f) = q.get_mut(world, b)
         {
-            f.apply_force_at_point(-force, p2.into());
+            f.apply_force_at_point(-force, p2);
         }
     }
 }

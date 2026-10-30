@@ -9,7 +9,8 @@ use crate::vm::{Ctx, Vm};
 pub fn register(vm: &mut Vm) {
     let d = vm.delegates;
     let set = |vm: &mut Vm, t: ObjRef, name: &str, f: NativeFn, n: i32| vm.set_native(&Value::Table(t), name, f, n);
-    for t in [d.number] {
+    {
+        let t = d.number;
         set(vm, t, "tointeger", to_integer, 1);
         set(vm, t, "tofloat", to_float, 1);
         set(vm, t, "tostring", to_string, 1);

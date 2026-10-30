@@ -118,7 +118,6 @@ fn spawn_camera(world: &mut World, e: Entity) {
 /// A mounted camera falls off once a linked portal's opening crosses the
 /// line through its mount point along its facing (out to its radius both
 /// ways), and becomes a prop that can be carried.
-#[allow(clippy::type_complexity)]
 fn knock_off(
     portals: Res<crate::portals::Portals>,
     portal_query: Query<&crate::portals::Portal>,
@@ -303,6 +302,12 @@ fn show_aim(clock: Res<GameClock>, fixed: Res<Time<Fixed>>, mut cameras: Query<(
     }
 }
 
+impl portal2_core::save::Restore for SecurityCamera {}
+
+pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
+    r.component::<SecurityCamera>("security_camera");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -342,10 +347,4 @@ mod tests {
         assert_eq!(c.aim, Vec2::new(20.0, -3.0));
         assert!(!step_aim(&mut c));
     }
-}
-
-impl portal2_core::save::Restore for SecurityCamera {}
-
-pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
-    r.component::<SecurityCamera>("security_camera");
 }

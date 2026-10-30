@@ -189,6 +189,7 @@ fn apply_outline(w: i32, h: i32, rgba: &mut [u8], size: i32) {
 
 /// Gaussian blur of the first colour channel into the alpha channel; the
 /// colour becomes white. The game's kernel uses pi = 3.14 and e = 2.7.
+#[allow(clippy::approx_constant, reason = "the game's own constants, kept for identical glyphs")]
 fn apply_blur(w: i32, h: i32, rgba: &mut [u8], radius: i32) {
     if radius <= 0 || w <= 0 || h <= 0 {
         return;
@@ -259,9 +260,9 @@ mod platform {
     static REGISTERED: Mutex<Vec<(usize, Vec<u8>)>> = Mutex::new(Vec::new());
 
     pub fn register(data: Vec<u8>) -> bool {
-        let mut count = 0u32;
+        let count = 0u32;
         // SAFETY: the bytes stay alive (kept in REGISTERED) for the process.
-        let handle: HANDLE = unsafe { AddFontMemResourceEx(data.as_ptr().cast(), data.len() as u32, std::ptr::null(), &mut count) };
+        let handle: HANDLE = unsafe { AddFontMemResourceEx(data.as_ptr().cast(), data.len() as u32, std::ptr::null(), &count) };
         if handle.is_null() {
             return false;
         }
@@ -385,7 +386,6 @@ mod platform {
             (0, metrics.max_char_width, 0)
         }
 
-        #[allow(clippy::too_many_arguments)]
         pub fn draw(&self, ch: char, abc: Abc, spec: &FontSpec, metrics: &Metrics, w: i32, h: i32, rgba: &mut [u8]) {
             let code = ch as u32;
             let antialias = spec.flags & flags::ANTIALIAS != 0 && (code <= 0xff || spec.flags & flags::CUSTOM != 0);
@@ -397,7 +397,6 @@ mod platform {
 
         /// The 65-level grey bitmap from `GetGlyphOutlineA`; false when GDI
         /// has no bitmap for the glyph.
-        #[allow(clippy::too_many_arguments)]
         fn draw_gray(&self, code: u32, abc: Abc, spec: &FontSpec, metrics: &Metrics, w: i32, h: i32, rgba: &mut [u8]) -> bool {
             let identity = MAT2 {
                 eM11: FIXED { fract: 0, value: 1 },
@@ -444,7 +443,6 @@ mod platform {
         }
 
         /// White text on black with `ExtTextOutW`; alpha from the channels.
-        #[allow(clippy::too_many_arguments)]
         fn draw_text_out(&self, ch: char, abc: Abc, spec: &FontSpec, metrics: &Metrics, w: i32, h: i32, rgba: &mut [u8]) {
             let code = ch as u32;
             let outline = (spec.flags & flags::OUTLINE != 0) as i32;
@@ -482,7 +480,7 @@ mod platform {
                         rgba[o] = bl;
                         rgba[o + 1] = gr;
                         rgba[o + 2] = rd;
-                        rgba[o + 3] = ((gr as f32 * 0.55000001 + bl as f32 * 0.34) + rd as f32 * 0.11) as i32 as u8;
+                        rgba[o + 3] = ((gr as f32 * 0.55 + bl as f32 * 0.34) + rd as f32 * 0.11) as i32 as u8;
                     }
                 }
             }
@@ -527,7 +525,6 @@ mod platform {
         pub fn abc(&self, _ch: char, _metrics: &Metrics) -> (i32, i32, i32) {
             (0, 0, 0)
         }
-        #[allow(clippy::too_many_arguments)]
         pub fn draw(&self, _ch: char, _abc: Abc, _spec: &FontSpec, _metrics: &Metrics, _w: i32, _h: i32, _rgba: &mut [u8]) {}
     }
 }

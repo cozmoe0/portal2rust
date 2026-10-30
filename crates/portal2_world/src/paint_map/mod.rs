@@ -310,7 +310,6 @@ impl PaintMap {
     }
 
     /// Rows `cy ± dy` from `cx - dx` to `cx + dx`, ends pushed out half a luxel.
-    #[allow(clippy::too_many_arguments)]
     fn paint_span(&mut self, fi: usize, c: &Circle, dx: f32, dy: f32, coat: f32, ty: PaintType, s: &SplatSettings) -> bool {
         let xa = ((c.cx - dx - 0.5).floor() as i32).max(c.x0);
         let xb = ((c.cx + dx + 0.5).floor() as i32).min(c.x1);
@@ -329,7 +328,6 @@ impl PaintMap {
         changed
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn paint_row(&mut self, fi: usize, c: &Circle, xa: i32, xb: i32, y: i32, coat: f32, ty: PaintType, s: &SplatSettings) -> bool {
         let (sx, sy) = (self.faces[fi].size.x as i32, self.faces[fi].size.y as i32);
         let mut changed = false;

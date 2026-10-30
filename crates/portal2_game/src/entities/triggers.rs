@@ -222,7 +222,6 @@ const SF_PRESERVE_ANGLES: u32 = 32;
 /// The player (unless in noclip) and physics props touch triggers; props
 /// only those that admit physics objects. Filters see each toucher as the
 /// activator.
-#[allow(clippy::too_many_arguments)]
 fn touch_triggers(
     clock: Res<GameClock>,
     physics: Physics,
@@ -361,7 +360,6 @@ fn touch_triggers(
 }
 
 /// Floor buttons press while the player or a suitable prop rests on them.
-#[allow(clippy::type_complexity)]
 fn press_floor_buttons(
     clock: Res<GameClock>,
     players: Query<&Player>,

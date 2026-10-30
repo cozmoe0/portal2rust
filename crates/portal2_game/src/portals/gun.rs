@@ -206,7 +206,6 @@ fn surface_portalable(map: &CurrentMap, fs: &GameFs, surface: i32) -> bool {
         .is_none_or(|vmt| !vmt.get_bool("%noportal"))
 }
 
-#[allow(clippy::too_many_arguments)]
 fn fire_gun(
     time: Res<Time>,
     buttons: Res<portal2_core::console::binds::Buttons>,
@@ -466,7 +465,6 @@ impl WeaponBob {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn place_viewmodel(
     time: Res<Time>,
     input: Res<PlayerInput>,

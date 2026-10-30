@@ -95,7 +95,6 @@ pub struct PortalTraveler {
     pub previous_center: Option<Vec3>,
 }
 
-#[allow(clippy::type_complexity)]
 fn teleport_props(
     portals: Res<Portals>,
     portal_query: Query<&Portal>,
@@ -166,7 +165,6 @@ pub struct Dissolving {
 /// a non-solid copy that keeps half their velocity (half the player's,
 /// plus a little forward and down, when carried), spins 20°/s more about
 /// the vertical, ignores gravity and is gone after 2 seconds.
-#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn fizzle_props(
     clock: Res<portal2_core::clock::GameClock>,
     physics: Physics,

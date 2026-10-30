@@ -34,7 +34,6 @@ fn brighten(c: u8) -> u8 {
     if c < 5 { 5 } else { ((1.0 - c as f32 / 255.0) * 64.0 + c as f32).min(255.0) as u8 }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn paint(
     console: Res<Console>,
     gun: Option<Res<PortalGun>>,
@@ -59,11 +58,11 @@ fn paint(
     let fade_alpha = fade.alpha(clock.curtime) * 255.0;
     let filled_alpha = (255.0 - fade_alpha).clamp(0.0, 255.0) as u8;
     let placed = |slot: usize| portals.as_ref().is_some_and(|p| p.entities[slot].is_some());
-    for slot in 0..2 {
+    for (slot, color) in PORTAL_COLORS.into_iter().enumerate() {
         if !gun.can_fire[slot] {
             continue;
         }
-        let c = PORTAL_COLORS[slot].map(brighten);
+        let c = color.map(brighten);
         let alpha = if placed(slot) { filled_alpha } else { 128 };
         let rect = match (slot, placed(slot)) {
             (0, true) => LEFT_VALID,

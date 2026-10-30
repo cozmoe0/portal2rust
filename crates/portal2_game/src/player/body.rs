@@ -115,7 +115,6 @@ fn movement_sequence(on_ground: bool, ducked: bool, speed: f32) -> &'static str 
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn pose_body(
     time: Res<Time>,
     fixed: Res<Time<Fixed>>,

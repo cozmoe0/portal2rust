@@ -259,7 +259,6 @@ fn random_spin(max: f32, seed: u32) -> Vec3 {
     Vec3::new(r(1), r(2), r(3)) * max.to_radians()
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_catapults(
     time: Res<Time>,
     physics: Physics,
@@ -357,6 +356,8 @@ fn run_catapults(
     }
 }
 
+impl portal2_core::save::Restore for Catapult {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -421,5 +422,3 @@ mod tests {
         assert!(matches!(c.entry(Vec3::ZERO, v.normalize() * need, Some(target), true), Entry::Launch(_)));
     }
 }
-
-impl portal2_core::save::Restore for Catapult {}

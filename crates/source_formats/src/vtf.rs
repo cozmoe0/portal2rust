@@ -429,7 +429,9 @@ impl Vtf {
                 })
                 .collect(),
             _ => decode_to_rgba8(self.format, src, w, h * d)
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .map(|p| [p[0] as f32 / 255.0, p[1] as f32 / 255.0, p[2] as f32 / 255.0, p[3] as f32 / 255.0])
                 .collect(),
         }

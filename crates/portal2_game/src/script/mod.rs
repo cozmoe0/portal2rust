@@ -442,7 +442,7 @@ fn run_thinks(world: &mut World) {
 /// Frees unreachable script objects once a second.
 fn collect_garbage(world: &mut World) {
     let tick = world.resource::<GameClock>().tick;
-    if tick % 60 != 0 || !world.contains_resource::<ScriptVm>() {
+    if !tick.is_multiple_of(60) || !world.contains_resource::<ScriptVm>() {
         return;
     }
     let mut extra: Vec<Value> = world.resource::<ScriptHandles>().by_entity.values().cloned().collect();

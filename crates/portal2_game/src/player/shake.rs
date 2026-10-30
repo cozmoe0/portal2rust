@@ -132,7 +132,6 @@ impl Shakes {
 
 /// The server side: how strongly the player shakes for a shake at
 /// `center` (none when outside `radius`, or airborne unless `air`).
-#[allow(clippy::too_many_arguments)]
 pub fn screen_shake(
     world: &mut World,
     center: Vec3,

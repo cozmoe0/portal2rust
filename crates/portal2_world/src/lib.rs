@@ -132,7 +132,6 @@ pub fn is_invisible_brush_class(class: &str) -> bool {
         )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn load_map_system(
     mut commands: Commands,
     mut requests: MessageReader<LoadMap>,

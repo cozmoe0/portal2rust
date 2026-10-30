@@ -70,10 +70,10 @@ fn detect_portals(
         if !d.enabled {
             continue;
         }
-        for slot in 0..2 {
-            let now_in = frames[slot].is_some_and(|(_, c)| physics.touches(de, c, Vec3::ZERO, Vec3::ZERO));
+        for (slot, &frame) in frames.iter().enumerate() {
+            let now_in = frame.is_some_and(|(_, c)| physics.touches(de, c, Vec3::ZERO, Vec3::ZERO));
             let now_linked = now_in && linked;
-            let activator = frames[slot].map(|(e, _)| e);
+            let activator = frame.map(|(e, _)| e);
             let n = slot + 1;
             if now_in && !d.inside[slot] {
                 out.write(FireOutput::new(de, "OnStartTouchPortal").with_activator(activator));

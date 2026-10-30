@@ -55,7 +55,6 @@ fn prop_radius(col: &TraceCollider) -> f32 {
     ((col.shape.maxs - col.shape.mins) * 0.5).length()
 }
 
-#[allow(clippy::too_many_arguments)]
 fn use_or_grab(
     buttons: Res<portal2_core::console::binds::Buttons>,
     mut holding: ResMut<Holding>,
@@ -202,7 +201,6 @@ fn hold_point(
 
 /// Steers the held prop toward its hold point, dropping it when it trails
 /// too far behind for too long.
-#[allow(clippy::too_many_arguments)]
 fn hold_held(
     time: Res<Time<Fixed>>,
     mut holding: ResMut<Holding>,

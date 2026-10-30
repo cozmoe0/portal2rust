@@ -128,7 +128,6 @@ fn piece_basis(p: &BridgePiece) -> (Vec3, f32, Quat) {
     (p.start + d * 0.5, len, Quat::from_mat3(&Mat3::from_cols(fwd, left, up)))
 }
 
-#[allow(clippy::too_many_arguments)]
 fn update_bridges(
     mut commands: Commands,
     physics: Physics,

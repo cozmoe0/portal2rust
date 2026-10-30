@@ -84,7 +84,7 @@ impl StudioModel {
                             continue;
                         }
                         let mut indices = Vec::with_capacity(vmesh.indices.len());
-                        for tri in vmesh.indices.chunks_exact(3) {
+                        for tri in vmesh.indices.as_chunks::<3>().0 {
                             if tri.iter().any(|&i| i as usize >= count) {
                                 continue;
                             }
@@ -268,7 +268,6 @@ impl StudioModel {
     /// Accumulates a sequence's automatic layers (`local`: only its
     /// local-context layers, otherwise only the others). Each layer ramps in
     /// and out over the parent's cycle, or over a pose value.
-    #[allow(clippy::too_many_arguments)]
     fn add_layers(
         &self,
         pose: &mut [(Vec3, Quat)],

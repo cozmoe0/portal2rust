@@ -38,7 +38,7 @@ pub fn load(fs: &GameFileSystem, name: &str) -> Option<(Image, u32, u32, bool)> 
     // Alpha-tested texels below the reference are not drawn at all.
     if let Some(reference) = alpha_test {
         let cut = (reference * 255.0) as u8;
-        for px in rgba.chunks_exact_mut(4) {
+        for px in rgba.as_chunks_mut::<4>().0 {
             if px[3] < cut {
                 px[3] = 0;
             }

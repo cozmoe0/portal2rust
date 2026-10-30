@@ -9,3 +9,6 @@ description = "Source engine materials, textures, studio models and shaders for 
 bevy.workspace = true
 portal2_core.workspace = true
 source_formats.workspace = true
+
+[lints]
+workspace = true

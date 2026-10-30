@@ -145,7 +145,6 @@ fn shooter_input(world: &mut World, call: &InputCall) -> bool {
     true
 }
 
-#[allow(clippy::type_complexity)]
 fn burst_futbols(
     mut commands: Commands,
     mut balls: Query<(Entity, &mut ExplodingFutbol, &GlobalTransform, Option<&LinearVelocity>)>,

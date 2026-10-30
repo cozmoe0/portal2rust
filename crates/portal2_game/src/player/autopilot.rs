@@ -107,7 +107,6 @@ pub struct AutoFire(pub Option<usize>);
 #[derive(Resource, Default)]
 pub struct AutoUse(pub bool);
 
-#[allow(clippy::too_many_arguments)]
 fn drive(
     time: Res<Time<Fixed>>,
     clock: Res<portal2_core::clock::GameClock>,

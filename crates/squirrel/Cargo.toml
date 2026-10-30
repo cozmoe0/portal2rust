@@ -14,3 +14,6 @@ serde = { version = "1", features = ["derive"], optional = true }
 
 [dev-dependencies]
 ciborium = "0.2"
+
+[lints]
+workspace = true

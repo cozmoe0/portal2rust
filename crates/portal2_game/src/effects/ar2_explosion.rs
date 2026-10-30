@@ -174,7 +174,6 @@ fn simulate(time: Res<Time>, mut clouds: Query<(Entity, &mut DustCloud)>, mut co
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn draw(
     mut clouds: Query<(&DustCloud, &GlobalTransform, &mut Mesh3d, Option<&MeshMaterial3d<ParticleMaterial>>, &mut Visibility, Entity)>,
     main: Query<&GlobalTransform, With<MainCamera>>,

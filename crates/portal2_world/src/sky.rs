@@ -254,7 +254,6 @@ fn sky_fog(sky: &Skybox3d, forward: Vec3) -> DistanceFog {
 
 /// Keeps the 3D sky box camera on the main view and switches the main
 /// view between drawing the 2D sky itself and drawing over the 3D sky box.
-#[allow(clippy::type_complexity)]
 fn update_sky_cameras(
     mut commands: Commands,
     sky: Option<Res<Skybox3d>>,
@@ -320,7 +319,6 @@ fn update_sky_cameras(
 }
 
 /// Meshes of entities and props standing in the sky box's area move to its layer.
-#[allow(clippy::type_complexity)]
 fn sort_into_skybox(
     mut commands: Commands,
     sky: Option<Res<Skybox3d>>,

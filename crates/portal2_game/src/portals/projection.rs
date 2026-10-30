@@ -91,7 +91,7 @@ mod tests {
         assert!((depth(m, Vec3::new(0.0, 0.0, -10.0)) - 1.0).abs() < 1e-4);
         assert!(depth(m, Vec3::new(0.0, 0.0, -5.0)) > 1.0);
         let far = depth(m, Vec3::new(0.0, 0.0, -100.0));
-        assert!(far < 1.0 && far >= 0.0);
+        assert!((0.0..1.0).contains(&far));
         // Depth decreases with distance so depth testing still works.
         assert!(depth(m, Vec3::new(0.0, 0.0, -50.0)) > far);
     }

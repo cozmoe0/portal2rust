@@ -226,7 +226,6 @@ fn control_point(gt: &GlobalTransform) -> ControlPoint {
     cp
 }
 
-#[allow(clippy::too_many_arguments)]
 fn simulate(
     time: Res<Time>,
     library: Res<ParticleLibrary>,
@@ -313,7 +312,6 @@ fn simulate(
 }
 
 /// Builds every running effect's meshes.
-#[allow(clippy::too_many_arguments)]
 fn draw(
     library: Res<ParticleLibrary>,
     mut effects: Query<(Entity, &mut ParticleEffect)>,

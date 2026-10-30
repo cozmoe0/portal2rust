@@ -215,10 +215,6 @@ fn zero_int(_ctx: &mut Ctx, _args: &[Value]) -> Result<Value> {
     Ok(Value::Int(0))
 }
 
-fn zero_float(_ctx: &mut Ctx, _args: &[Value]) -> Result<Value> {
-    Ok(Value::Float(0.0))
-}
-
 fn get_name(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
     let (vm, world) = parts(ctx);
     let e = this_entity(vm, world, args)?;
@@ -764,7 +760,7 @@ fn iteration_order(world: &mut World) -> Vec<Entity> {
     player.into_iter().chain(list.into_iter().map(|(_, _, e)| e)).collect()
 }
 
-fn after<'a>(order: &'a [Entity], prev: Option<Entity>) -> &'a [Entity] {
+fn after(order: &[Entity], prev: Option<Entity>) -> &[Entity] {
     match prev.and_then(|p| order.iter().position(|e| *e == p)) {
         Some(i) => &order[i + 1..],
         None => order,

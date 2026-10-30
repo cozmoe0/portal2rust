@@ -223,7 +223,6 @@ fn create_entity(world: &mut World, index: usize, pairs: &[(String, String)]) ->
 
 /// Spawns a map entity's components (keyvalues already split from outputs)
 /// and registers its names.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn insert_entity(
     world: &mut World,
     index: usize,

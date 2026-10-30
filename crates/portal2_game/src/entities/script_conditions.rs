@@ -151,7 +151,6 @@ fn in_view_cone(eye: Vec3, angles: Vec3, viewed: Vec3, fov: f32, true_cone: bool
     if dot >= (fov * 0.5).to_radians().cos() { fov >= 0.0 } else { fov < 0.0 }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn evaluate(
     clock: Res<GameClock>,
     physics: Physics,

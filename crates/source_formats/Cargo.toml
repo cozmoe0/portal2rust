@@ -11,3 +11,6 @@ log.workspace = true
 bytemuck.workspace = true
 glam.workspace = true
 lzma-rs = "0.3"
+
+[lints]
+workspace = true

@@ -212,6 +212,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant, reason = "3.14159 is just a number to format here")]
     fn printf_subset() {
         let spec = |s: &str| Spec::parse(s.as_bytes()).unwrap().0;
         assert_eq!(format_int(42, &spec("5d")), "   42");

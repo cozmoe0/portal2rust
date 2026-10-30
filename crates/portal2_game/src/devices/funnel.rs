@@ -126,7 +126,6 @@ fn pull_at(f: &Funnel, p: Vec3) -> Option<Pull> {
     None
 }
 
-#[allow(clippy::too_many_arguments)]
 fn update_funnels(
     mut commands: Commands,
     physics: Physics,
@@ -157,7 +156,7 @@ fn update_funnels(
     {
         let (mins, maxs) = p.state.hull();
         let center = p.state.origin + (mins + maxs) * 0.5;
-        player_pull.0 = funnels.iter().find_map(|(_, f, _)| pull_at(&f, center));
+        player_pull.0 = funnels.iter().find_map(|(_, f, _)| pull_at(f, center));
     }
 
     let held = holding.and_then(|h| h.entity);
@@ -167,7 +166,7 @@ fn update_funnels(
         }
         let tr = gt.compute_transform();
         let center = tr.translation + tr.rotation * ((col.shape.mins + col.shape.maxs) * 0.5);
-        match funnels.iter().find_map(|(_, f, _)| pull_at(&f, center)) {
+        match funnels.iter().find_map(|(_, f, _)| pull_at(f, center)) {
             Some(pull) => {
                 lin.0 = pull.dir * pull.speed + (pull.axis_point - center) * CENTERING;
                 if !in_funnel {

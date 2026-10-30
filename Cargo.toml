@@ -61,6 +61,11 @@ portal2_world = { path = "crates/portal2_world" }
 portal2_particles = { path = "crates/portal2_particles" }
 portal2_game = { path = "crates/portal2_game" }
 
+[workspace.lints.clippy]
+# Bevy systems take many parameters and nested query types by design.
+too_many_arguments = "allow"
+type_complexity = "allow"
+
 # Engine crates build fast in dev; dependencies (Bevy, wgpu, physics) get full
 # optimisation so the game stays playable in debug builds. Line tables are
 # enough for backtraces and keep the debug info (and link times) small.

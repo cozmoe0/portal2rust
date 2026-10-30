@@ -321,7 +321,6 @@ impl Mover<'_, '_, '_> {
     /// Looks up the gel at each surface touched this tick: bounce gel can
     /// throw the player off it, speed gel raises the top speed (which falls
     /// back off it).
-    #[allow(clippy::too_many_arguments)]
     fn apply_gels(
         &self,
         s: &mut MoveState,

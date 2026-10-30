@@ -287,10 +287,10 @@ fn start(mut ui: ResMut<GameUi>, args: Res<Args>, fs: Res<GameFs>, mut pending: 
         ui.mode = Mode::Game;
         return;
     }
-    if !args.novid {
-        if let Some(list) = fs.read_string("media/startupvids.txt") {
-            ui.intro = list.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with("//")).map(str::to_owned).collect();
-        }
+    if !args.novid
+        && let Some(list) = fs.read_string("media/startupvids.txt")
+    {
+        ui.intro = list.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with("//")).map(str::to_owned).collect();
     }
     ui.mode = if ui.intro.is_empty() { Mode::Menu } else { Mode::Intro };
 }
@@ -494,11 +494,11 @@ fn input(
         }
         return;
     }
-    if let Ok(mut c) = cursor.single_mut() {
-        if c.grab_mode != CursorGrabMode::None || !c.visible {
-            c.grab_mode = CursorGrabMode::None;
-            c.visible = true;
-        }
+    if let Ok(mut c) = cursor.single_mut()
+        && (c.grab_mode != CursorGrabMode::None || !c.visible)
+    {
+        c.grab_mode = CursorGrabMode::None;
+        c.visible = true;
     }
     let ui = &mut *ui;
     let Some(top) = ui.windows.last_mut() else { return };
@@ -713,7 +713,6 @@ fn paint_loading(ui: &mut GameUi, surface: &mut Surface, now: f64) {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn paint(
     mut ui: ResMut<GameUi>,
     pending: Res<portal2_world::PendingLoad>,

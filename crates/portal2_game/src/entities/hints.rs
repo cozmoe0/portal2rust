@@ -168,7 +168,6 @@ fn watch_new(console: Res<Console>, new: Query<(Entity, &MapEntity), (Added<MapE
 /// The player's view cone for "sees" (cosine of half its angle, flat).
 const VIEW_CONE: f32 = 0.766;
 
-#[allow(clippy::too_many_arguments)]
 fn poll_visibility(
     clock: Res<GameClock>,
     console: Res<Console>,

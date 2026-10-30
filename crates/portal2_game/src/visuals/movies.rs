@@ -152,7 +152,6 @@ fn display_input(world: &mut World, call: &InputCall) -> bool {
 
 /// Opens the movies enabled screens need, closes the rest and points each
 /// screen's quad at its movie.
-#[allow(clippy::too_many_arguments)]
 fn update_displays(
     fs: Res<GameFs>,
     mut movies: ResMut<ScreenMovies>,

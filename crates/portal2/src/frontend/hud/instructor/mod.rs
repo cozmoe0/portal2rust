@@ -132,7 +132,7 @@ fn dump_open_lessons(world: &mut World, _: &CommandArgs) {
     let mut console = world.resource_mut::<Console>();
     console.print("GAME INSTRUCTOR: Open lessons...");
     for l in lines {
-        console.print(&format!("  {l}"));
+        console.print(format!("  {l}"));
     }
 }
 
@@ -301,7 +301,6 @@ fn run_onopen(lesson: &mut OpenLesson, env: &ScriptEnv) {
 
 /// `C_GameInstructor::Update`: decides which open lessons are taught now,
 /// by priority, runs their update scripts and times them out.
-#[allow(clippy::too_many_arguments)]
 fn update_lessons(
     mut gi: ResMut<GameInstructor>,
     console: Res<Console>,

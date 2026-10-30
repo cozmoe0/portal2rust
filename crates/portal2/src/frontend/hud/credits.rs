@@ -197,7 +197,6 @@ fn typed(text: &str, progress: f32, cursor: bool, pad: bool) -> String {
     s
 }
 
-#[allow(clippy::too_many_arguments)]
 fn paint(
     mut credits: ResMut<Credits>,
     clock: Res<portal2_core::clock::GameClock>,
@@ -228,7 +227,7 @@ fn paint(
     // The ending movie, then back to the menu.
     if let Some(id) = run.ending {
         if let Some(v) = videos.get(id) {
-            let img = v.image.clone();
+            let img = v.image;
             let finished = v.finished;
             surface.fill(0, 0, w, h, [0, 0, 0, 255]);
             surface.draw_image(&img, 0, 0, w, h, [255; 4]);
@@ -243,7 +242,7 @@ fn paint(
         return;
     }
     if let Some(v) = run.background.and_then(|id| videos.get(id)) {
-        let img = v.image.clone();
+        let img = v.image;
         surface.draw_image(&img, 0, 0, w, h, [255; 4]);
     }
 

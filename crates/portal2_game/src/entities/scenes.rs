@@ -488,7 +488,7 @@ mod census {
             }
         }
         let mut v: Vec<_> = counts.into_iter().collect();
-        v.sort_by(|a, b| b.1.cmp(&a.1));
+        v.sort_by_key(|e| std::cmp::Reverse(e.1));
         for ((actor, kind), n) in v.iter().take(30) {
             println!("{n:>6} {kind:<10} {actor}");
         }

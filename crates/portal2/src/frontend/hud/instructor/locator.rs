@@ -156,7 +156,6 @@ struct Item<'a> {
     since: f64,
 }
 
-#[allow(clippy::too_many_arguments)]
 fn paint(
     gi: Res<GameInstructor>,
     console: Res<Console>,
@@ -321,7 +320,6 @@ fn paint(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn draw_icon(surface: &mut Surface, sheet: &ImageRef, rect: [u32; 4], x: i32, y: i32, wide: i32, tall: i32, alpha: u8) {
     let (sw, sh) = (sheet.width.max(1) as f32, sheet.height.max(1) as f32);
     let uv = [rect[0] as f32 / sw, rect[1] as f32 / sh, (rect[0] + rect[2]) as f32 / sw, (rect[1] + rect[3]) as f32 / sh];

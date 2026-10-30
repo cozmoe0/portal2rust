@@ -155,7 +155,7 @@ impl Physics<'_, '_> {
     /// whose contents intersect `mask`, ignoring entities in `ignore`.
     pub fn trace(&self, start: Vec3, end: Vec3, mins: Vec3, maxs: Vec3, mask: u32, ignore: &[Entity]) -> Trace {
         let mut best = Trace::empty(end);
-        let mut consider = |hit: volume::VolumeHit, contents: u32, entity: Option<Entity>, normal: Vec3, best: &mut Trace| {
+        let consider = |hit: volume::VolumeHit, contents: u32, entity: Option<Entity>, normal: Vec3, best: &mut Trace| {
             if hit.start_solid {
                 best.start_solid = true;
                 if hit.all_solid {

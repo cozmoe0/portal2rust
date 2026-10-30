@@ -113,7 +113,7 @@ impl GameFileSystem {
                 }
             }
         }
-        dlcs.sort_by(|a, b| b.0.cmp(&a.0));
+        dlcs.sort_by_key(|d| std::cmp::Reverse(d.0));
         games.extend(dlcs.into_iter().map(|(_, n)| n));
         games.push("portal2".to_owned());
         games.push("platform".to_owned());

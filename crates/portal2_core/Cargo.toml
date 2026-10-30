@@ -10,3 +10,6 @@ bevy.workspace = true
 source_formats.workspace = true
 serde.workspace = true
 ciborium.workspace = true
+
+[lints]
+workspace = true

@@ -258,6 +258,8 @@ type Input = [Option<Comp>; 6];
 
 #[derive(Clone, Debug)]
 struct Op {
+    /// The operator's name in its stack (printed by the stack dump test).
+    #[cfg_attr(not(test), allow(dead_code))]
     name: String,
     kind: Kind,
     /// Inputs by lowercase name; components set individually (`input1[2]`,
@@ -466,16 +468,12 @@ fn remap(input: f32, in_min: f32, in_max: f32, map_min: f32, map_max: f32, clamp
     let out = if a == b {
         if a > input {
             lo
-        } else if input > b {
-            hi
-        } else if default_to_max {
+        } else if input > b || default_to_max {
             hi
         } else {
             lo
         }
-    } else if lo == hi {
-        lo
-    } else if a >= input && b > a {
+    } else if lo == hi || (a >= input && b > a) {
         lo
     } else if input >= b && b > a {
         hi

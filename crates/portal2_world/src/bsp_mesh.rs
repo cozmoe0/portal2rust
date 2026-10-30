@@ -535,7 +535,7 @@ fn build_face(bsp: &Bsp, face: &Face, m: &FaceMapping, batch: &mut MeshBatch) {
             }
             let idx = &bsp.prim_indices[prim.first_index as usize..(prim.first_index + prim.index_count) as usize];
             if prim.kind == 0 {
-                for tri in idx.chunks_exact(3) {
+                for tri in idx.as_chunks::<3>().0 {
                     batch.indices.extend([base + tri[0] as u32, base + tri[2] as u32, base + tri[1] as u32]);
                 }
             } else {

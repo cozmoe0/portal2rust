@@ -211,7 +211,6 @@ fn is_rope(e: &MapEntity) -> bool {
     matches!(e.classname(), "move_rope" | "keyframe_rope")
 }
 
-#[allow(clippy::too_many_arguments)]
 fn spawn_ropes(
     mut loaded: MessageReader<MapLoaded>,
     map: Option<Res<CurrentMap>>,

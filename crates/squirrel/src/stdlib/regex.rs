@@ -286,7 +286,6 @@ fn seq(items: &[Node], s: &[u8], pos: usize, caps: &Caps, k: &dyn Fn(usize) -> b
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn repeat(
     inner: &Node,
     min: usize,

@@ -107,7 +107,6 @@ struct Playing {
     wave: String,
     place: Place,
     channel: u64,
-    volume: f32,
     fade: f32,
     target: f32,
     rate: f32,
@@ -130,7 +129,6 @@ struct Ctx<'a> {
 }
 
 /// Flattens a soundscape and its nested `playsoundscape`s.
-#[allow(clippy::too_many_arguments)]
 fn flatten(
     ctx: &Ctx,
     name: &str,
@@ -347,7 +345,7 @@ fn choose(world: &mut World, state: &mut SoundscapeState, now: f64) {
         }
         if let Some(id) = start_loop(world, l) {
             portal2_audio::adjust(world, id, Some(0.0), None);
-            state.loops.push(Playing { wave: key, place: l.place, channel: id, volume: l.volume, fade: 0.0, target: 1.0, rate });
+            state.loops.push(Playing { wave: key, place: l.place, channel: id, fade: 0.0, target: 1.0, rate });
             keep.push(true);
         }
     }

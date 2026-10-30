@@ -105,7 +105,6 @@ fn angle_distance(to: f32, from: f32) -> f32 {
     (to - from + 540.0).rem_euclid(360.0) - 180.0
 }
 
-#[allow(clippy::type_complexity)]
 fn aim_tanks(
     clock: Res<GameClock>,
     registry: Res<EntityRegistry>,

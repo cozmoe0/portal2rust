@@ -153,7 +153,6 @@ pub fn model_mass(fs: &GameFs, path: &str) -> Option<f32> {
 
 /// Gives every entity with trace collision a matching physics body: physics
 /// props become dynamic, everything else solid becomes kinematic.
-#[allow(clippy::type_complexity)]
 fn attach_bodies(
     mut commands: Commands,
     fs: Res<GameFs>,
@@ -267,7 +266,7 @@ impl CollisionHooks for PortalContactHooks<'_, '_> {
             let f = &hole.frame;
             for m in &mut contacts.manifolds {
                 m.points.retain(|p| {
-                    let l = f.to_local(Vec3::from(p.point));
+                    let l = f.to_local(p.point);
                     !(l.x < 2.0 && f.in_opening(l, -2.0))
                 });
             }

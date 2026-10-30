@@ -118,7 +118,6 @@ fn segment_point_distance(seg: &BeamSegment, p: Vec3) -> (f32, Vec3) {
     (closest.distance(p), closest)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn update_lasers(
     time: Res<Time<Fixed>>,
     physics: Physics,

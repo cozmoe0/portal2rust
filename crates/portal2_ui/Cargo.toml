@@ -16,3 +16,6 @@ bink.workspace = true
 # Fonts are rasterized with GDI, as the game does on Windows.
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Globalization", "Win32_Graphics_Gdi"] }
+
+[lints]
+workspace = true

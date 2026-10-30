@@ -360,8 +360,7 @@ pub fn parse_document_with(text: &str, symbols: &dyn Fn(&str) -> bool) -> Docume
     let next = |lx: &mut Lexer, peeked: &mut Option<Tok>| peeked.take().or_else(|| lx.next());
 
     // Top level is a sequence of `key value` or `key { ... }` entries.
-    loop {
-        let Some(tok) = next(&mut lx, &mut peeked) else { break };
+    while let Some(tok) = next(&mut lx, &mut peeked) {
         match tok {
             Tok::Str(key, quoted) => {
                 if !quoted && (key.eq_ignore_ascii_case("#include") || key.eq_ignore_ascii_case("#base")) {
@@ -431,8 +430,7 @@ fn take_condition(lx: &mut Lexer, peeked: &mut Option<Tok>) -> bool {
 
 fn parse_block_body(lx: &mut Lexer, peeked: &mut Option<Tok>) -> Vec<KeyValues> {
     let mut out = Vec::new();
-    loop {
-        let Some(tok) = peeked.take().or_else(|| lx.next()) else { break };
+    while let Some(tok) = peeked.take().or_else(|| lx.next()) {
         match tok {
             Tok::Close => break,
             Tok::Str(key, _) => {

@@ -12,3 +12,6 @@ portal2_render.workspace = true
 portal2_world.workspace = true
 source_formats.workspace = true
 serde.workspace = true
+
+[lints]
+workspace = true

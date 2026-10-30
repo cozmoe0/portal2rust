@@ -158,7 +158,6 @@ fn gather_input(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn player_tick(
     time: Res<Time<Fixed>>,
     input: Res<PlayerInput>,
@@ -235,7 +234,6 @@ fn player_tick(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn place_camera(
     fixed: Res<Time<Fixed>>,
     input: Res<PlayerInput>,

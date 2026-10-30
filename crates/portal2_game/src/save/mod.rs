@@ -123,13 +123,12 @@ pub struct SavedPlayer {
 /// Our save folder: `%LOCALAPPDATA%/portal2rust/save` (or the XDG data
 /// folder elsewhere).
 pub fn save_dir() -> PathBuf {
-    let base = std::env::var_os("P2R_SAVE_DIR")
+    std::env::var_os("P2R_SAVE_DIR")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("LOCALAPPDATA").map(|d| PathBuf::from(d).join("portal2rust").join("save")))
         .or_else(|| std::env::var_os("XDG_DATA_HOME").map(|d| PathBuf::from(d).join("portal2rust").join("save")))
         .or_else(|| std::env::var_os("HOME").map(|d| PathBuf::from(d).join(".local/share/portal2rust/save")))
-        .unwrap_or_else(|| PathBuf::from("save"));
-    base
+        .unwrap_or_else(|| PathBuf::from("save"))
 }
 
 fn path_for(name: &str) -> PathBuf {
@@ -350,7 +349,7 @@ pub fn capture(world: &mut World, comment: &str) -> Result<SaveFile, String> {
         let player = player.and_then(|p| {
             let pl = world.get::<Player>(p)?;
             Some(SavedPlayer {
-                state: pl.state.clone(),
+                state: pl.state,
                 angles: world.resource::<crate::player::PlayerInput>().input.angles,
                 noclip: pl.noclip,
                 health: world.get::<crate::player::health::Health>(p).cloned(),
@@ -500,7 +499,7 @@ pub fn finish_restore(world: &mut World) {
     let Some(saved) = pending.file.player else { return };
     let Some(p) = world.resource::<EntityRegistry>().player else { return };
     if let Some(mut pl) = world.get_mut::<Player>(p) {
-        pl.state = saved.state.clone();
+        pl.state = saved.state;
         // Found again by the next movement tick.
         pl.state.ground_entity = None;
         pl.previous_origin = saved.state.origin;

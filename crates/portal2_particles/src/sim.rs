@@ -552,7 +552,7 @@ impl Collection {
         (s > 0.0).then_some(s)
     }
 
-    pub fn simulate(&mut self, dt: f32, env: &dyn Env, library: &dyn Library) {
+    pub fn simulate(&mut self, dt: f32, env: &dyn Env, _library: &dyn Library) {
         if dt < 0.0 || self.frozen {
             return;
         }
@@ -596,7 +596,7 @@ impl Collection {
                 }
                 c.collection.parent_cache.clone_from(&parent);
             }
-            c.collection.simulate(dt, env, library);
+            c.collection.simulate(dt, env, _library);
         }
         self.children.retain(|c| !(c.end_cap && c.collection.finished()));
         for cp in self.cps.iter_mut() {
@@ -2091,7 +2091,6 @@ fn path_point(c: &mut Collection, a: Vec3, b: Vec3, t: f32, mid: f32, bulge: f32
 }
 
 /// Like `path_point`, with the scatter fixed per particle.
-#[allow(clippy::too_many_arguments)]
 fn path_point_stable(c: &Collection, i: usize, a: Vec3, b: Vec3, t: f32, mid: f32, bulge: f32, max_distance: f32) -> Vec3 {
     let r = |s: u32| c.particle_rand(i, s) * 2.0 - 1.0;
     let dir = Vec3::new(r(51), r(52), r(53)).normalize_or_zero();

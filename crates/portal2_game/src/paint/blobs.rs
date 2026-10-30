@@ -342,7 +342,6 @@ fn new_blob(s: &mut PaintSprayer, e: Entity, gt: &GlobalTransform) -> Blob {
 
 /// Where a blob paints: a sphere just off the surface, on the world and
 /// on every brush entity it reaches.
-#[allow(clippy::too_many_arguments)]
 fn paint_impact(
     map: &mut PaintMap,
     brushes: &Query<(&MapEntity, &GlobalTransform)>,
@@ -368,7 +367,6 @@ fn paint_impact(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn move_blobs(
     mut blobs: ResMut<Blobs>,
     map: Option<ResMut<PaintMap>>,
@@ -670,7 +668,6 @@ fn ambient_params(ambient: [Vec3; 6]) -> BlobParams {
 
 /// One mesh per sprayer holding its blobs, and one for everything else,
 /// rebuilt every frame.
-#[allow(clippy::too_many_arguments)]
 fn draw_blobs(
     mut commands: Commands,
     blobs: Res<Blobs>,

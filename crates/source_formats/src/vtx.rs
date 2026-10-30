@@ -161,7 +161,7 @@ impl Vtx {
                     mesh.indices.extend([map(a)?, map(b)?, map(c)?]);
                 }
             } else {
-                for tri in idx.chunks_exact(3) {
+                for tri in idx.as_chunks::<3>().0 {
                     mesh.indices.extend([map(tri[0])?, map(tri[1])?, map(tri[2])?]);
                 }
             }

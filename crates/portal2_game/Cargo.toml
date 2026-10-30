@@ -19,3 +19,6 @@ serde.workspace = true
 ciborium.workspace = true
 flate2.workspace = true
 avian3d.workspace = true
+
+[lints]
+workspace = true

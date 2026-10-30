@@ -11,3 +11,6 @@ portal2_core.workspace = true
 source_formats.workspace = true
 cpal.workspace = true
 symphonia.workspace = true
+
+[lints]
+workspace = true

@@ -343,7 +343,6 @@ struct ActiveLight {
 
 /// Collects the lights that are on, fills the storage buffer and points the
 /// shadow cameras.
-#[allow(clippy::type_complexity)]
 fn update_lights(
     time: Res<Time>,
     gpu: Res<ProjectedGpu>,

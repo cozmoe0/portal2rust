@@ -34,6 +34,7 @@ const PLAYER_DAMAGE_SCALE: f32 = 0.5;
 /// Fires when pointing within 10° of the player (45° when closer than
 /// `CLOSE_RANGE`).
 const FIRE_COS: f32 = 0.984_807_7;
+#[allow(clippy::approx_constant, reason = "the game's value, not 1/sqrt(2)")]
 const CLOSE_FIRE_COS: f32 = 0.7071;
 const CLOSE_RANGE: f32 = 60.0;
 /// The view cone: within 60° to the sides and
@@ -269,7 +270,6 @@ fn local_angles(dir: Vec3) -> Vec2 {
     Vec2::new(dir.y.atan2(dir.x).to_degrees(), (-dir.z).atan2(dir.truncate().length()).to_degrees())
 }
 
-#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn run_turrets(
     clock: Res<GameClock>,
     physics: Physics,
@@ -446,7 +446,6 @@ fn flush(fx: Effects, sounds: &mut MessageWriter<SoundRequest>, out: &mut Messag
 
 /// One bullet along `dir` from the next muzzle: damages the player when it
 /// reaches them, leaves a tracer, and pushes a tipped turret back.
-#[allow(clippy::too_many_arguments)]
 fn fire(
     t: &mut Turret,
     e: Entity,
@@ -510,7 +509,6 @@ pub fn show_aim(mut turrets: Query<(&Turret, &mut StudioAnimator)>) {
 #[derive(Component)]
 struct LaserSight(Entity);
 
-#[allow(clippy::type_complexity)]
 fn draw_lasers(
     physics: Physics,
     mut commands: Commands,

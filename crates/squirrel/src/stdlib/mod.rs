@@ -23,7 +23,7 @@ pub(crate) fn wrong_type(what: &str) -> Error {
     Error::runtime(format!("parameter 1 has an invalid type '{what}'"))
 }
 
-pub(crate) fn arg<'a>(args: &'a [Value], i: usize) -> &'a Value {
+pub(crate) fn arg(args: &[Value], i: usize) -> &Value {
     static NULL: Value = Value::Null;
     args.get(i).unwrap_or(&NULL)
 }

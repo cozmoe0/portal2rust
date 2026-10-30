@@ -895,7 +895,7 @@ impl Bsp {
         let h = (face.lightmap_size[1] + 1) as usize;
         let start = face.light_offset as usize + style_index * w * h * 4;
         let bytes = self.lighting.get(start..start + w * h * 4)?;
-        Some(bytes.chunks_exact(4).map(|c| rgbexp_to_linear([c[0], c[1], c[2], c[3]])).collect())
+        Some(bytes.as_chunks::<4>().0.iter().map(|c| rgbexp_to_linear([c[0], c[1], c[2], c[3]])).collect())
     }
 }
 

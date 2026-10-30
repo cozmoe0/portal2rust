@@ -136,7 +136,6 @@ fn prop_bounce(v: Vec3, normal: Vec3, g: &GelSettings, jitter: Vec2) -> Vec3 {
     flat - along + push
 }
 
-#[allow(clippy::type_complexity)]
 fn bounce_props(
     time: Res<Time<Fixed>>,
     console: Res<Console>,

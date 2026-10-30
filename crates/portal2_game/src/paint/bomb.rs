@@ -95,7 +95,6 @@ fn burst_directions(h: usize, v: usize) -> Vec<Vec3> {
     out
 }
 
-#[allow(clippy::too_many_arguments)]
 fn burst_bombs(
     mut commands: Commands,
     mut bombs: Query<(Entity, &mut PaintBomb, &GlobalTransform, Option<&LinearVelocity>, Option<&CollisionLayers>)>,

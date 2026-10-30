@@ -761,7 +761,6 @@ fn update_channels(world: &mut World) {
     }
     channels.retain(|c| !c.finished);
     sounds.channels = channels;
-    let mut sounds = sounds;
     let sounds = &mut *sounds;
     sounds.mix.update_triggers(now, sounds.channels.iter().map(|c| (c.chan.groups.as_slice(), c.chan.mixlayer_trigger)));
     sounds.mix.update_layers(cvar_snapshot("snd_disable_mixer_solo") != 0.0);

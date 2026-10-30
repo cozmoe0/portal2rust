@@ -117,7 +117,7 @@ pub fn checkerboard() -> Image {
 }
 
 fn gpu_format(format: VtfFormat, srgb: bool, w: u32, h: u32) -> Option<TextureFormat> {
-    let block_ok = w % 4 == 0 && h % 4 == 0;
+    let block_ok = w.is_multiple_of(4) && h.is_multiple_of(4);
     Some(match format {
         VtfFormat::Dxt1 | VtfFormat::Dxt1OneBitAlpha if block_ok => {
             if srgb {

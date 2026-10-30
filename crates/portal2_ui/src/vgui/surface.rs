@@ -193,7 +193,6 @@ impl Surface {
 
     /// A rectangle whose alpha goes from `alpha0` to `alpha1` across it
     /// (`horizontal`) or down it, like `DrawFilledRectFade`.
-    #[allow(clippy::too_many_arguments)]
     pub fn fill_fade(&mut self, x0: i32, y0: i32, x1: i32, y1: i32, color: Rgba, alpha0: u8, alpha1: u8, horizontal: bool) {
         let a = |alpha: u8| [color[0], color[1], color[2], ((color[3] as u32 * alpha as u32) / 255) as u8];
         let (c0, c1) = (a(alpha0), a(alpha1));
@@ -236,7 +235,6 @@ impl Surface {
         self.draw_image_uv(image, x0 as f32, y0 as f32, x1 as f32, y1 as f32, [0.0, 0.0, 1.0, 1.0], color);
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn draw_image_uv(&mut self, image: &ImageRef, x0: f32, y0: f32, x1: f32, y1: f32, uv: [f32; 4], color: Rgba) {
         let blend = if image.additive { Blend::Additive } else { Blend::Alpha };
         self.quad(Tex::Image(image.id), blend, [x0, y0, x1, y1], uv, [color; 4]);
@@ -326,13 +324,13 @@ impl Surface {
         let mut place = None;
         'pages: for (pi, page) in self.pages.iter_mut().enumerate() {
             for row in page.rows.iter_mut() {
-                if row.1 == h && row.2 + w + 1 <= PAGE_SIZE {
+                if row.1 == h && row.2 + w < PAGE_SIZE {
                     place = Some((pi, row.2, row.0));
                     row.2 += w + 1;
                     break 'pages;
                 }
             }
-            if page.next_y + h + 1 <= PAGE_SIZE {
+            if page.next_y + h < PAGE_SIZE {
                 page.rows.push((page.next_y, h, w + 1));
                 place = Some((pi, 0, page.next_y));
                 page.next_y += h + 1;
@@ -365,7 +363,6 @@ impl Surface {
 
     // ------------------------------------------------------------ geometry
 
-    #[allow(clippy::too_many_arguments)]
     fn quad(&mut self, tex: Tex, blend: Blend, rect: [f32; 4], uv: [f32; 4], colors: [Rgba; 4]) {
         let [mut x0, mut y0, mut x1, mut y1] = rect;
         let [mut u0, mut v0, mut u1, mut v1] = uv;
