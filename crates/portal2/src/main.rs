@@ -6,11 +6,11 @@
 mod chain;
 mod commands;
 mod devices;
+mod effects;
 mod entities;
 mod gameui;
 mod hud;
 mod paint;
-mod particles;
 mod physics;
 mod player;
 mod portals;
@@ -93,7 +93,8 @@ fn main() {
                 hud::HudPlugin,
                 portal2_ui::video::VideoPlugin,
                 gameui::GameUiPlugin,
-                particles::ParticlePlugin,
+                portal2_particles::ParticlePlugin,
+                effects::EffectsPlugin,
                 paint::PaintPlugin,
             ),
         ))

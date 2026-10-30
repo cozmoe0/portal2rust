@@ -143,7 +143,7 @@ pub struct FizzlePortals {
     pub slot: Option<usize>,
 }
 
-/// Particle effects of portal shots and portals (drawn by `crate::particles`).
+/// Particle effects of portal shots and portals (drawn by `portal2_particles`).
 #[derive(Message, Clone, Copy, Debug)]
 pub enum PortalFx {
     /// A shot left the gun at `start` aimed along `aim` and lands at `end`.

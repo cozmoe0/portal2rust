@@ -51,7 +51,7 @@ pub fn register_all(r: &mut SaveRegistry) {
     crate::visuals::fog::register_save(r);
     crate::visuals::projected::register_save(r);
     crate::visuals::sprites::register_save(r);
-    crate::particles::register_save(r);
+    portal2_particles::register_save(r);
     crate::visuals::spotlights::register_save(r);
     crate::visuals::movies::register_save(r);
     crate::visuals::tonemap::register_save(r);

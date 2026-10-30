@@ -21,11 +21,11 @@
 
 use bevy::prelude::*;
 
-use super::{ParticleEffect, spawn_effect};
 use crate::devices::laser::{LaserEmitter, LaserReceiver};
 use crate::entities::triggers::{Trigger, TriggerKind};
 use crate::portals::PortalFx;
 use portal2_core::entity::MapEntity;
+use portal2_particles::{ParticleEffect, spawn_effect};
 use portal2_render::models::StudioAnimator;
 use portal2_world::{CurrentMap, MapObject};
 

@@ -4979,6 +4979,7 @@ dependencies = [
  "log",
  "portal2_audio",
  "portal2_core",
+ "portal2_particles",
  "portal2_render",
  "portal2_ui",
  "portal2_world",
@@ -5006,6 +5007,18 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "ciborium",
+ "serde",
+ "source_formats",
+]
+
+[[package]]
+name = "portal2_particles"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "portal2_core",
+ "portal2_render",
+ "portal2_world",
  "serde",
  "source_formats",
 ]

@@ -9,9 +9,7 @@
 //! effect owns a [`sim::Collection`] (with its children) and one mesh per
 //! renderer, rebuilt every frame.
 
-pub mod ar2_explosion;
 pub mod defs;
-pub mod hooks;
 pub mod render;
 pub mod sim;
 
@@ -22,17 +20,15 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use source_formats::pcf::{self, Pcf};
 
-use crate::entities::SpawnHandlers;
-use crate::entities::io::{InputCall, InputHandlers};
 use defs::{Def, DefRef};
-use portal2_core::entity::{EntityRegistry, MapEntity};
+use portal2_core::entity::EntityRegistry;
 use portal2_core::vfs::GameFs;
 use portal2_core::view::MainCamera;
 use portal2_render::textures::TextureCache;
 use portal2_world::collision::Physics;
 use portal2_world::{CurrentMap, MapLoaded, MapObject};
 use render::{Batch, Looks, ParticleMaterial, Seen};
-use sim::{Collection, ControlPoint, Env, MAX_CONTROL_POINTS};
+use sim::{Collection, ControlPoint, Env};
 
 /// Every particle system the manifest's files define, by lowercase name.
 #[derive(Resource, Default)]
@@ -107,6 +103,32 @@ pub struct ParticleEffect {
 }
 
 impl ParticleEffect {
+    /// Applies an `info_particle_system` input (`Start`, `Stop`,
+    /// `StopPlayEndCap`, `DestroyImmediately`, lowercase); false for others.
+    pub fn input(&mut self, input: &str) -> bool {
+        let fx = self;
+        match input {
+            "start" => {
+                if !fx.active || fx.collection.as_ref().is_some_and(|c| !c.emitting) {
+                    fx.collection = None;
+                    fx.end_cap = false;
+                }
+                fx.active = true;
+            }
+            "stop" => fx.stop(),
+            "stopplayendcap" => {
+                fx.active = false;
+                fx.end_cap = true;
+            }
+            "destroyimmediately" => {
+                fx.active = false;
+                fx.collection = None;
+            }
+            _ => return false,
+        }
+        true
+    }
+
     pub fn new(effect: &str, active: bool) -> Self {
         Self {
             effect: effect.trim().to_owned(),
@@ -159,16 +181,12 @@ pub struct ParticlePlugin;
 
 impl Plugin for ParticlePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((MaterialPlugin::<ParticleMaterial>::default(), hooks::HooksPlugin))
+        app.add_plugins(MaterialPlugin::<ParticleMaterial>::default())
             .init_resource::<ParticleLibrary>()
             .init_resource::<Looks>()
             .add_systems(Startup, load_library)
             .add_systems(Update, reset_looks.run_if(on_message::<MapLoaded>))
             .add_systems(PostUpdate, (simulate, draw, cleanup).chain().after(TransformSystems::Propagate));
-        let world = app.world_mut();
-        world.resource_mut::<SpawnHandlers>().register("info_particle_system", spawn_info);
-        world.resource_mut::<InputHandlers>().register("info_particle_system", effect_input);
-        ar2_explosion::register(app);
     }
 }
 
@@ -182,41 +200,6 @@ fn load_library(fs: Res<GameFs>, mut library: ResMut<ParticleLibrary>) {
 /// map load clears.
 fn reset_looks(mut looks: ResMut<Looks>) {
     looks.clear();
-}
-
-fn spawn_info(world: &mut World, e: Entity) {
-    let Some(me) = world.get::<MapEntity>(e).cloned() else { return };
-    let mut effect = ParticleEffect::new(me.get("effect_name").unwrap_or(""), me.get_bool("start_active"));
-    for i in 1..MAX_CONTROL_POINTS {
-        if let Some(name) = me.get(&format!("cpoint{i}")).filter(|n| !n.trim().is_empty()) {
-            effect.cp_names.push((i, name.trim().to_ascii_lowercase()));
-        }
-    }
-    world.entity_mut(e).insert(effect);
-}
-
-fn effect_input(world: &mut World, call: &InputCall) -> bool {
-    let Some(mut fx) = world.get_mut::<ParticleEffect>(call.target) else { return false };
-    match call.input.as_str() {
-        "start" => {
-            if !fx.active || fx.collection.as_ref().is_some_and(|c| !c.emitting) {
-                fx.collection = None;
-                fx.end_cap = false;
-            }
-            fx.active = true;
-        }
-        "stop" => fx.stop(),
-        "stopplayendcap" => {
-            fx.active = false;
-            fx.end_cap = true;
-        }
-        "destroyimmediately" => {
-            fx.active = false;
-            fx.collection = None;
-        }
-        _ => return false,
-    }
-    true
 }
 
 /// World queries for the simulation.

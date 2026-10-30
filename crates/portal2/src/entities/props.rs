@@ -291,7 +291,7 @@ fn animation_event(world: &mut World, ev: &AnimationEvent) {
                 .unwrap_or_else(|| super::world_transform(world, e).compute_transform());
             let effect = effect.to_owned();
             let mut commands = world.commands();
-            crate::particles::spawn_effect(&mut commands, &effect, at, true);
+            portal2_particles::spawn_effect(&mut commands, &effect, at, true);
             world.flush();
         }
         _ => {}

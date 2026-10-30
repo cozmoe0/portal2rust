@@ -20,13 +20,13 @@
 use bevy::camera::visibility::NoFrustumCulling;
 use bevy::prelude::*;
 
-use super::render::{self, Batch, Looks, ParticleMaterial};
 use crate::entities::io::{InputCall, InputHandlers};
 use crate::entities::{SpawnHandlers, world_transform};
 use portal2_core::entity::MapEntity;
 use portal2_core::rng::random_range;
 use portal2_core::vfs::GameFs;
 use portal2_core::view::MainCamera;
+use portal2_particles::render::{self, Batch, Looks, ParticleMaterial};
 use portal2_render::textures::TextureCache;
 use portal2_world::MapObject;
 use portal2_world::collision::Physics;

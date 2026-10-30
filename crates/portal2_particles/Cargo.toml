@@ -1,0 +1,14 @@
+[package]
+name = "portal2_particles"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The portal2rust particle engine: Source .pcf particle systems simulated with the game's operators and drawn as sprite cards"
+
+[dependencies]
+bevy.workspace = true
+portal2_core.workspace = true
+portal2_render.workspace = true
+portal2_world.workspace = true
+source_formats.workspace = true
+serde.workspace = true
