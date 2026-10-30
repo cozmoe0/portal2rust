@@ -22,6 +22,7 @@ impl Plugin for ScreenPlugin {
         app.init_resource::<ScreenFade>()
             .init_resource::<Messages>()
             .add_systems(Startup, load_localization)
+            .add_systems(PreUpdate, clear_fade_on_map_load.after(portal2_core::sets::LoadMapSet).before(portal2_core::sets::EntitySpawnSet))
             .add_systems(PostUpdate, (draw_fade, draw_messages).in_set(VguiPaint));
         let world = app.world_mut();
         {
@@ -109,6 +110,26 @@ impl ScreenFade {
             return a * (1.0 - ramp);
         }
         if since <= self.duration + self.hold || self.stay { a * ramp } else { 0.0 }
+    }
+}
+
+/// A new map starts unfaded. The fade is timed on the map's clock, which
+/// starts again at zero: one left over from the last map (its exit fade,
+/// which stays black) would wait for that time to come round and then
+/// black the screen out for good.
+fn clear_fade_on_map_load(mut loaded: MessageReader<portal2_world::MapLoaded>, mut fade: ResMut<ScreenFade>) {
+    if loaded.read().last().is_some() {
+        *fade = ScreenFade::default();
+    }
+}
+
+/// After a restore: a fade timed after the saved clock came over from the
+/// previous map (saves made before maps cleared it); it is dropped.
+pub fn drop_stale_fade(world: &mut World) {
+    let now = world.resource::<GameClock>().curtime;
+    let mut fade = world.resource_mut::<ScreenFade>();
+    if fade.active && fade.start > now {
+        *fade = ScreenFade::default();
     }
 }
 
