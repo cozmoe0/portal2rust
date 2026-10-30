@@ -7,6 +7,7 @@ import bevy_pbr::render::mesh_view_bindings::view;
 import bevy_pbr::render::mesh_view_bindings::fog;
 import bevy_pbr::render::mesh_view_bindings::globals;
 import portal2_render::shaders::projected::{is_shadow_view, projected_lighting};
+import portal2_render::shaders::fx::fx_emissive_boost;
 
 struct WorldParams {
     color: vec4<f32>,
@@ -450,7 +451,11 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     }
 
     if has(FLAG_SELFILLUM) {
-        color = mix(color, albedo * material.selfillum_tint.rgb, base.a);
+        var tint = material.selfillum_tint.rgb;
+        @if(FX) {
+            tint = tint * fx_emissive_boost();
+        }
+        color = mix(color, albedo * tint, base.a);
     }
 
     if has(FLAG_PAINT) {

@@ -6,6 +6,7 @@ import bevy_pbr::render::forward_io::VertexOutput;
 import bevy_pbr::render::mesh_view_bindings::view;
 import bevy_pbr::render::mesh_view_bindings::fog;
 import portal2_render::shaders::projected::{is_shadow_view, projected_lighting};
+import portal2_render::shaders::fx::fx_emissive_boost;
 
 struct ModelLight {
     // xyz: position, w: kind (0 point, 1 spot, 2 directional)
@@ -248,7 +249,11 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
         if has(FLAG_SELFILLUM_MASK) {
             mask = textureSample(selfillum_mask_tex, selfillum_mask_samp, uv).rgb;
         }
-        color = mix(color, base.rgb * material.selfillum_tint.rgb, mask);
+        var tint = material.selfillum_tint.rgb;
+        @if(FX) {
+            tint = tint * fx_emissive_boost();
+        }
+        color = mix(color, base.rgb * tint, mask);
     }
     var fresnel = 1.0;
     var phong_mask = bump.a;

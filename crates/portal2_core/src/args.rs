@@ -91,6 +91,9 @@ pub struct Args {
     pub chain: Option<String>,
     pub chain_count: u32,
     pub chain_speed: f32,
+    /// `--fx <preset>`: the visual overhaul's preset (off, medium, high,
+    /// ultra or 0-3), applied after `fx.cfg`.
+    pub fx: Option<String>,
 }
 
 impl Default for Args {
@@ -143,6 +146,7 @@ impl Default for Args {
             chain: None,
             chain_count: 100,
             chain_speed: 8.0,
+            fx: None,
         }
     }
 }
@@ -213,6 +217,7 @@ impl Args {
                 "--strip-flags" => args.strip_flags = it.next().and_then(|s| s.parse().ok()).unwrap_or(0),
                 "--width" => args.width = it.next().and_then(|s| s.parse().ok()).unwrap_or(args.width),
                 "--height" => args.height = it.next().and_then(|s| s.parse().ok()).unwrap_or(args.height),
+                "--fx" => args.fx = it.next(),
                 "--exposure" => {
                     args.exposure = it.next().and_then(|s| s.parse().ok()).unwrap_or(args.exposure);
                     args.fixed_exposure = true;

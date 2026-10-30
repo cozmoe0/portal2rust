@@ -4,6 +4,7 @@
 //! animation and lighting ([`models`]), and the engine's WESL shaders, which
 //! every crate's materials load from `embedded://portal2_render/shaders/`.
 
+pub mod fx;
 pub mod materials;
 pub mod models;
 pub mod source_material;
@@ -29,6 +30,8 @@ impl Plugin for RenderSetupPlugin {
         embedded_asset!(app, "shaders/laser.wesl");
         embedded_asset!(app, "shaders/tonemap_histogram.wesl");
         embedded_asset!(app, "shaders/particle.wesl");
+        embedded_asset!(app, "shaders/fx.wesl");
+        embedded_asset!(app, "shaders/fx_post.wesl");
         app.add_plugins((
             MaterialPlugin::<source_material::WorldMaterial>::default(),
             MaterialPlugin::<source_material::ModelMaterial>::default(),

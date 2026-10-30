@@ -101,6 +101,8 @@ pub struct SourceMaterialKey {
     /// 0 = none, 1 = back, 2 = front.
     pub cull: u8,
     pub depth_bias: i32,
+    /// The visual overhaul's shader variant (`FX`, see [`crate::fx`]).
+    pub fx: bool,
 }
 
 fn cull_code(cull: Option<Face>) -> u8 {
@@ -125,6 +127,11 @@ fn apply_key(descriptor: &mut RenderPipelineDescriptor, key: SourceMaterialKey, 
             // bias (`mat_slopescaledepthbias_decal`, 2 toward the viewer).
             depth_stencil.bias.slope_scale = DECAL_SLOPE_BIAS;
         }
+    }
+    if key.fx
+        && let Some(fragment) = descriptor.fragment.as_mut()
+    {
+        fragment.shader_defs.push("FX".into());
     }
 }
 
@@ -230,9 +237,14 @@ pub struct WorldMaterial {
     pub shadow2: Option<Handle<Image>>,
     #[texture(36)]
     pub shadow3: Option<Handle<Image>>,
+    /// The visual overhaul's switches and lights (see [`crate::fx`]).
+    #[storage(37, read_only)]
+    pub fx_buffer: Handle<ShaderBuffer>,
     pub alpha_mode: AlphaMode,
     pub cull: Option<Face>,
     pub depth_bias: i32,
+    /// Draw with the overhaul's shader variant.
+    pub fx: bool,
 }
 
 impl Default for WorldMaterial {
@@ -269,16 +281,18 @@ impl Default for WorldMaterial {
             shadow1,
             shadow2,
             shadow3,
+            fx_buffer: crate::fx::fx_buffer(),
             alpha_mode: AlphaMode::Opaque,
             cull: Some(Face::Back),
             depth_bias: 0,
+            fx: crate::fx::fx_enabled(),
         }
     }
 }
 
 impl From<&WorldMaterial> for SourceMaterialKey {
     fn from(m: &WorldMaterial) -> Self {
-        Self { cull: cull_code(m.cull), depth_bias: m.depth_bias }
+        Self { cull: cull_code(m.cull), depth_bias: m.depth_bias, fx: m.fx }
     }
 }
 
@@ -389,9 +403,14 @@ pub struct ModelMaterial {
     pub shadow2: Option<Handle<Image>>,
     #[texture(36)]
     pub shadow3: Option<Handle<Image>>,
+    /// The visual overhaul's switches and lights (see [`crate::fx`]).
+    #[storage(37, read_only)]
+    pub fx_buffer: Handle<ShaderBuffer>,
     pub alpha_mode: AlphaMode,
     pub cull: Option<Face>,
     pub depth_bias: i32,
+    /// Draw with the overhaul's shader variant.
+    pub fx: bool,
 }
 
 impl Default for ModelMaterial {
@@ -423,16 +442,18 @@ impl Default for ModelMaterial {
             shadow1,
             shadow2,
             shadow3,
+            fx_buffer: crate::fx::fx_buffer(),
             alpha_mode: AlphaMode::Opaque,
             cull: Some(Face::Back),
             depth_bias: 0,
+            fx: crate::fx::fx_enabled(),
         }
     }
 }
 
 impl From<&ModelMaterial> for SourceMaterialKey {
     fn from(m: &ModelMaterial) -> Self {
-        Self { cull: cull_code(m.cull), depth_bias: m.depth_bias }
+        Self { cull: cull_code(m.cull), depth_bias: m.depth_bias, fx: m.fx }
     }
 }
 
@@ -529,7 +550,7 @@ impl Default for RefractMaterial {
 
 impl From<&RefractMaterial> for SourceMaterialKey {
     fn from(m: &RefractMaterial) -> Self {
-        Self { cull: cull_code(m.cull), depth_bias: 0 }
+        Self { cull: cull_code(m.cull), depth_bias: 0, fx: false }
     }
 }
 

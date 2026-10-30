@@ -61,6 +61,7 @@ fn main() {
                 visuals::movies::MoviePlugin,
                 visuals::progress_sign::ProgressSignPlugin,
                 visuals::tonemap::TonemapPlugin,
+                visuals::fx::VisualFxPlugin,
                 portal2_audio::AudioPlugin,
                 sound::SoundEntitiesPlugin,
                 portal2_ui::captions::CaptionsPlugin,

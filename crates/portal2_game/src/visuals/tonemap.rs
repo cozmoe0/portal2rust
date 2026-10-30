@@ -106,6 +106,11 @@ pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
 #[extract_app(RenderApp)]
 struct HistogramBuffer(Handle<ShaderBuffer>);
 
+/// The histogram measurement on the interface camera; the visual overhaul
+/// orders its scene passes before it and its tone curve after it.
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ExposureMeasureSet;
+
 pub struct TonemapPlugin;
 
 impl Plugin for TonemapPlugin {
@@ -124,9 +129,10 @@ impl Plugin for TonemapPlugin {
         world.resource_mut::<SpawnHandlers>().register("env_tonemap_controller", |_, _| {});
         world.resource_mut::<InputHandlers>().register("env_tonemap_controller", tonemap_input);
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else { return };
-        render_app
-            .add_systems(RenderStartup, init_pipeline)
-            .add_systems(Core3d, measure.in_set(Core3dSystems::PostProcess).before(portal2_ui::vgui::render::VguiDrawSet));
+        render_app.add_systems(RenderStartup, init_pipeline).add_systems(
+            Core3d,
+            measure.in_set(Core3dSystems::PostProcess).in_set(ExposureMeasureSet).before(portal2_ui::vgui::render::VguiDrawSet),
+        );
     }
 }
 
