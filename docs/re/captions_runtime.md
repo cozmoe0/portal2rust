@@ -1,6 +1,6 @@
 # Close captions on screen
 
-How `crates/portal2/src/captions.rs` shows captions, from the installed
+How `crates/portal2_ui/src/captions.rs` shows captions, from the installed
 data (`scripts/hudlayout.res`, `resource/basemodui_scheme.res`,
 `resource/captioning_colors.txt`) and the caption format notes in
 `audio_formats.md`.

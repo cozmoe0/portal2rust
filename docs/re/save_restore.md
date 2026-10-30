@@ -2,7 +2,7 @@
 
 How the original saves and reloads during single-player, from the installed
 `engine.dll` / `server.dll` (checked in IDA) and the console variable dump,
-and how `crates/portal2/src/save` does it.
+and how `crates/portal2_game/src/save` does it.
 
 ## When the game saves
 

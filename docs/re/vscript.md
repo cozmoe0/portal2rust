@@ -3,7 +3,7 @@
 How the original game hosts Squirrel scripts, learned from the installed
 `server.dll` and `vscript.dll` (IDA, string tables, embedded helper scripts).
 Written in our own words; our implementation is in `crates/squirrel` (the
-language) and `crates/portal2/src/script` (the game bindings).
+language) and `crates/portal2_game/src/script` (the game bindings).
 
 ## Language
 

@@ -2,7 +2,7 @@
 
 How the original draws its interface, from the installed `vgui2.dll`,
 `vguimatsurface.dll`, `shaderapidx9.dll` and `client.dll` (checked in IDA)
-and screenshots of the running game, and how `crates/portal2/src/vgui` does
+and screenshots of the running game, and how `crates/portal2_ui/src/vgui` does
 it.
 
 ## Blending

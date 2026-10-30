@@ -1,7 +1,7 @@
 # Security cameras
 
 `npc_security_camera` as the installed `server.dll` runs it (checked in
-IDA); our version is `crates/portal2/src/devices/security_camera.rs`.
+IDA); our version is `crates/portal2_game/src/devices/security_camera.rs`.
 
 ## Spawn
 

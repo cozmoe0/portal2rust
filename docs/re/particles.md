@@ -4,7 +4,7 @@ How the game's client simulates and draws the particle systems described in
 `.pcf` files (format: [pcf.md](pcf.md)). Facts come from static analysis of
 the installed `portal2/bin/client.dll` (which links the particle library)
 and from watching the game; descriptions are our own and the code in
-`crates/portal2/src/particles` is written from them.
+`crates/portal2_particles/src` is written from them.
 
 ```bash
 python -I re/tools/particle_defaults.py > re/out/particle_defaults.tsv   # every operator's attributes and defaults

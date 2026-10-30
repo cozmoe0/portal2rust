@@ -1,7 +1,7 @@
 # Portal 2 sound runtime
 
 How the shipped engine turns a started sound into speaker volumes, as
-implemented in `crates/portal2/src/audio`. Facts come from reading the
+implemented in `crates/portal2_audio/src`. Facts come from reading the
 installed `engine.dll` (and `server.dll`/`client.dll` strings) in a
 disassembler and from the installed script data; everything is described in
 our own words. The file formats themselves are in `audio_formats.md`.

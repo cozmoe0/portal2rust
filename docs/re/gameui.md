@@ -2,7 +2,7 @@
 
 How the original's menus behave, from `client.dll` (IDA) and screenshots of
 the running game (`re/tools/capture_ui.py`), and how
-`crates/portal2/src/gameui` does it.
+`crates/portal2/src/frontend/gameui` does it.
 
 ## Startup and background
 

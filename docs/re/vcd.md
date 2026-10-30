@@ -279,7 +279,7 @@ Text files (all 4860):
 ## Playback (`logic_choreographed_scene`)
 
 What the engine's scene entity exposes, from `server.dll`'s strings, and how
-`crates/portal2/src/entities/scenes.rs` plays scenes:
+`crates/portal2_game/src/entities/scenes.rs` plays scenes:
 
 - Keys: `SceneFile`, `ResumeSceneFile`, `target1`..`target8`, `busyactor`,
   `onplayerdeath`. `CreateSceneEntity(file)` in scripts makes the same
