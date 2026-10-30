@@ -1,0 +1,13 @@
+# Views for the visual overhaul (docs/visual_overhaul.md), matching the seven
+# reference scenes: name map x y z pitch yaw roll (feet origin, as setpos)
+# [console commands]. The overhaul preset is a cvar, so run the list once per
+# preset:
+#   cargo run --profile fast -p portal2 -- --shots re/shots/visual_overhaul.txt --shots-out re/out/fx/high --shot-settle-time 4 --shot-map-settle 12 +r_fx_preset 2
+#   cargo run --profile fast -p portal2 -- --bench re/shots/visual_overhaul.txt --bench-out re/out/fx/bench_high.txt --shot-map-settle 8 --shot-settle-time 3 +r_fx_preset 2
+05_portal_transition sp_a1_intro2 -319.8 -120.0 -8.0 26.0 270.0 0 ent_fire portal_red_1 SetActivatedState 1
+00_portal_chamber sp_a1_intro2 -319.8 60.0 -8.0 12.0 270.0 0 ent_fire portal_red_1 SetActivatedState 1; ent_fire portal_blue_1 SetActivatedState 1
+04_orange_portal sp_a1_intro2 -319.8 -180.0 -8.0 40.0 270.0 0
+03_blue_portal sp_a1_intro2 -576.0 96.0 0.0 26.0 180.0 0
+01_industrial_atrium sp_a3_jump_intro -1300.0 -600.0 0.0 -35.0 80.0 0
+02_red_laser sp_a2_fizzler_intro 440.0 -870.0 0.0 13.5 -25.8 0
+06_overgrown_chamber sp_a1_intro4 195.0 -709.0 8.0 10.0 38.0 0
