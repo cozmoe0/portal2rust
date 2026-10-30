@@ -17,7 +17,7 @@ use crate::entities::props::PhysicsProp;
 use crate::player::Player;
 use portal2_core::entity::MapEntity;
 use portal2_core::vfs::GameFs;
-use portal2_world::collision::portal::PortalHoles;
+use portal2_world::collision::portal::{HALF_HEIGHT, HALF_WIDTH, PortalHoles};
 use portal2_world::collision::volume::{ConvexVolume, polytope_vertices};
 use portal2_world::collision::{Collider as TraceCollider, CollisionWorld, Shape};
 use portal2_world::{CurrentMap, MapLoaded, MapObject};
@@ -290,9 +290,23 @@ fn attach_player_body(mut commands: Commands, players: Query<Entity, (With<Playe
 #[derive(Component)]
 struct PortalSlab;
 
-fn sync_portal_slabs(mut commands: Commands, holes: Res<PortalHoles>, slabs: Query<Entity, With<PortalSlab>>) {
+fn sync_portal_slabs(
+    mut commands: Commands,
+    holes: Res<PortalHoles>,
+    slabs: Query<Entity, With<PortalSlab>>,
+    sleepers: Query<(Entity, &TraceCollider, &Position, &Rotation), With<Sleeping>>,
+) {
     if !holes.is_changed() {
         return;
+    }
+    // Props at rest where an opening appeared (a cube on the floor a
+    // portal is shot under) start moving again, so they can drop in.
+    for (e, col, pos, rot) in &sleepers {
+        let (mins, maxs) = world_bounds(&col.shape, pos.0, rot.0);
+        let (center, half) = ((mins + maxs) * 0.5, (maxs - mins) * 0.5 + Vec3::ONE);
+        if holes.holes.iter().any(|h| h.overlaps_box(center, -half, half)) {
+            commands.entity(e).remove::<Sleeping>();
+        }
     }
     for e in &slabs {
         commands.entity(e).despawn();
@@ -314,11 +328,14 @@ fn sync_portal_slabs(mut commands: Commands, holes: Res<PortalHoles>, slabs: Que
 }
 
 /// Drops world contacts inside a linked portal's opening for props that are
-/// passing through it, so they can enter the wall the portal is on.
+/// passing through it, so they can enter the wall the portal is on: the
+/// static map's, and those of brush entities (a floor panel) the opening
+/// cuts through, as traces treat them.
 #[derive(SystemParam)]
 pub struct PortalContactHooks<'w, 's> {
     holes: Res<'w, PortalHoles>,
     statics: Query<'w, 's, (), With<StaticWorld>>,
+    props: Query<'w, 's, (), With<PhysicsProp>>,
     shapes: Query<'w, 's, (&'static TraceCollider, &'static Position, &'static Rotation)>,
 }
 
@@ -327,34 +344,58 @@ impl CollisionHooks for PortalContactHooks<'_, '_> {
         if self.holes.holes.is_empty() {
             return true;
         }
-        let prop = if self.statics.contains(contacts.collider2) {
-            contacts.collider1
-        } else if self.statics.contains(contacts.collider1) {
-            contacts.collider2
+        let (prop, other) = if self.props.contains(contacts.collider1) {
+            (contacts.collider1, contacts.collider2)
+        } else if self.props.contains(contacts.collider2) {
+            (contacts.collider2, contacts.collider1)
         } else {
             return true;
         };
+        let static_map = self.statics.contains(other);
+        let other_bounds = if static_map || self.props.contains(other) {
+            None
+        } else {
+            self.shapes.get(other).ok().map(|(c, p, r)| world_bounds(&c.shape, p.0, r.0))
+        };
+        if !static_map && other_bounds.is_none() {
+            return true;
+        }
         let Ok((col, pos, rot)) = self.shapes.get(prop) else { return true };
         let (mins, maxs) = world_bounds(&col.shape, pos.0, rot.0);
         let center = (mins + maxs) * 0.5;
         let half = (maxs - mins) * 0.5;
         for hole in &self.holes.holes {
-            if !hole.contains_box(center, -half, half) {
+            if !hole.overlaps_box(center, -half, half) || other_bounds.is_some_and(|(lo, hi)| !carves(hole, lo, hi)) {
                 continue;
             }
-            // Everything of the static map behind the opening is ignored; the
-            // separate frame slabs keep the prop inside the tunnel.
+            // Everything behind the opening's rectangle is ignored (the hole
+            // the frame slabs line); the slabs keep the prop inside the
+            // tunnel.
             let f = &hole.frame;
             for m in &mut contacts.manifolds {
                 m.points.retain(|p| {
                     let l = f.to_local(p.point);
-                    !(l.x < 2.0 && f.in_opening(l, -2.0))
+                    !(l.x < 2.0 && l.y.abs() < HALF_WIDTH + 2.0 && l.z.abs() < HALF_HEIGHT + 2.0)
                 });
             }
             contacts.manifolds.retain(|m| !m.points.is_empty());
         }
         !contacts.manifolds.is_empty()
     }
+}
+
+/// Whether an opening cuts through a moving solid with these world bounds.
+pub fn carves(hole: &portal2_world::collision::portal::PortalHole, mins: Vec3, maxs: Vec3) -> bool {
+    let corners: Vec<Vec3> = (0..8)
+        .map(|i| {
+            Vec3::new(
+                if i & 1 == 0 { mins.x } else { maxs.x },
+                if i & 2 == 0 { mins.y } else { maxs.y },
+                if i & 4 == 0 { mins.z } else { maxs.z },
+            )
+        })
+        .collect();
+    hole.carves_bounds(&corners)
 }
 
 /// World-space bounds of a shape placed at `pos` / `rot`.

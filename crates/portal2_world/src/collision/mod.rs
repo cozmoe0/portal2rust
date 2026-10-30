@@ -204,7 +204,7 @@ impl Physics<'_, '_> {
         // portal is on, but is held in the tunnel by the opening's frame.
         let in_holes: Vec<&portal::PortalHole> = match &self.holes {
             Some(h) if mins != maxs => {
-                h.holes.iter().filter(|hole| hole.contains_box(start, mins, maxs) || hole.contains_box(end, mins, maxs)).collect()
+                h.holes.iter().filter(|hole| hole.overlaps_box(start, mins, maxs) || hole.overlaps_box(end, mins, maxs)).collect()
             }
             _ => Vec::new(),
         };

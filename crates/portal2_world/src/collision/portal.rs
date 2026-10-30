@@ -134,16 +134,20 @@ impl PortalHole {
             && hi.z > -(HALF_HEIGHT - 1.0)
     }
 
-    /// Whether a box at `pos` sits inside the opening's tunnel, so the wall
-    /// the portal is on should not block it.
-    pub fn contains_box(&self, pos: Vec3, mins: Vec3, maxs: Vec3) -> bool {
+    /// Whether a box at `pos` reaches into the opening's tunnel, so the wall
+    /// the portal is on should not block it. It need not fit inside the
+    /// opening: the frame slabs, reaching 96 units past every edge, hold a
+    /// box that overlaps the rim (the player stepping into a portal whose
+    /// bottom edge sits a little above the floor, a cube resting half over a
+    /// floor portal) out of the wall around it.
+    pub fn overlaps_box(&self, pos: Vec3, mins: Vec3, maxs: Vec3) -> bool {
         let c = pos + (mins + maxs) * 0.5;
         let h = (maxs - mins) * 0.5;
         let f = &self.frame;
         let extent = |axis: Vec3| axis.x.abs() * h.x + axis.y.abs() * h.y + axis.z.abs() * h.z;
         let l = f.to_local(c);
         let (ex, ey, ez) = (extent(f.forward), extent(f.left()), extent(f.up));
-        l.y.abs() + ey <= HALF_WIDTH + 1.0 && l.z.abs() + ez <= HALF_HEIGHT + 1.0 && l.x - ex < 4.0 && l.x + ex > -96.0
+        l.y.abs() - ey < HALF_WIDTH && l.z.abs() - ez < HALF_HEIGHT && l.x - ex < 4.0 && l.x + ex > -96.0
     }
 }
 

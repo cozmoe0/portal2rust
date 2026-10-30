@@ -10,7 +10,7 @@ use crate::entities::props::PhysicsProp;
 use crate::entities::triggers::{Trigger, TriggerKind};
 use crate::portals::{Portal, Portals};
 use bevy_transform_interpolation::{RotationEasingState, TranslationEasingState};
-use portal2_world::collision::portal::transfer;
+use portal2_world::collision::portal::{PortalFrame, transfer};
 use portal2_world::collision::{Collider as TraceCollider, Physics};
 
 pub struct PortalTravelPlugin;
@@ -94,6 +94,37 @@ fn floor_portal_below(
 #[derive(Component, Default)]
 pub struct PortalTraveler {
     pub previous_center: Option<Vec3>,
+}
+
+/// A physics prop's placement and motion, to carry through a portal.
+pub type TravelBody = (
+    &'static mut Position,
+    &'static mut Rotation,
+    &'static mut LinearVelocity,
+    &'static mut AngularVelocity,
+    &'static mut PortalTraveler,
+    Option<&'static mut TranslationEasingState>,
+    Option<&'static mut RotationEasingState>,
+);
+
+/// Brings a carried prop out of portal `to` (just in front of the opening,
+/// turned by the portal's transfer `m`) when the player goes through with
+/// it still on the near side; the hold then steers it to their hands. It
+/// is drawn there straight away rather than eased across.
+pub fn carry_through(body: bevy::ecs::query::QueryItem<'_, '_, TravelBody>, m: &bevy::math::Affine3A, to: &PortalFrame, radius: f32) {
+    let (mut pos, mut rot, mut lin, mut ang, mut traveler, eased_at, eased_turn) = body;
+    let turn = Quat::from_mat3a(&m.matrix3);
+    pos.0 = to.center + to.forward * (radius + 1.0);
+    rot.0 = (turn * rot.0).normalize();
+    lin.0 = Vec3::ZERO;
+    ang.0 = Vec3::ZERO;
+    traveler.previous_center = None;
+    if let Some(mut state) = eased_at {
+        state.start = None;
+    }
+    if let Some(mut state) = eased_turn {
+        state.start = None;
+    }
 }
 
 fn teleport_props(

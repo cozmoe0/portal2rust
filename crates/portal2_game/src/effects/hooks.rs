@@ -102,13 +102,19 @@ fn portal_effects(time: Res<Time>, mut events: MessageReader<PortalFx>, mut comm
     }
 }
 
-/// Moves portal shots along their path.
-fn fly_blasts(time: Res<Time>, mut blasts: Query<(&PortalBlast, &mut Transform)>) {
+/// Moves portal shots along their path. A shot that has landed stops
+/// emitting (the stream would otherwise trail on at the wall forever); its
+/// last particles fade and the effect goes.
+fn fly_blasts(time: Res<Time>, mut blasts: Query<(Entity, &PortalBlast, &mut Transform, &mut ParticleEffect)>, mut commands: Commands) {
     let now = time.elapsed_secs();
-    for (b, mut t) in &mut blasts {
+    for (e, b, mut t, mut fx) in &mut blasts {
         let f = ((now - b.starts) / (b.ends - b.starts).max(1e-4)).clamp(0.0, 1.0);
         let p = b.start * (1.0 - f) + (b.aim_point * (1.0 - f) + b.end * f) * f;
         t.translation = p;
+        if f >= 1.0 {
+            fx.stop();
+            commands.entity(e).remove::<PortalBlast>();
+        }
     }
 }
 

@@ -11,7 +11,7 @@ use crate::player::{Player, PlayerInput};
 use portal2_core::coords::{angles_forward, quat_to_angles};
 use portal2_core::events::{EventValue, GameEvent};
 use portal2_core::sets::PlayerMoveSet;
-use portal2_world::collision::portal::{PortalHoles, transfer};
+use portal2_world::collision::portal::{HALF_HEIGHT, HALF_WIDTH, PortalHoles, transfer};
 use portal2_world::collision::{Collider as TraceCollider, Physics, mask};
 
 /// Horizontal radius of the player's hull, part of the hold distance.
@@ -230,7 +230,7 @@ fn hold_point(
     let mut target = eye + dir * (tr.fraction * distance).max(radii) + up * raise;
     // Keep the prop above a floor under the hold point.
     let half = radii * 0.5 + 1.0;
-    let down = physics.trace(target + Vec3::Z * half, target - Vec3::Z * half, Vec3::ZERO, Vec3::ZERO, mask, ignore);
+    let down = physics.trace(target + Vec3::Z * half, target - Vec3::Z * half, -SIGHT_BOX, SIGHT_BOX, mask, ignore);
     if !down.start_solid {
         holding.lift = if down.fraction >= 1.0 { 0.0 } else { (1.0 - down.fraction) * radii };
     }
@@ -259,6 +259,7 @@ fn hold_held(
     mut props: Query<(&Position, &Rotation, &mut LinearVelocity, &mut AngularVelocity, &Collider, &TraceCollider), With<PhysicsProp>>,
     solids: Query<(&Collider, &Position, &Rotation), Without<PhysicsProp>>,
     statics: Query<(), With<super::StaticWorld>>,
+    brushes: BrushShapes,
     holes: Res<PortalHoles>,
     portals: Res<crate::portals::Portals>,
     portal_query: Query<&crate::portals::Portal>,
@@ -278,7 +279,7 @@ fn hold_held(
     // through a portal itself, is fine).
     let (mins, maxs) = super::world_bounds(&shape.shape, pos.0, rot.0);
     let (centre, half) = ((mins + maxs) * 0.5, (maxs - mins) * 0.5);
-    let in_portal = holes.holes.iter().any(|h| h.contains_box(centre, -half, half));
+    let in_portal = holes.holes.iter().any(|h| h.overlaps_box(centre, -half, half));
     let teleported = holding.clear.is_some_and(|(at, _)| at.distance(pos.0) > HOLD_TELEPORT_DISTANCE);
     let world = SpatialQueryFilter::from_mask(LayerMask(layers::WORLD | layers::MOVER)).with_excluded_entities([held, pe]);
     if in_portal || teleported || sunk_depth(&spatial, &solids, collider, pos.0, rot.0, &world) <= HOLD_MAX_PENETRATION {
@@ -332,7 +333,7 @@ fn hold_held(
     // here the move is swept first so the prop comes to rest against a
     // wall or pane (and slides along it) instead of being driven into it.
     let filter = SpatialQueryFilter::from_mask(LayerMask(layers::WORLD | layers::PROP | layers::MOVER)).with_excluded_entities([held, pe]);
-    let blockers = Blockers { spatial: &spatial, holes: &holes, statics: &statics };
+    let blockers = Blockers { spatial: &spatial, holes: &holes, statics: &statics, brushes: &brushes };
     let step = swept_step(&blockers, collider, pos.0, rot.0, error, &filter);
     let wanted = step / dt * 0.5;
     lin.0 = wanted.clamp_length_max(HOLD_MAX_SPEED);
@@ -364,13 +365,17 @@ fn sunk_depth(
 }
 
 /// What stops a prop moved by the player: everything solid except the wall
-/// behind a linked portal's opening, which props pass into (the contact
-/// hooks let them, and the frame slabs keep them inside the tunnel).
+/// (or brush) behind a linked portal's opening, which props pass into (the
+/// contact hooks let them, and the frame slabs keep them inside the tunnel).
 struct Blockers<'a, 'w, 's> {
     spatial: &'a SpatialQuery<'w, 's>,
     holes: &'a PortalHoles,
     statics: &'a Query<'w, 's, (), With<super::StaticWorld>>,
+    brushes: &'a BrushShapes<'w, 's>,
 }
+
+/// Brushes and other solids that are not props, with their placement.
+type BrushShapes<'w, 's> = Query<'w, 's, (&'static TraceCollider, &'static Position, &'static Rotation), Without<PhysicsProp>>;
 
 impl Blockers<'_, '_, '_> {
     fn cast(
@@ -383,11 +388,13 @@ impl Blockers<'_, '_, '_> {
         filter: &SpatialQueryFilter,
     ) -> Option<ShapeHitData> {
         let hit = self.spatial.cast_shape(collider, from, rot, dir, config, filter)?;
-        let into_opening = self.statics.contains(hit.entity)
-            && self.holes.holes.iter().any(|h| {
-                let l = h.frame.to_local(hit.point1);
-                l.x < 2.0 && h.frame.in_opening(l, -2.0)
-            });
+        let static_map = self.statics.contains(hit.entity);
+        let bounds = self.brushes.get(hit.entity).ok().map(|(c, p, r)| super::world_bounds(&c.shape, p.0, r.0));
+        let into_opening = self.holes.holes.iter().any(|h| {
+            let l = h.frame.to_local(hit.point1);
+            let cut = static_map || bounds.is_some_and(|(lo, hi)| super::carves(h, lo, hi));
+            cut && l.x < 2.0 && l.y.abs() < HALF_WIDTH + 2.0 && l.z.abs() < HALF_HEIGHT + 2.0
+        });
         if !into_opening {
             return Some(hit);
         }
@@ -432,6 +439,7 @@ fn push_props(
     players: Query<(Entity, &Player)>,
     mut props: Query<(&RigidBody, &mut LinearVelocity, &Position, &Rotation, &Collider), With<PhysicsProp>>,
     statics: Query<(), With<super::StaticWorld>>,
+    brushes: BrushShapes,
     holes: Res<PortalHoles>,
     spatial: SpatialQuery,
 ) {
@@ -458,8 +466,8 @@ fn push_props(
         let filter = SpatialQueryFilter::from_mask(LayerMask(layers::WORLD | layers::MOVER)).with_excluded_entities([hit, pe]);
         let config = ShapeCastConfig { max_distance: want * dt + HOLD_SKIN, ignore_origin_penetration: true, ..default() };
         if let Ok(d) = Dir3::new(dir)
-            && let Some(block) =
-                (Blockers { spatial: &spatial, holes: &holes, statics: &statics }).cast(collider, pos.0, rot.0, d, &config, &filter)
+            && let Some(block) = (Blockers { spatial: &spatial, holes: &holes, statics: &statics, brushes: &brushes })
+                .cast(collider, pos.0, rot.0, d, &config, &filter)
         {
             want = want.min((block.distance - HOLD_SKIN).max(0.0) / dt);
         }

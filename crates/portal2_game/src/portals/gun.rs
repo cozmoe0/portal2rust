@@ -61,6 +61,9 @@ impl Plugin for GunPlugin {
 #[derive(Resource, Default, serde::Serialize, serde::Deserialize)]
 pub struct PortalGun {
     pub can_fire: [bool; 2],
+    /// When the gun may fire again, on this run's clock (not saved: a game
+    /// loaded in another run would wait for its old clock to come round).
+    #[serde(skip)]
     pub next_fire: f64,
     #[serde(skip)]
     pub viewmodel: Option<Entity>,
@@ -562,5 +565,6 @@ fn spawn_map_portal_now(world: &mut World, me: &MapEntity, slot: usize, at: Opti
 impl portal2_core::save::Restore for PortalGun {
     fn keep(&mut self, live: Self) {
         self.viewmodel = live.viewmodel;
+        self.next_fire = live.next_fire;
     }
 }

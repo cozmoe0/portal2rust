@@ -665,6 +665,7 @@ fn teleport_player(
     mut cooldown: Local<u32>,
     mut env: ResMut<PortalEnvironment>,
     mut holding: ResMut<crate::physics::carry::Holding>,
+    mut props: Query<crate::physics::portal_travel::TravelBody, With<crate::entities::props::PhysicsProp>>,
     console: Res<portal2_core::console::Console>,
 ) {
     let Some(frames) = linked_frames(&portals, &query) else { return };
@@ -756,7 +757,18 @@ fn teleport_player(
             }
         }
         *cooldown = TELEPORT_COOLDOWN_TICKS;
-        holding.player_crossed(slot);
+        // What the player carries comes through with them (falling into a
+        // floor portal with a cube held out over the floor beside it),
+        // unless it is already on the far side.
+        if let Some(held) = holding.entity
+            && holding.portal.is_none()
+            && let Ok(body) = props.get_mut(held)
+        {
+            crate::physics::portal_travel::carry_through(body, &m, &to, holding.radius);
+            holding.clear = None;
+        } else {
+            holding.player_crossed(slot);
+        }
         // The view keeps moving smoothly: last tick's position comes along.
         p.previous_origin = m.transform_point3(p.previous_origin + half) - half_new;
         p.state.velocity = v;
