@@ -37,8 +37,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::vgui::render::VguiComposite;
 use portal2_core::view::MainCamera;
+use portal2_ui::vgui::render::VguiComposite;
 
 pub const HISTOGRAM_SHADER: &str = "embedded://portal2_render/shaders/tonemap_histogram.wesl";
 
@@ -126,7 +126,7 @@ impl Plugin for TonemapPlugin {
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else { return };
         render_app
             .add_systems(RenderStartup, init_pipeline)
-            .add_systems(Core3d, measure.in_set(Core3dSystems::PostProcess).before(crate::vgui::render::VguiDrawSet));
+            .add_systems(Core3d, measure.in_set(Core3dSystems::PostProcess).before(portal2_ui::vgui::render::VguiDrawSet));
     }
 }
 

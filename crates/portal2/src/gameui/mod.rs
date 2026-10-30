@@ -20,14 +20,14 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use crate::screen::Localization;
-use crate::vgui::layout::ResFile;
-use crate::vgui::scheme::proportional;
-use crate::vgui::{Schemes, Surface, VguiPaint, layer};
-use crate::video::{VideoId, Videos};
 use crate::world::CurrentMap;
 use portal2_core::args::Args;
 use portal2_core::console::Console;
 use portal2_core::vfs::GameFs;
+use portal2_ui::vgui::layout::ResFile;
+use portal2_ui::vgui::scheme::proportional;
+use portal2_ui::vgui::{Schemes, Surface, VguiPaint, layer};
+use portal2_ui::video::{VideoId, Videos};
 use window::Window;
 
 /// Single-player maps by chapter, and the act of each (from the game's
@@ -154,7 +154,7 @@ struct Open {
     chapter: usize,
     scroll: usize,
     /// Footer buttons as last painted, and the one under the mouse.
-    footer: Vec<crate::vgui::layout::Rect>,
+    footer: Vec<portal2_ui::vgui::layout::Rect>,
     footer_hover: Option<usize>,
 }
 
@@ -822,7 +822,7 @@ fn paint(
 }
 
 /// New Game: the chapter list, the chapter's picture and its name.
-fn paint_new_game(surface: &mut Surface, scheme: &crate::vgui::Scheme, loc: &Localization, open: &mut Open) {
+fn paint_new_game(surface: &mut Surface, scheme: &portal2_ui::vgui::Scheme, loc: &Localization, open: &mut Open) {
     let tall = surface.tall;
     let body = open.window.rect;
     let tab = dialog::tab_tiles(surface, scheme, &open.window.title);
@@ -856,7 +856,7 @@ fn paint_new_game(surface: &mut Surface, scheme: &crate::vgui::Scheme, loc: &Loc
             surface.fill(lx, y, lx + lw, y + p(style.cursor_height.max(25)), style.cursor_color);
         }
         let color = if focused { style.focus_color } else { style.text_color };
-        let rect = crate::vgui::layout::Rect::new(lx + p(10), y + p(2), p(250), p(20));
+        let rect = portal2_ui::vgui::layout::Rect::new(lx + p(10), y + p(2), p(250), p(20));
         window::paint_label(surface, item_font, rect, &names[i].1, color, "west");
     }
     // ChapterImage: 212,15 225x152.
@@ -951,7 +951,7 @@ fn utc_time(unix: u64) -> (u32, u32, u32, u32, u32, u32) {
 
 /// Load Game: saves by date, the chapter picture of the selected one with
 /// its kind of save, and the chapter name.
-fn paint_load_game(surface: &mut Surface, scheme: &crate::vgui::Scheme, loc: &Localization, open: &mut Open) {
+fn paint_load_game(surface: &mut Surface, scheme: &portal2_ui::vgui::Scheme, loc: &Localization, open: &mut Open) {
     let tall = surface.tall;
     let body = open.window.rect;
     let tab = dialog::tab_tiles(surface, scheme, &open.window.title);
@@ -984,7 +984,7 @@ fn paint_load_game(surface: &mut Surface, scheme: &crate::vgui::Scheme, loc: &Lo
             surface.fill(lx, y, lx + lw, y + p(style.cursor_height.max(25)), style.cursor_color);
         }
         let color = if focused { style.focus_color } else { style.text_color };
-        let rect = crate::vgui::layout::Rect::new(lx + p(10), y + p(2), p(250), p(20));
+        let rect = portal2_ui::vgui::layout::Rect::new(lx + p(10), y + p(2), p(250), p(20));
         window::paint_label(surface, item_font, rect, &save_date(saves[i].saved_at), color, "west");
     }
     let Some(save) = saves.get(open.chapter) else { return };
@@ -1013,7 +1013,7 @@ fn paint_load_game(surface: &mut Surface, scheme: &crate::vgui::Scheme, loc: &Lo
 }
 
 /// A confirmation: the info icon and the message in a tiled body.
-fn paint_confirm(surface: &mut Surface, scheme: &crate::vgui::Scheme, loc: &Localization, c: &Confirm, open: &mut Open) {
+fn paint_confirm(surface: &mut Surface, scheme: &portal2_ui::vgui::Scheme, loc: &Localization, c: &Confirm, open: &mut Open) {
     let tall = surface.tall;
     let p = |v: i32| proportional(v, tall);
     let (tw, th) = dialog::tile_size(scheme, tall);
@@ -1031,7 +1031,7 @@ fn paint_confirm(surface: &mut Surface, scheme: &crate::vgui::Scheme, loc: &Loca
     let rows = 2;
     let x = p(scheme.setting_i32("Dialog.PinFromLeft").unwrap_or(75));
     let bottom = tall - p(scheme.setting_i32("Dialog.PinFromBottom").unwrap_or(75));
-    let body = crate::vgui::layout::Rect::new(x, bottom - rows * th, cols * tw, rows * th);
+    let body = portal2_ui::vgui::layout::Rect::new(x, bottom - rows * th, cols * tw, rows * th);
     open.window.rect = body;
     let tab = dialog::tab_tiles(surface, scheme, &open.window.title);
     dialog::paint_tiles(surface, scheme, body, tab, false);
@@ -1074,7 +1074,7 @@ fn hide_unused(open: &mut Open) {
 }
 
 /// Draws a video frame as large as fits the screen, centred.
-fn draw_fit(surface: &mut Surface, img: &crate::vgui::ImageRef, sw: i32, sh: i32) {
+fn draw_fit(surface: &mut Surface, img: &portal2_ui::vgui::ImageRef, sw: i32, sh: i32) {
     let (iw, ih) = (img.width.max(1) as f32, img.height.max(1) as f32);
     let scale = (sw as f32 / iw).min(sh as f32 / ih);
     let (w, h) = ((iw * scale) as i32, (ih * scale) as i32);

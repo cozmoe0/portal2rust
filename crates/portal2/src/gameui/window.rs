@@ -10,10 +10,11 @@
 use source_formats::kv::KeyValues;
 
 use crate::screen::Localization;
-use crate::vgui::layout::{self, Rect, ResFile};
-use crate::vgui::scheme::{Scheme, proportional};
-use crate::vgui::surface::Rgba;
-use crate::vgui::{FontId, Surface};
+use portal2_ui::vgui::layout;
+use portal2_ui::vgui::layout::{Rect, ResFile};
+use portal2_ui::vgui::scheme::{Scheme, proportional};
+use portal2_ui::vgui::surface::Rgba;
+use portal2_ui::vgui::{FontId, Surface};
 
 /// What a hybrid button looks like: the scheme's `<Style>.*` settings with
 /// `HybridButton.*` defaults.

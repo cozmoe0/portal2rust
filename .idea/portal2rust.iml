@@ -14,6 +14,7 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/portal2_audio/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/portal2_core/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/portal2_render/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/portal2_ui/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

@@ -21,7 +21,7 @@ use bevy::render::texture::GpuImage;
 use bevy::render::view::ViewTarget;
 use bevy::render::{Extract, ExtractSchedule, Render, RenderApp, RenderStartup, RenderSystems};
 
-pub const SHADER: &str = "embedded://portal2/vgui/shaders/vgui.wesl";
+pub const SHADER: &str = "embedded://portal2_ui/vgui/shaders/vgui.wesl";
 
 /// Interface vertex: clip-space position, texture coordinate, RGBA colour.
 #[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]

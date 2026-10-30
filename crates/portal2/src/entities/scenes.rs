@@ -288,7 +288,7 @@ fn speak(world: &mut World, e: Entity, who: Entity, ev: &source_formats::vcd::Ev
     // The scene captions its own lines (a token may replace the sound's).
     if ev.cc.kind == source_formats::vcd::CcType::Master {
         let token = if ev.cc.token.is_empty() { ev.param.as_str() } else { ev.cc.token.as_str() };
-        crate::captions::emit(world, token, (ev.duration() - offset).max(0.0) / pitch.max(0.01), false);
+        portal2_ui::captions::emit(world, token, (ev.duration() - offset).max(0.0) / pitch.max(0.01), false);
     }
 }
 

@@ -12,11 +12,11 @@ use bevy::prelude::*;
 use source_formats::kv::KeyValues;
 
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::vgui::surface::Rgba;
-use crate::vgui::{FontId, Schemes, Surface, VguiPaint, layer};
-use crate::video::{VideoId, Videos};
 use portal2_core::console::Console;
 use portal2_core::vfs::GameFs;
+use portal2_ui::vgui::surface::Rgba;
+use portal2_ui::vgui::{FontId, Schemes, Surface, VguiPaint, layer};
+use portal2_ui::video::{VideoId, Videos};
 
 const FONT: &str = "CreditsOutroText";
 const BACKGROUND: &str = "media/sp_credits_bg.bik";
@@ -213,7 +213,7 @@ fn paint(
         credits.run = None;
     }
     let Some(run) = credits.run.as_mut() else { return };
-    if !crate::hud::visible(&console) {
+    if !portal2_ui::hud::visible(&console) {
         return;
     }
     let now = clock.curtime;

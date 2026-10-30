@@ -21,11 +21,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::vgui::Surface;
-use crate::video::{VideoId, Videos};
 use portal2_core::entity::MapEntity;
 use portal2_core::vfs::GameFs;
 use portal2_render::source_material::{WorldMaterial, world_flags};
+use portal2_ui::vgui::Surface;
+use portal2_ui::video::{VideoId, Videos};
 
 #[derive(Component, Clone, Debug, Serialize, Deserialize)]
 pub struct MovieDisplay {

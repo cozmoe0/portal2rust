@@ -22,13 +22,13 @@ use source_formats::bsp::contents;
 use super::GameInstructor;
 use crate::collision::Physics;
 use crate::screen::Localization;
-use crate::vgui::surface::{FontId, ImageRef};
-use crate::vgui::{Schemes, Surface, VguiPaint, layer};
 use portal2_core::clock::GameClock;
 use portal2_core::console::Console;
 use portal2_core::entity::EntityRegistry;
 use portal2_core::vfs::GameFs;
 use portal2_core::view::MainCamera;
+use portal2_ui::vgui::surface::{FontId, ImageRef};
+use portal2_ui::vgui::{Schemes, Surface, VguiPaint, layer};
 
 pub fn build(app: &mut App) {
     app.init_resource::<LocatorState>().add_systems(PostUpdate, paint.in_set(VguiPaint));
@@ -190,7 +190,7 @@ fn paint(
     }
     let live: Vec<u64> = items.iter().map(|i| i.lesson.id).collect();
     state.targets.retain(|id, _| live.contains(id));
-    if items.is_empty() || map.is_none() || ui.active() || !crate::hud::visible(&console) || !console.bool("gameinstructor_enable") {
+    if items.is_empty() || map.is_none() || ui.active() || !portal2_ui::hud::visible(&console) || !console.bool("gameinstructor_enable") {
         return;
     }
     if state.textures.is_none() {

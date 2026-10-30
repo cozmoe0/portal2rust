@@ -10,10 +10,10 @@ use bevy::prelude::*;
 
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers, fire_output};
-use crate::vgui::{FontId, Schemes, Surface, VguiPaint, layer};
 use portal2_core::clock::GameClock;
 use portal2_core::entity::MapEntity;
 use portal2_core::vfs::GameFs;
+use portal2_ui::vgui::{FontId, Schemes, Surface, VguiPaint, layer};
 
 pub struct ScreenPlugin;
 

@@ -92,7 +92,7 @@ impl RasterFont {
         let inner = platform::Font::create(&spec);
         let metrics = inner.as_ref().map(|f| f.metrics(&spec)).unwrap_or_default();
         if inner.is_none() {
-            log::warn!("vgui: font '{}' {} could not be created", spec.face, spec.tall);
+            bevy::log::warn!("vgui: font '{}' {} could not be created", spec.face, spec.tall);
         }
         Self { spec, inner, metrics, abc: HashMap::new() }
     }

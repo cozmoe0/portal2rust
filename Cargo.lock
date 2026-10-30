@@ -4980,6 +4980,7 @@ dependencies = [
  "portal2_audio",
  "portal2_core",
  "portal2_render",
+ "portal2_ui",
  "serde",
  "serde_derive",
  "source_formats",
@@ -5015,6 +5016,19 @@ dependencies = [
  "bevy",
  "portal2_core",
  "source_formats",
+]
+
+[[package]]
+name = "portal2_ui"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bink",
+ "bytemuck",
+ "portal2_audio",
+ "portal2_core",
+ "source_formats",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

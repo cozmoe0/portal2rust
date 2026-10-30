@@ -14,8 +14,8 @@ use bevy::prelude::*;
 use crate::portals::Portals;
 use crate::portals::gun::PortalGun;
 use crate::screen::ScreenFade;
-use crate::vgui::{Surface, VguiPaint, layer};
 use portal2_core::console::Console;
+use portal2_ui::vgui::{Surface, VguiPaint, layer};
 
 pub fn build(app: &mut App) {
     app.add_systems(PostUpdate, paint.in_set(VguiPaint));
@@ -45,7 +45,7 @@ fn paint(
     map: Option<Res<crate::world::CurrentMap>>,
     mut surface: ResMut<Surface>,
 ) {
-    if map.is_none() || ui.active() || !crate::hud::visible(&console) {
+    if map.is_none() || ui.active() || !portal2_ui::hud::visible(&console) {
         return;
     }
     let (cx, cy) = (surface.wide / 2, surface.tall / 2);

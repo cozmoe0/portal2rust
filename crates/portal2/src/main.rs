@@ -4,7 +4,6 @@
 //! textures, sounds, scripts) is read from it at runtime.
 
 mod camera;
-mod captions;
 mod chain;
 mod collision;
 mod commands;
@@ -26,8 +25,6 @@ mod script;
 mod shots;
 mod smoke;
 mod sound;
-mod vgui;
-mod video;
 mod visuals;
 mod world;
 
@@ -76,7 +73,7 @@ fn main() {
                 visuals::tonemap::TonemapPlugin,
                 portal2_audio::AudioPlugin,
                 sound::SoundEntitiesPlugin,
-                captions::CaptionsPlugin,
+                portal2_ui::captions::CaptionsPlugin,
             ),
             (
                 camera::CameraPlugin,
@@ -89,9 +86,10 @@ fn main() {
             ),
             (
                 save::SavePlugin,
-                vgui::VguiPlugin,
+                portal2_ui::vgui::VguiPlugin,
+                portal2_ui::hud::HudLayoutPlugin,
                 hud::HudPlugin,
-                video::VideoPlugin,
+                portal2_ui::video::VideoPlugin,
                 gameui::GameUiPlugin,
                 particles::ParticlePlugin,
                 paint::PaintPlugin,
