@@ -148,28 +148,19 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     if has(FLAG_TRANSLUCENT) || has(FLAG_ALPHATEST) {
         alpha = alpha * base.a;
     }
-    let tested_alpha = alpha;
-    // `$allowalphatocoverage` materials drawn with MSAA turn alpha into
-    // sample coverage instead of testing it (the game's alpha to coverage).
-    // Texture alpha fades over several texels (more in the smaller mips);
-    // used as coverage as it is, that fringe would dither the background
-    // through the outline of every leaf. Coverage instead ramps over about
-    // a pixel around the test reference, so edges are smoothed and the rest
-    // is solid as with the test.
-    @if(ALPHA_TO_COVERAGE) {
-        let ramp = max(fwidth(alpha), 1e-4);
-        if has(FLAG_ALPHATEST) {
-            alpha = saturate((alpha - material.alpha_ref) / ramp + 0.5);
-        }
-    }
-    @if(!ALPHA_TO_COVERAGE) {
-        if has(FLAG_ALPHATEST) && alpha < material.alpha_ref {
+    // Alpha-tested surfaces are opaque wherever they pass. The main view is
+    // drawn over the 3D sky box camera's picture, and a pixel left below
+    // full alpha lets that picture through: foliage edges, where the
+    // texture's alpha fades, showed the sky as dotted bright outlines.
+    if has(FLAG_ALPHATEST) {
+        if alpha < material.alpha_ref {
             discard;
         }
+        alpha = 1.0;
     }
     if is_shadow_view() {
         // Shadow maps hold the distance to the nearest opaque surface.
-        if has(FLAG_TRANSLUCENT) || (has(FLAG_ALPHATEST) && tested_alpha < material.alpha_ref) {
+        if has(FLAG_TRANSLUCENT) {
             discard;
         }
         return vec4<f32>(distance(view.world_position, in.world_position.xyz), 0.0, 0.0, 1.0);
