@@ -205,11 +205,15 @@ impl Physics<'_, '_> {
             }
         }
 
+        let reach = SweepReach::new(start, end, mins, maxs);
         for (e, col, gt) in &self.colliders {
             if !col.enabled || !col.solid || ignore.contains(&e) {
                 continue;
             }
             let affine = gt.affine();
+            if !reach.may_touch(&affine, &col.shape) {
+                continue;
+            }
             let inv = affine.inverse();
             let (ls, le) = (inv.transform_point3(start), inv.transform_point3(end));
             let (lmins, lmaxs) = rotated_box(inv.matrix3.into(), mins, maxs);
@@ -260,11 +264,16 @@ impl Physics<'_, '_> {
         if world_hit {
             out.push(None);
         }
+        let reach = SweepReach::new(pos, pos, mins, maxs);
         for (e, col, gt) in &self.colliders {
             if !col.enabled || !col.solid {
                 continue;
             }
-            let inv = gt.affine().inverse();
+            let affine = gt.affine();
+            if !reach.may_touch(&affine, &col.shape) {
+                continue;
+            }
+            let inv = affine.inverse();
             let lp = inv.transform_point3(pos);
             let (lmins, lmaxs) = rotated_box(inv.matrix3.into(), mins, maxs);
             if col.shape.volumes.iter().any(|v| v.contents & mask != 0 && v.overlaps_box(lp, lmins, lmaxs)) {
@@ -285,6 +294,49 @@ impl Physics<'_, '_> {
         let (lmins, lmaxs) = rotated_box(inv.matrix3.into(), mins, maxs);
         col.shape.volumes.iter().any(|v| v.overlaps_box(lp, lmins, lmaxs))
     }
+}
+
+/// Everywhere a swept box can reach, for skipping colliders before the
+/// exact test in their own space. That test sweeps the box's bounds after
+/// rotating it into the collider's space, which are larger than the box;
+/// mapped back they stay within the box's centre plus the sum of its half
+/// extents on every axis, for any rotation (or uniform scale), so a
+/// collider outside that reach cannot be hit.
+struct SweepReach {
+    mins: Vec3,
+    maxs: Vec3,
+}
+
+impl SweepReach {
+    fn new(start: Vec3, end: Vec3, mins: Vec3, maxs: Vec3) -> Self {
+        let center = (mins + maxs) * 0.5;
+        let half = (maxs - mins) * 0.5;
+        let reach = Vec3::splat(half.x + half.y + half.z + 1.0);
+        Self { mins: start.min(end) + center - reach, maxs: start.max(end) + center + reach }
+    }
+
+    /// False only when the collider is certainly out of reach.
+    fn may_touch(&self, affine: &bevy::math::Affine3A, shape: &Shape) -> bool {
+        let m = Mat3::from(affine.matrix3);
+        if !is_similarity(m) {
+            return true;
+        }
+        let (mins, maxs) = rotated_box(m, shape.mins, shape.maxs);
+        let t = Vec3::from(affine.translation);
+        (mins + t).cmple(self.maxs).all() && self.mins.cmple(maxs + t).all()
+    }
+}
+
+/// Whether `m` is a rotation times a uniform scale.
+fn is_similarity(m: Mat3) -> bool {
+    let (x, y, z) = (m.x_axis, m.y_axis, m.z_axis);
+    let s = x.length_squared();
+    let tol = 1e-4 * s.max(1e-12);
+    (y.length_squared() - s).abs() <= tol
+        && (z.length_squared() - s).abs() <= tol
+        && x.dot(y).abs() <= tol
+        && y.dot(z).abs() <= tol
+        && z.dot(x).abs() <= tol
 }
 
 /// Axis-aligned bounds of a box after rotating it by `m`.
@@ -329,3 +381,54 @@ pub fn brush_class_is_solid(class: &str) -> bool {
 
 /// The world's own solid contents flag, re-exported for callers.
 pub const SOLID: u32 = contents::SOLID;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A tiny deterministic generator for the property test.
+    struct Lcg(u64);
+
+    impl Lcg {
+        fn f(&mut self, lo: f32, hi: f32) -> f32 {
+            self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            lo + (self.0 >> 40) as f32 / (1u64 << 24) as f32 * (hi - lo)
+        }
+
+        fn v(&mut self, r: f32) -> Vec3 {
+            Vec3::new(self.f(-r, r), self.f(-r, r), self.f(-r, r))
+        }
+    }
+
+    /// The bounds test that lets traces skip colliders never rejects a
+    /// collider the exact sweep would hit: random boxes, placements and
+    /// sweeps, checked against every hit `ConvexVolume::sweep` reports.
+    #[test]
+    fn bounds_test_never_skips_a_hit() {
+        let mut rng = Lcg(7);
+        let mut hits = 0;
+        for _ in 0..20000 {
+            // Off-centre shapes, as brush models are in their own space.
+            let half = Vec3::new(rng.f(1.0, 40.0), rng.f(1.0, 40.0), rng.f(1.0, 40.0));
+            let off = rng.v(50.0);
+            let shape = Shape::new(vec![ConvexVolume::from_box(off - half, off + half, contents::SOLID, -1)]);
+            let rot = Quat::from_euler(EulerRot::XYZ, rng.f(-3.2, 3.2), rng.f(-3.2, 3.2), rng.f(-3.2, 3.2));
+            let affine = bevy::math::Affine3A::from_rotation_translation(rot, rng.v(60.0));
+            let (start, end) = (rng.v(120.0), rng.v(120.0));
+            // Off-centre boxes too, like the player's hull.
+            let ext = Vec3::new(rng.f(0.0, 16.0), rng.f(0.0, 16.0), rng.f(0.0, 36.0));
+            let lift = Vec3::Z * rng.f(0.0, 36.0);
+            let (mins, maxs) = (-ext + lift, ext + lift);
+            let inv = affine.inverse();
+            let (ls, le) = (inv.transform_point3(start), inv.transform_point3(end));
+            let (lmins, lmaxs) = rotated_box(inv.matrix3.into(), mins, maxs);
+            let hit = shape.volumes[0].sweep(ls, le, lmins, lmaxs).is_some();
+            if hit {
+                hits += 1;
+                let reach = SweepReach::new(start, end, mins, maxs);
+                assert!(reach.may_touch(&affine, &shape), "skipped a hit: {affine:?} {start} {end} {ext}");
+            }
+        }
+        assert!(hits > 1000, "too few hits to mean anything: {hits}");
+    }
+}
