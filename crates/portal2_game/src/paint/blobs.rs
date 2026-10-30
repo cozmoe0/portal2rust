@@ -25,7 +25,7 @@ use portal2_world::CurrentMap;
 use portal2_world::collision::{Physics, mask};
 use portal2_world::paint_map::{PaintMap, PaintType, SplatSettings};
 
-pub const BLOB_SHADER: &str = "embedded://portal2/paint/paint_blob.wesl";
+pub const BLOB_SHADER: &str = "embedded://portal2_game/paint/paint_blob.wesl";
 const TICK: f32 = 1.0 / 60.0;
 /// Drawn radius of a blob per unit of its `radius` (the game renders blobs
 /// as one merged liquid surface; spheres of this size stand in).
@@ -569,7 +569,7 @@ fn spheres_mesh(spheres: &[Sphere], unit: &[Vec3], tris: &[u32]) -> Mesh {
         }
         indices.extend(tris.iter().map(|i| base + i));
     }
-    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD);
+    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
