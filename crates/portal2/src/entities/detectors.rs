@@ -6,10 +6,10 @@ use bevy::prelude::*;
 
 use super::io::{FireOutput, InputCall, InputHandlers};
 use super::{MapEntity, SpawnHandlers};
-use crate::collision::Physics;
 use crate::player::Player;
 use crate::portals::{Portal, Portals};
 use portal2_core::sets::ThinkSet;
+use portal2_world::collision::Physics;
 
 pub fn register(app: &mut App) {
     app.init_resource::<SpeedMod>()

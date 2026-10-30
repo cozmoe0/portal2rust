@@ -13,8 +13,8 @@ use bevy::prelude::*;
 
 use crate::entities::io::{InputCall, InputHandlers};
 use crate::entities::{SpawnHandlers, world_transform};
-use crate::world::MapObject;
 use portal2_core::entity::{EntityRegistry, MapEntity};
+use portal2_world::MapObject;
 
 pub fn register(app: &mut App) {
     app.add_systems(FixedUpdate, (build_hinges, spring_forces));

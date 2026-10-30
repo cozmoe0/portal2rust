@@ -11,15 +11,15 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use portal2_core::sets::{PlayerCameraSet, PlayerMoveSet, PlayerSpawnSet};
 
-use crate::camera::FlyCamera;
-use crate::collision::Physics;
-use crate::world::PlayerStart;
 use movement::{MoveInput, MoveState, Mover};
 use portal2_core::args::Args;
 use portal2_core::console::Console;
 use portal2_core::console::binds::Buttons;
 use portal2_core::entity::EntityRegistry;
 use portal2_core::view::{MainCamera, ViewAngles};
+use portal2_world::PlayerStart;
+use portal2_world::camera::FlyCamera;
+use portal2_world::collision::Physics;
 
 pub struct PlayerPlugin;
 
@@ -172,7 +172,7 @@ fn player_tick(
     portals: Option<Res<crate::portals::Portals>>,
     portal_query: Query<&crate::portals::Portal>,
     mut players: Query<(Entity, &mut Player, &mut Transform)>,
-    (paint, mut sounds): (Option<Res<crate::paint::PaintMap>>, MessageWriter<portal2_audio::SoundRequest>),
+    (paint, mut sounds): (Option<Res<portal2_world::paint_map::PaintMap>>, MessageWriter<portal2_audio::SoundRequest>),
 ) {
     let speed_scale = speed_mod.map(|s| s.0).unwrap_or(1.0);
     let gel_settings = crate::paint::power::GelSettings::from_console(&console);
@@ -262,7 +262,7 @@ pub fn place_camera(
                 _ => (4.0, Vec2::new(4.0, 3.0)),
             };
             let rot = portal2_core::coords::angles_to_quat(view.angles);
-            let (eye, rot) = crate::portals::view_through_portals(frames, view.origin, rot, near, near_half);
+            let (eye, rot) = portal2_world::collision::portal::view_through_portals(frames, view.origin, rot, near, near_half);
             if eye != view.origin {
                 view.origin = eye;
                 view.angles = portal2_core::coords::quat_to_angles(rot);

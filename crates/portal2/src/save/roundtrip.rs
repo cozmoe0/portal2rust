@@ -10,8 +10,8 @@ use bevy::prelude::*;
 use ciborium::Value;
 
 use super::{PendingRestore, SaveFile, capture, load_named, write_file};
-use crate::world::{CurrentMap, LoadMap, MapLoadType};
 use portal2_core::args::Args;
+use portal2_world::{CurrentMap, LoadMap, MapLoadType};
 
 const FILE: &str = "p2r_roundtrip";
 

@@ -14,14 +14,12 @@ use bevy::render::view::Tonemapping;
 use source_formats::bsp::surf;
 use source_formats::vmt::material_path;
 
-use super::placement::{Helper, PlacementContext, PortalFrame};
+use super::placement::{Helper, PlacementContext};
 use super::{FizzlePortals, PlacePortal};
-use crate::collision::Physics;
 use crate::entities::SpawnHandlers;
 use crate::entities::io::InputCall;
 use crate::entities::io::InputHandlers;
 use crate::player::{Player, PlayerInput};
-use crate::world::{CurrentMap, PlayerStart};
 use portal2_core::args::Args;
 use portal2_core::coords::{angles_forward, angles_to_quat};
 use portal2_core::entity::{EntityRegistry, MapEntity};
@@ -34,6 +32,9 @@ use portal2_render::models::lighting;
 use portal2_render::models::{ModelCache, SpawnModel, StudioAnimator, spawn_model_parts};
 use portal2_render::source_material::{ModelMaterial, RefractMaterial};
 use portal2_render::textures::TextureCache;
+use portal2_world::collision::Physics;
+use portal2_world::collision::portal::PortalFrame;
+use portal2_world::{CurrentMap, PlayerStart};
 
 /// Seconds between shots (`portalgun_fire_delay`).
 pub const FIRE_DELAY: f64 = 0.2;
@@ -136,7 +137,7 @@ fn reset_gun_on_map(
         Some("none") => [false, false],
         Some("blue") => [true, false],
         Some("both") => [true, true],
-        _ if load == crate::world::MapLoadType::NewGame => [false, false],
+        _ if load == portal2_world::MapLoadType::NewGame => [false, false],
         _ => gun.can_fire,
     };
 }
@@ -226,7 +227,11 @@ fn fire_gun(
     ),
     mut animators: Query<&mut StudioAnimator>,
     mut auto: ResMut<crate::player::autopilot::AutoFire>,
-    (paint, console, mut events): (Option<Res<crate::paint::PaintMap>>, Res<portal2_core::console::Console>, MessageWriter<GameEvent>),
+    (paint, console, mut events): (
+        Option<Res<portal2_world::paint_map::PaintMap>>,
+        Res<portal2_core::console::Console>,
+        MessageWriter<GameEvent>,
+    ),
 ) {
     let slot = if let Some(slot) = auto.0.take() {
         slot
@@ -282,7 +287,7 @@ fn fire_gun(
         // Portal gel takes portals whatever the surface.
         if on_paint
             && let Some(paint) = paint.as_deref()
-            && paint.dominant(0, point + normal * 0.1, PORTAL_PAINT_RADIUS, min_paint) == Some(crate::paint::PaintType::Portal)
+            && paint.dominant(0, point + normal * 0.1, PORTAL_PAINT_RADIUS, min_paint) == Some(portal2_world::paint_map::PaintType::Portal)
         {
             return true;
         }
@@ -322,7 +327,7 @@ fn fire_gun(
         }
         Err(e) => {
             info!("portal {slot} shot failed: {e:?}");
-            let tr = physics.trace(eye, eye + dir * 56756.0, Vec3::ZERO, Vec3::ZERO, crate::collision::mask::SOLID_ALL, &[pe]);
+            let tr = physics.trace(eye, eye + dir * 56756.0, Vec3::ZERO, Vec3::ZERO, portal2_world::collision::mask::SOLID_ALL, &[pe]);
             sounds.write(portal2_audio::SoundRequest::at("Portal.fizzle_invalid_surface", tr.end));
             fx.write(super::PortalFx::Shot { slot, start: muzzle, end: tr.end, aim: dir });
             if tr.fraction < 1.0 {

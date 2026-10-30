@@ -17,9 +17,9 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{AsBindGroup, ShaderType};
 use bevy::shader::ShaderRef;
 
-use crate::collision::Physics;
-use crate::portals::placement::{PortalFrame, transfer};
 use crate::portals::{Portal, Portals};
+use portal2_world::collision::Physics;
+use portal2_world::collision::portal::{PortalFrame, transfer};
 
 pub const EFFECT_SHADER: &str = "embedded://portal2_render/shaders/effect.wesl";
 

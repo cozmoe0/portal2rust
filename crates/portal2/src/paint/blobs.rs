@@ -13,17 +13,17 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{AsBindGroup, ShaderType};
 use bevy::shader::ShaderRef;
 
-use super::{PaintMap, PaintType, SplatSettings};
-use crate::collision::{Physics, mask};
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::world::CurrentMap;
 use portal2_audio::SoundRequest;
 use portal2_core::console::Console;
 use portal2_core::entity::MapEntity;
 use portal2_core::sets::ThinkSet;
 use portal2_core::vfs::GameFs;
 use portal2_render::textures::TextureCache;
+use portal2_world::CurrentMap;
+use portal2_world::collision::{Physics, mask};
+use portal2_world::paint_map::{PaintMap, PaintType, SplatSettings};
 
 pub const BLOB_SHADER: &str = "embedded://portal2/paint/paint_blob.wesl";
 const TICK: f32 = 1.0 / 60.0;
@@ -192,7 +192,7 @@ pub struct Blobs {
     noise_budget: f32,
 }
 
-fn clear_on_map_load(mut loaded: MessageReader<crate::world::MapLoaded>, mut blobs: ResMut<Blobs>) {
+fn clear_on_map_load(mut loaded: MessageReader<portal2_world::MapLoaded>, mut blobs: ResMut<Blobs>) {
     if loaded.read().last().is_some() {
         blobs.list.clear();
     }
@@ -634,7 +634,7 @@ impl DrawTargets<'_> {
                 let id = commands
                     .spawn((
                         Name::new("paint blobs"),
-                        crate::world::MapObject,
+                        portal2_world::MapObject,
                         Mesh3d(self.meshes.add(mesh)),
                         MeshMaterial3d(material),
                         Transform::IDENTITY,

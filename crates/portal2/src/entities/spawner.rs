@@ -8,7 +8,6 @@ use bevy::mesh::skinning::SkinnedMeshInverseBindposes;
 use bevy::prelude::*;
 
 use super::MapEntity;
-use crate::world::{CurrentMap, is_invisible_brush_class, spawn_model_meshes};
 use portal2_core::vfs::GameFs;
 use portal2_render::materials::{MaterialCache, MaterialContext};
 use portal2_render::models::lighting;
@@ -16,6 +15,7 @@ use portal2_render::models::lighting::ModelLighting;
 use portal2_render::models::{LoadedModel, ModelCache, SpawnModel, StudioAnimator, spawn_model_parts};
 use portal2_render::source_material::{ModelMaterial, RefractMaterial};
 use portal2_render::textures::TextureCache;
+use portal2_world::{CurrentMap, is_invisible_brush_class, spawn_model_meshes};
 
 /// Adds brush geometry for `model "*N"` entities whose class is drawn.
 pub fn attach_brush_model(world: &mut World, e: Entity) {
@@ -110,13 +110,13 @@ pub fn clear_render_children(world: &mut World, e: Entity) {
 /// Cache of studio model collision shapes (model space).
 #[derive(Resource, Default)]
 pub struct ShapeCache {
-    map: std::collections::HashMap<(String, i32), Option<Arc<crate::collision::Shape>>>,
+    map: std::collections::HashMap<(String, i32), Option<Arc<portal2_world::collision::Shape>>>,
 }
 
 /// Attaches collision to brush entities (solid or touch-only) and to solid
 /// studio-model entities.
 pub fn attach_collider(world: &mut World, e: Entity) {
-    use crate::collision::{Collider, CollisionWorld, brush_class_is_solid};
+    use portal2_world::collision::{Collider, CollisionWorld, brush_class_is_solid};
     let Some(me) = world.get::<MapEntity>(e).cloned() else { return };
     if let Some(model) = me.brush_model() {
         let Some(shape) = world.resource::<CollisionWorld>().brush_models.get(model).cloned() else { return };
@@ -142,7 +142,8 @@ pub fn attach_collider(world: &mut World, e: Entity) {
         Some(s) => s,
         None => {
             let fs = world.resource::<GameFs>().clone();
-            let s = crate::collision::build::studio_volumes(&fs, &key.0, solid).map(|v| Arc::new(crate::collision::Shape::new(v)));
+            let s = portal2_world::collision::build::studio_volumes(&fs, &key.0, solid)
+                .map(|v| Arc::new(portal2_world::collision::Shape::new(v)));
             world.resource_mut::<ShapeCache>().map.insert(key, s.clone());
             s
         }

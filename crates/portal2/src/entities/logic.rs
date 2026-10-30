@@ -8,9 +8,9 @@ use bevy::prelude::*;
 
 use super::io::{EventQueue, EventTarget, FireOutput, InputCall, InputHandlers, fire_output};
 use super::{EntityRegistry, MapEntity, SpawnHandlers, despawn_entity, world_transform};
-use crate::world::{CurrentMap, MapLoadType};
 use portal2_core::clock::GameClock;
 use portal2_core::sets::ThinkSet;
+use portal2_world::{CurrentMap, MapLoadType};
 
 pub fn register(app: &mut App) {
     app.init_resource::<GlobalStates>().add_systems(FixedUpdate, tick_timers.in_set(ThinkSet));

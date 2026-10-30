@@ -7,13 +7,13 @@ use bevy::prelude::*;
 use super::io::{FireOutput, InputCall, InputHandlers, fire_output};
 use super::props::FloorButton;
 use super::{EntityRegistry, MapEntity, SpawnHandlers};
-use crate::collision::Physics;
 use crate::player::Player;
 use crate::player::health::DamagePlayer;
-use crate::world::CurrentMap;
 use portal2_core::clock::GameClock;
 use portal2_core::sets::PlayerMoveSet;
 use portal2_render::models::StudioAnimator;
+use portal2_world::CurrentMap;
+use portal2_world::collision::Physics;
 
 pub fn register(app: &mut App) {
     app.add_message::<PlayerDied>()
@@ -229,7 +229,7 @@ fn touch_triggers(
     registry: Res<EntityRegistry>,
     entities: Query<&MapEntity>,
     holding: Option<Res<crate::physics::carry::Holding>>,
-    props: Query<(Entity, &crate::collision::Collider, &GlobalTransform), With<crate::entities::props::PhysicsProp>>,
+    props: Query<(Entity, &portal2_world::collision::Collider, &GlobalTransform), With<crate::entities::props::PhysicsProp>>,
     mut players: Query<(Entity, &mut Player)>,
     mut input: ResMut<crate::player::PlayerInput>,
     mut triggers: Query<(Entity, &mut Trigger)>,
@@ -367,7 +367,7 @@ fn press_floor_buttons(
     players: Query<&Player>,
     mut buttons: Query<(Entity, &mut FloorButton, &GlobalTransform, Option<&mut StudioAnimator>, &MapEntity)>,
     props: Query<
-        (&MapEntity, &crate::collision::Collider, &GlobalTransform),
+        (&MapEntity, &portal2_world::collision::Collider, &GlobalTransform),
         (With<crate::entities::props::PhysicsProp>, Without<FloorButton>),
     >,
     mut out: MessageWriter<FireOutput>,

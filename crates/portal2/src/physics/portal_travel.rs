@@ -5,12 +5,12 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 
 use super::carry::{Holding, release};
-use crate::collision::{Collider as TraceCollider, Physics};
 use crate::entities::io::FireOutput;
 use crate::entities::props::PhysicsProp;
 use crate::entities::triggers::{Trigger, TriggerKind};
-use crate::portals::placement::transfer;
 use crate::portals::{Portal, Portals};
+use portal2_world::collision::portal::transfer;
+use portal2_world::collision::{Collider as TraceCollider, Physics};
 
 pub struct PortalTravelPlugin;
 
@@ -67,11 +67,11 @@ fn funnel_props(
 /// The closest open floor portal under `at` whose opening, grown by half,
 /// `at` lies over, with the offset from `at` to its centre.
 fn floor_portal_below(
-    frames: &[crate::portals::placement::PortalFrame; 2],
+    frames: &[portal2_world::collision::portal::PortalFrame; 2],
     at: Vec3,
-) -> Option<(crate::portals::placement::PortalFrame, Vec3)> {
-    use crate::portals::placement::{HALF_HEIGHT, HALF_WIDTH};
-    let mut best: Option<(f32, crate::portals::placement::PortalFrame, Vec3)> = None;
+) -> Option<(portal2_world::collision::portal::PortalFrame, Vec3)> {
+    use portal2_world::collision::portal::{HALF_HEIGHT, HALF_WIDTH};
+    let mut best: Option<(f32, portal2_world::collision::portal::PortalFrame, Vec3)> = None;
     for p in frames {
         let delta = p.center - at;
         if p.forward.z <= 0.8 || delta.z < -1024.0 || delta.z >= 0.0 {

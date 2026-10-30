@@ -15,10 +15,10 @@ use portal2_core::sets::TransitionSet;
 use super::io::{InputCall, InputHandlers, fire_output};
 use super::{EntityRegistry, MapEntity, SpawnHandlers, world_transform};
 use crate::player::{Player, PlayerInput};
-use crate::world::{CurrentMap, LoadMap, MapLoadType};
 use portal2_core::clock::GameClock;
 use portal2_core::sets::PlayerSpawnSet;
 use portal2_core::sets::ThinkSet;
+use portal2_world::{CurrentMap, LoadMap, MapLoadType};
 
 pub fn register(app: &mut App) {
     app.add_systems(PreUpdate, apply_transition.in_set(TransitionSet).after(PlayerSpawnSet))

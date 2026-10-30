@@ -9,10 +9,10 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
-use crate::collision::Collider as TraceCollider;
 use crate::entities::io::{InputCall, InputHandlers, fire_output};
 use crate::entities::props::PhysicsProp;
 use portal2_core::entity::MapEntity;
+use portal2_world::collision::Collider as TraceCollider;
 
 /// The explosion's radius when its keyvalue is 0: this times its magnitude.
 const RADIUS_PER_MAGNITUDE: f32 = 2.5;

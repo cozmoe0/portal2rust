@@ -12,19 +12,19 @@ use source_formats::bsp::contents;
 
 use super::EffectMaterial;
 use super::laser::LaserHitTurret;
-use crate::collision::{Physics, mask};
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{FireOutput, InputCall, InputHandlers};
 use crate::entities::props::PhysicsProp;
 use crate::entities::spawner::{ModelOptions, attach_studio_model};
 use crate::player::Player;
 use crate::player::health::DamagePlayer;
-use crate::world::MapObject;
 use portal2_audio::SoundRequest;
 use portal2_core::clock::GameClock;
 use portal2_core::entity::MapEntity;
 use portal2_core::sets::ThinkSet;
 use portal2_render::models::StudioAnimator;
+use portal2_world::MapObject;
+use portal2_world::collision::{Physics, mask};
 
 const THINK: f64 = 0.1;
 /// `PortalTurretBullet` damage, of which players take half

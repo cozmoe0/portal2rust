@@ -15,15 +15,14 @@ use bevy::shader::ShaderRef;
 use bevy::window::PrimaryWindow;
 use portal2_core::layers::{PORTAL_END_LAYER, PORTAL_INNER_LAYER, PORTAL_LAYER};
 
-use crate::collision::CollisionWorld;
-use crate::collision::volume::{ConvexVolume, Plane};
 use crate::player::{Player, PlayerInput};
-use crate::world::{MapLoaded, MapObject};
-use placement::{HALF_HEIGHT, HALF_WIDTH, PortalFrame, transfer};
 use portal2_core::args::Args;
 use portal2_core::coords::{angles_forward, quat_to_angles};
 use portal2_core::sets::PlayerMoveSet;
 use portal2_core::view::MainCamera;
+use portal2_world::collision::CollisionWorld;
+use portal2_world::collision::portal::{HALF_HEIGHT, HALF_WIDTH, PortalFrame, PortalHole, PortalHoles, transfer};
+use portal2_world::{MapLoaded, MapObject};
 use projection::PortalProjection;
 
 pub const PORTAL_SHADER: &str = "embedded://portal2_render/shaders/portal.wesl";
@@ -157,129 +156,6 @@ pub enum PortalFx {
     Closed { slot: usize, frame: PortalFrame },
 }
 
-/// Openings that let movement pass through the wall a linked portal is on.
-#[derive(Resource, Default, Clone)]
-pub struct PortalHoles {
-    pub holes: Vec<PortalHole>,
-}
-
-#[derive(Clone, Debug)]
-pub struct PortalHole {
-    pub frame: PortalFrame,
-    /// Walls around the opening that keep movers inside the tunnel.
-    pub frame_volumes: Vec<ConvexVolume>,
-    /// Static volumes the opening cuts through (sorted indices into
-    /// `CollisionWorld::statics`): whatever reaches into the space behind
-    /// the opening, however far the surface sits behind the portal.
-    pub carved: Vec<u32>,
-}
-
-/// How far behind the portal the opening cuts through the world.
-const CARVE_DEPTH: f32 = 64.0;
-
-impl PortalHole {
-    fn new(frame: PortalFrame, world: &CollisionWorld) -> Self {
-        // Four slabs around the rectangular opening, reaching 96 units
-        // behind the surface.
-        let depth = 96.0;
-        let t = 48.0;
-        let slab = |center_local: Vec3, half: Vec3| -> Option<ConvexVolume> {
-            let axes = [frame.forward, frame.left(), frame.up];
-            let c = frame.to_world(center_local);
-            let mut planes = Vec::with_capacity(6);
-            for (i, a) in axes.iter().enumerate() {
-                planes.push(Plane { normal: *a, dist: a.dot(c) + half[i], surface: -1 });
-                planes.push(Plane { normal: -*a, dist: -a.dot(c) + half[i], surface: -1 });
-            }
-            ConvexVolume::from_planes(planes, source_formats::bsp::contents::SOLID)
-        };
-        let (hw, hh) = (HALF_WIDTH, HALF_HEIGHT);
-        let frame_volumes = [
-            slab(Vec3::new(-depth / 2.0, hw + t, 0.0), Vec3::new(depth / 2.0, t, hh + 2.0 * t)),
-            slab(Vec3::new(-depth / 2.0, -hw - t, 0.0), Vec3::new(depth / 2.0, t, hh + 2.0 * t)),
-            slab(Vec3::new(-depth / 2.0, 0.0, hh + t), Vec3::new(depth / 2.0, hw, t)),
-            slab(Vec3::new(-depth / 2.0, 0.0, -hh - t), Vec3::new(depth / 2.0, hw, t)),
-        ]
-        .into_iter()
-        .flatten()
-        .collect();
-        Self { frame, frame_volumes, carved: carved_statics(&frame, world) }
-    }
-
-    /// Whether the opening cuts away static volume `index`.
-    pub fn carves(&self, index: u32) -> bool {
-        self.carved.binary_search(&index).is_ok()
-    }
-
-    /// Whether the opening cuts away a moving volume with these bounding
-    /// corners: one lying wholly behind the portal and reaching into the
-    /// space behind the opening.
-    pub fn carves_bounds(&self, corners: &[Vec3]) -> bool {
-        let f = &self.frame;
-        let local: Vec<Vec3> = corners.iter().map(|&c| f.to_local(c)).collect();
-        let (lo, hi) = local.iter().fold((Vec3::MAX, Vec3::MIN), |(lo, hi), l| (lo.min(*l), hi.max(*l)));
-        hi.x <= 0.5
-            && lo.x < 0.0
-            && hi.x > -CARVE_DEPTH
-            && lo.y < HALF_WIDTH - 1.0
-            && hi.y > -(HALF_WIDTH - 1.0)
-            && lo.z < HALF_HEIGHT - 1.0
-            && hi.z > -(HALF_HEIGHT - 1.0)
-    }
-
-    /// Whether a box at `pos` sits inside the opening's tunnel, so the wall
-    /// the portal is on should not block it.
-    pub fn contains_box(&self, pos: Vec3, mins: Vec3, maxs: Vec3) -> bool {
-        let c = pos + (mins + maxs) * 0.5;
-        let h = (maxs - mins) * 0.5;
-        let f = &self.frame;
-        let extent = |axis: Vec3| axis.x.abs() * h.x + axis.y.abs() * h.y + axis.z.abs() * h.z;
-        let l = f.to_local(c);
-        let (ex, ey, ez) = (extent(f.forward), extent(f.left()), extent(f.up));
-        l.y.abs() + ey <= HALF_WIDTH + 1.0 && l.z.abs() + ez <= HALF_HEIGHT + 1.0 && l.x - ex < 4.0 && l.x + ex > -96.0
-    }
-}
-
-/// Static volumes reaching into the space behind an opening (a little
-/// inside its edges, so floors and side walls meeting the rim stay).
-fn carved_statics(frame: &PortalFrame, world: &CollisionWorld) -> Vec<u32> {
-    let (hw, hh) = (HALF_WIDTH - 1.0, HALF_HEIGHT - 1.0);
-    let mut corners = Vec::with_capacity(8);
-    for x in [-CARVE_DEPTH, 0.0] {
-        for y in [-hw, hw] {
-            for z in [-hh, hh] {
-                corners.push(frame.to_world(Vec3::new(x, y, z)));
-            }
-        }
-    }
-    let plane = |normal: Vec3, local_extent: f32| Plane { normal, dist: normal.dot(frame.center) + local_extent, surface: -1 };
-    let region = [
-        plane(frame.forward, 0.0),
-        plane(-frame.forward, CARVE_DEPTH),
-        plane(frame.left(), hw),
-        plane(-frame.left(), hw),
-        plane(frame.up, hh),
-        plane(-frame.up, hh),
-    ];
-    let (mins, maxs) = corners.iter().fold((Vec3::MAX, Vec3::MIN), |(lo, hi), c| (lo.min(*c), hi.max(*c)));
-    let mut carved: Vec<u32> = world
-        .statics_in(mins, maxs)
-        .into_iter()
-        .filter(|&i| {
-            let v = &world.statics[i as usize];
-            // Separated when every corner of one lies outside a face of the other.
-            if v.planes.iter().any(|p| corners.iter().all(|c| p.normal.dot(*c) > p.dist + 0.01)) {
-                return false;
-            }
-            let verts = crate::collision::volume::polytope_vertices(&v.planes);
-            !region.iter().any(|p| verts.iter().all(|c| p.normal.dot(*c) > p.dist + 0.01))
-        })
-        .collect();
-    carved.sort_unstable();
-    carved.dedup();
-    carved
-}
-
 fn portal_quad() -> Mesh {
     // In portal local space: X out of the surface, Y left, Z up.
     let (w, h) = (HALF_WIDTH, HALF_HEIGHT);
@@ -307,7 +183,7 @@ fn view_texture(width: u32, height: u32) -> Image {
 /// A map-placed portal moves onto the surface behind it, 1/32 unit out, as
 /// the game's placement check does (`sp_a1_intro1`'s orange portal is
 /// placed 2 units in front of its wall and ends up on it).
-fn settle_on_surface(physics: &crate::collision::Physics, frame: &mut PortalFrame) {
+fn settle_on_surface(physics: &portal2_world::collision::Physics, frame: &mut PortalFrame) {
     let start = frame.center + frame.forward;
     let tr = physics.trace(start, start - frame.forward * 17.0, Vec3::ZERO, Vec3::ZERO, placement::SHOT_MASK, &[]);
     if tr.fraction < 1.0 && !tr.start_solid && tr.normal.dot(frame.forward) > 0.99 {
@@ -334,7 +210,7 @@ fn apply_placements(
     (fs, mut textures, physics): (
         Res<portal2_core::vfs::GameFs>,
         ResMut<portal2_render::textures::TextureCache>,
-        crate::collision::Physics,
+        portal2_world::collision::Physics,
     ),
 ) {
     for req in requests.read() {
@@ -619,7 +495,7 @@ fn teleport_player(
     time: Res<Time<Fixed>>,
     portals: Res<Portals>,
     query: Query<&Portal>,
-    physics: crate::collision::Physics,
+    physics: portal2_world::collision::Physics,
     mut players: Query<(Entity, &mut Player)>,
     mut input: ResMut<PlayerInput>,
     mut cooldown: Local<u32>,
@@ -703,11 +579,11 @@ fn teleport_player(
         p.state.origin = center - half_new;
         // If that is stuck, come out along the line through the exit's
         // centre, else step out along its facing.
-        let solid = |at: Vec3| physics.trace(at, at, mins, maxs, crate::collision::mask::PLAYER_SOLID, &[pe]).start_solid;
+        let solid = |at: Vec3| physics.trace(at, at, mins, maxs, portal2_world::collision::mask::PLAYER_SOLID, &[pe]).start_solid;
         if solid(p.state.origin) {
             let offset = p.state.origin + half_new - to.center;
             let axis = p.state.origin - (offset - to.forward * offset.dot(to.forward));
-            let tr = physics.trace(axis, p.state.origin, mins, maxs, crate::collision::mask::PLAYER_SOLID, &[pe]);
+            let tr = physics.trace(axis, p.state.origin, mins, maxs, portal2_world::collision::mask::PLAYER_SOLID, &[pe]);
             if !tr.start_solid {
                 p.state.origin = tr.end;
             } else if let Some(out) = (1..12).map(|i| p.state.origin + to.forward * (i as f32 * 4.0)).find(|&at| !solid(at)) {
@@ -790,36 +666,6 @@ fn portal_sounds(
     }
 }
 
-/// Carries a view through a linked portal when what it shows lies beyond
-/// the opening: the whole near plane (half-size `near_half` at distance
-/// `near`) is behind the portal inside its opening, or the near plane
-/// straddles the portal and the eye itself is inside the wall behind the
-/// opening (it went through ahead of the body or is trailing it). A near
-/// plane wholly in front of the portal needs nothing, even from an eye just
-/// behind it: that view looks back out of the opening.
-pub fn view_through_portals(frames: &[PortalFrame; 2], eye: Vec3, rot: Quat, near: f32, near_half: Vec2) -> (Vec3, Quat) {
-    let (f, r, u) = (rot * Vec3::X, rot * Vec3::NEG_Y, rot * Vec3::Z);
-    let corners = [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)]
-        .map(|(sx, sy)| eye + f * near + r * (near_half.x * sx) + u * (near_half.y * sy));
-    for slot in 0..2 {
-        let (from, to) = (frames[slot], frames[1 - slot]);
-        let in_tube = |l: Vec3| l.x < 0.0 && l.x > -CARVE_DEPTH && l.y.abs() <= HALF_WIDTH && l.z.abs() <= HALF_HEIGHT;
-        let local = corners.map(|c| from.to_local(c));
-        let through = if local.iter().all(|&l| in_tube(l)) {
-            true
-        } else if local.iter().all(|l| l.x >= 0.0) {
-            false
-        } else {
-            in_tube(from.to_local(eye))
-        };
-        if through {
-            let m = transfer(&from, &to);
-            return (m.transform_point3(eye), Quat::from_mat3a(&m.matrix3).normalize() * rot);
-        }
-    }
-    (eye, rot)
-}
-
 /// Command line: whether portals render at all (debugging).
 pub fn portals_enabled(args: &Args) -> bool {
     !args.no_portals
@@ -829,52 +675,11 @@ pub fn portals_enabled(args: &Args) -> bool {
 mod tests {
     use super::*;
 
-    fn solid(mins: Vec3, maxs: Vec3) -> ConvexVolume {
-        ConvexVolume::from_box(mins, maxs, source_formats::bsp::contents::SOLID, -1)
-    }
-
-    #[test]
-    fn opening_cuts_the_wall_behind_an_offset_portal() {
-        // sp_a1_intro1's orange portal hangs 2 units in front of its wall.
-        let world = CollisionWorld::from_statics(vec![
-            solid(Vec3::new(-1135.0, 4200.0, 2600.0), Vec3::new(-1100.0, 4500.0, 2900.0)),
-            // The floor runs under the wall, just below the opening.
-            solid(Vec3::new(-1400.0, 4200.0, 2600.0), Vec3::new(-1100.0, 4500.0, 2705.0)),
-            // A side wall meets the opening's edge.
-            solid(Vec3::new(-1300.0, 4384.0, 2705.0), Vec3::new(-1135.0, 4400.0, 2900.0)),
-        ]);
-        let frame = PortalFrame { center: Vec3::new(-1137.0, 4352.0, 2762.0), forward: Vec3::NEG_X, up: Vec3::Z };
-        assert_eq!(carved_statics(&frame, &world), vec![0]);
-    }
-
     #[test]
     fn floor_portal_pushes_the_player_out_at_300() {
         let floor = PortalFrame { center: Vec3::ZERO, forward: Vec3::Z, up: Vec3::X };
         assert_eq!(min_exit_speed(&floor, Vec3::new(0.0, 0.0, 20.0), 36.0, 600.0), 300.0);
         let wall = PortalFrame { center: Vec3::ZERO, forward: Vec3::X, up: Vec3::Z };
         assert_eq!(min_exit_speed(&wall, Vec3::new(20.0, 0.0, 0.0), 36.0, 600.0), f32::MIN);
-    }
-
-    #[test]
-    fn eye_behind_the_entry_looks_out_of_the_exit() {
-        let a = PortalFrame { center: Vec3::ZERO, forward: Vec3::X, up: Vec3::Z };
-        let b = PortalFrame { center: Vec3::new(500.0, 0.0, 0.0), forward: Vec3::Y, up: Vec3::Z };
-        let near_half = Vec2::new(4.0, 2.25);
-        // Looking along the wall from inside it, just behind A.
-        let (eye, rot) = view_through_portals(&[a, b], Vec3::new(-2.0, 0.0, 10.0), Quat::from_rotation_z(1.0), 4.0, near_half);
-        assert!(b.to_local(eye).x > 1.9 && (b.to_local(eye).z - 10.0).abs() < 1e-3);
-        assert!(rot.angle_between(Quat::from_mat3a(&transfer(&a, &b).matrix3) * Quat::from_rotation_z(1.0)) < 1e-3);
-        // Walking straight in, a few units out: the whole near plane is past the opening.
-        let into_a = Quat::from_rotation_z(std::f32::consts::PI);
-        let (eye, _) = view_through_portals(&[a, b], Vec3::new(3.0, 0.0, 10.0), into_a, 4.0, near_half);
-        assert!(b.to_local(eye).x < 0.0);
-        // Trailing just behind the exit, looking out of it: the view is fine as it is.
-        let out_of_b = Quat::from_rotation_z(std::f32::consts::FRAC_PI_2);
-        let behind_b = b.to_world(Vec3::new(-2.0, 0.0, 10.0));
-        assert_eq!(view_through_portals(&[a, b], behind_b, out_of_b, 4.0, near_half).0, behind_b);
-        // Looking along the wall from in front of it: no change.
-        let (eye, _) =
-            view_through_portals(&[a, b], Vec3::new(3.0, 0.0, 10.0), Quat::from_rotation_z(std::f32::consts::FRAC_PI_2), 4.0, near_half);
-        assert_eq!(eye, Vec3::new(3.0, 0.0, 10.0));
     }
 }

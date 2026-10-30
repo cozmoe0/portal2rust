@@ -126,7 +126,7 @@ impl Plugin for ProjectedPlugin {
         });
         app.insert_resource(gpu)
             .add_systems(Startup, (spawn_shadow_cameras, load_shader_module))
-            .add_systems(PostUpdate, update_lights.after(TransformSystems::Propagate).after(crate::camera::sync_camera_transform));
+            .add_systems(PostUpdate, update_lights.after(TransformSystems::Propagate).after(portal2_world::camera::sync_camera_transform));
         let world = app.world_mut();
         world.resource_mut::<SpawnHandlers>().register("env_projectedtexture", spawn_projected);
         world.resource_mut::<InputHandlers>().register("env_projectedtexture", projected_input);

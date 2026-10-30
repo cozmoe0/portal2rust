@@ -13,14 +13,14 @@ use avian3d::prelude::*;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
-use crate::collision::volume::{ConvexVolume, polytope_vertices};
-use crate::collision::{Collider as TraceCollider, CollisionWorld, Shape};
 use crate::entities::props::PhysicsProp;
 use crate::player::Player;
-use crate::portals::PortalHoles;
-use crate::world::{CurrentMap, MapLoaded, MapObject};
 use portal2_core::entity::MapEntity;
 use portal2_core::vfs::GameFs;
+use portal2_world::collision::portal::PortalHoles;
+use portal2_world::collision::volume::{ConvexVolume, polytope_vertices};
+use portal2_world::collision::{Collider as TraceCollider, CollisionWorld, Shape};
+use portal2_world::{CurrentMap, MapLoaded, MapObject};
 
 /// Inches per metre: Avian scales its tolerances by this.
 pub const LENGTH_UNIT: f32 = 39.37;
@@ -41,7 +41,7 @@ impl Plugin for GamePhysicsPlugin {
             .insert_resource(Gravity(Vec3::NEG_Z * crate::player::movement::GRAVITY))
             .add_systems(
                 PreUpdate,
-                build_static_world.after(crate::collision::rebuild_on_map_load).before(portal2_core::sets::EntitySpawnSet),
+                build_static_world.after(portal2_world::collision::rebuild_on_map_load).before(portal2_core::sets::EntitySpawnSet),
             )
             .add_systems(Update, (attach_bodies, attach_player_body, sync_portal_slabs))
             .add_plugins((carry::CarryPlugin, portal_travel::PortalTravelPlugin));
@@ -86,7 +86,7 @@ fn build_static_world(
     }
     let Some(map) = map else { return };
     let started = std::time::Instant::now();
-    let solid = crate::collision::mask::SOLID_ALL;
+    let solid = portal2_world::collision::mask::SOLID_ALL;
     let mut hulls: Vec<(Vec3, Quat, Collider)> = Vec::new();
     for v in &world.statics {
         // Triangle volumes from terrain are rebuilt as a mesh below.
@@ -109,7 +109,7 @@ fn build_static_world(
     if !hulls.is_empty() {
         e.insert(Collider::compound(hulls));
     }
-    let tris = crate::collision::build::displacement_triangles(&map.bsp);
+    let tris = portal2_world::collision::build::displacement_triangles(&map.bsp);
     if !tris.is_empty() {
         let mut verts = Vec::with_capacity(tris.len() * 3);
         let mut indices = Vec::with_capacity(tris.len());

@@ -12,10 +12,10 @@ use bevy::prelude::*;
 
 use std::cell::RefCell;
 
-use crate::collision::{Physics, Trace, mask};
 use crate::paint::power::{self, BounceCheck, GelSettings, SpeedCheck};
-use crate::paint::{PaintMap, PaintType};
-use crate::portals::placement::{HALF_HEIGHT, HALF_WIDTH, PortalFrame};
+use portal2_world::collision::portal::{HALF_HEIGHT, HALF_WIDTH, PortalFrame};
+use portal2_world::collision::{Physics, Trace, mask};
+use portal2_world::paint_map::{PaintMap, PaintType};
 
 pub const GRAVITY: f32 = 600.0;
 pub const FRICTION: f32 = 4.0;

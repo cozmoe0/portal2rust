@@ -309,7 +309,7 @@ fn update_lessons(
     registry: Res<EntityRegistry>,
     entities: Query<&MapEntity>,
     transforms: Query<&GlobalTransform>,
-    map: Option<Res<crate::world::CurrentMap>>,
+    map: Option<Res<portal2_world::CurrentMap>>,
 ) {
     let now = clock.curtime;
     let fade = console.f32("locator_fade_time").max(0.0) as f64;

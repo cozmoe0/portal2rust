@@ -206,7 +206,7 @@ fn paint(
     fs: Res<GameFs>,
     mut videos: ResMut<Videos>,
     mut surface: ResMut<Surface>,
-    map: Option<Res<crate::world::CurrentMap>>,
+    map: Option<Res<portal2_world::CurrentMap>>,
     (mut font, mut commands): (Local<Option<(i32, FontId)>>, Commands),
 ) {
     if map.is_none() {

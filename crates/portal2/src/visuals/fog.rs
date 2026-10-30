@@ -174,7 +174,7 @@ fn apply_fog(world: &mut World) {
     // The 3D sky box camera keeps the sky camera's own fog.
     let mut cameras = world.query_filtered::<
         (Entity, &GlobalTransform, Option<&DistanceFog>),
-        (With<Camera3d>, Without<crate::world::sky::SkyboxCamera>, Without<crate::visuals::projected::ShadowCamera>),
+        (With<Camera3d>, Without<portal2_world::sky::SkyboxCamera>, Without<crate::visuals::projected::ShadowCamera>),
     >();
     let views: Vec<(Entity, Vec3, bool)> = cameras.iter(world).map(|(e, gt, f)| (e, gt.forward().into(), f.is_some())).collect();
     for (e, forward, has_fog) in views {

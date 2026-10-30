@@ -25,12 +25,12 @@ use std::sync::Arc;
 use bevy::prelude::*;
 use source_formats::fgd::{Fgd, FgdClass};
 
-use crate::world::{CurrentMap, MapLoaded, MapObject};
 use io::{Connection, EventQueue, FireOutput, InputCall, InputHandlers, IoDebug, Outputs, fire_output};
 use portal2_core::coords::angles_to_quat;
 use portal2_core::entity::BrushBounds;
 pub use portal2_core::entity::{EntityRegistry, MapEntity};
 use portal2_core::vfs::GameFs;
+use portal2_world::{CurrentMap, MapLoaded, MapObject};
 
 pub struct EntitiesPlugin;
 

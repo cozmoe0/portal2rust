@@ -14,7 +14,6 @@
 use bevy::prelude::*;
 use source_formats::bsp::contents;
 
-use crate::collision::Physics;
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
 use crate::entities::spawner::{ModelOptions, attach_studio_model};
@@ -23,6 +22,7 @@ use portal2_core::clock::GameClock;
 use portal2_core::entity::MapEntity;
 use portal2_core::sets::ThinkSet;
 use portal2_render::models::StudioAnimator;
+use portal2_world::collision::Physics;
 
 const MODEL: &str = "models/props/security_camera.mdl";
 const THINK_INTERVAL: f64 = 0.1;
@@ -123,7 +123,7 @@ fn knock_off(
     portals: Res<crate::portals::Portals>,
     portal_query: Query<&crate::portals::Portal>,
     fs: Res<portal2_core::vfs::GameFs>,
-    mut cameras: Query<(Entity, &mut SecurityCamera, &GlobalTransform, &crate::collision::Collider, &MapEntity)>,
+    mut cameras: Query<(Entity, &mut SecurityCamera, &GlobalTransform, &portal2_world::collision::Collider, &MapEntity)>,
     mut sounds: MessageWriter<portal2_audio::SoundRequest>,
     mut commands: Commands,
 ) {

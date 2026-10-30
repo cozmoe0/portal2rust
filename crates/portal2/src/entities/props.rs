@@ -15,7 +15,6 @@ use source_formats::vhv::Vhv;
 use super::io::{EventQueue, EventTarget, FireOutput, InputCall, InputHandlers, fire_output};
 use super::spawner::{ModelOptions, attach_studio_model, clear_render_children};
 use super::{MapEntity, SpawnHandlers};
-use crate::world::{CurrentMap, MapObject};
 use portal2_core::clock::GameClock;
 use portal2_core::coords::angles_to_quat;
 use portal2_core::sets::ThinkSet;
@@ -26,6 +25,7 @@ use portal2_render::models::lighting;
 use portal2_render::models::{ModelCache, SpawnModel, StudioAnimator, spawn_model_parts};
 use portal2_render::source_material::{ModelMaterial, RefractMaterial};
 use portal2_render::textures::TextureCache;
+use portal2_world::{CurrentMap, MapObject};
 
 pub fn register(app: &mut App) {
     app.add_systems(Update, (animation_done_outputs, animation_events)).add_systems(FixedUpdate, button_timers.in_set(ThinkSet));

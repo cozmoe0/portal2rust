@@ -352,7 +352,7 @@ fn build_overlays(
                 batch.indices.extend([base, base + i + 1, base + i]);
             }
         }
-        log::trace!(
+        bevy::log::trace!(
             "overlay {} {}: {} faces, {} triangles, origin {:?} normal {:?} u {:?} quad {:?}",
             ov.id,
             batches[pos].3.texdata_name,

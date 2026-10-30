@@ -118,7 +118,7 @@ impl Plugin for TonemapPlugin {
             .init_resource::<Tonemap>()
             .add_plugins(ExtractResourcePlugin::<HistogramBuffer>::default())
             .add_systems(Startup, start_readback)
-            .add_systems(PostUpdate, update_scale.before(crate::camera::sync_camera_transform))
+            .add_systems(PostUpdate, update_scale.before(portal2_world::camera::sync_camera_transform))
             .add_systems(PreUpdate, reset_on_load.after(portal2_core::sets::LoadMapSet));
         let world = app.world_mut();
         world.resource_mut::<SpawnHandlers>().register("env_tonemap_controller", |_, _| {});
@@ -143,7 +143,7 @@ fn start_readback(mut commands: Commands, buffer: Res<HistogramBuffer>) {
     );
 }
 
-fn reset_on_load(mut loaded: MessageReader<crate::world::MapLoaded>, mut tonemap: ResMut<Tonemap>) {
+fn reset_on_load(mut loaded: MessageReader<portal2_world::MapLoaded>, mut tonemap: ResMut<Tonemap>) {
     if loaded.read().last().is_some() {
         tonemap.reset();
     }

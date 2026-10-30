@@ -2,68 +2,15 @@
 //! onto a flat portalable area, nudging it away from edges and obstacles,
 //! and snapping to placement helpers.
 
-use std::f32::consts::PI;
-
-use bevy::math::Affine3A;
 use bevy::prelude::*;
 use source_formats::bsp::contents;
 
-use crate::collision::Physics;
+use portal2_world::collision::Physics;
+use portal2_world::collision::portal::{HALF_HEIGHT, HALF_WIDTH, PortalFrame};
 
-pub const HALF_WIDTH: f32 = 32.0;
-pub const HALF_HEIGHT: f32 = 56.0;
 pub const MAX_SHOT_DISTANCE: f32 = 32768.0;
 /// Shots pass through grates and player clips but stop at glass.
 pub const SHOT_MASK: u32 = contents::SOLID | contents::MOVEABLE | contents::WINDOW | contents::MONSTER;
-
-/// A portal's placement: centre on the surface, outward normal and up axis.
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct PortalFrame {
-    pub center: Vec3,
-    pub forward: Vec3,
-    pub up: Vec3,
-}
-
-impl PortalFrame {
-    pub fn left(&self) -> Vec3 {
-        self.up.cross(self.forward)
-    }
-
-    /// Local axes: X = out of the surface, Y = left, Z = up.
-    pub fn rotation(&self) -> Quat {
-        Quat::from_mat3(&Mat3::from_cols(self.forward, self.left(), self.up)).normalize()
-    }
-
-    pub fn affine(&self) -> Affine3A {
-        Affine3A::from_rotation_translation(self.rotation(), self.center)
-    }
-
-    pub fn to_local(&self, p: Vec3) -> Vec3 {
-        let d = p - self.center;
-        Vec3::new(d.dot(self.forward), d.dot(self.left()), d.dot(self.up))
-    }
-
-    pub fn to_world(&self, l: Vec3) -> Vec3 {
-        self.center + self.forward * l.x + self.left() * l.y + self.up * l.z
-    }
-
-    pub fn plane_dist(&self) -> f32 {
-        self.forward.dot(self.center)
-    }
-
-    /// Whether a point projected onto the portal lies inside the opening.
-    pub fn in_opening(&self, local: Vec3, margin: f32) -> bool {
-        let y = local.y / (HALF_WIDTH - margin).max(1.0);
-        let z = local.z / (HALF_HEIGHT - margin).max(1.0);
-        y * y + z * z <= 1.0
-    }
-}
-
-/// Maps space in front of `from` to space in front of `to` (entering one
-/// portal means leaving the other, turned around).
-pub fn transfer(from: &PortalFrame, to: &PortalFrame) -> Affine3A {
-    to.affine() * Affine3A::from_rotation_z(PI) * from.affine().inverse()
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlacementFail {
@@ -260,31 +207,5 @@ impl PlacementContext<'_, '_, '_> {
             frame.center += frame.left() * push.x + frame.up * push.y;
         }
         Err(PlacementFail::NoFit)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn transfer_maps_entry_to_exit() {
-        let a = PortalFrame { center: Vec3::ZERO, forward: Vec3::X, up: Vec3::Z };
-        let b = PortalFrame { center: Vec3::new(100.0, 0.0, 0.0), forward: Vec3::Y, up: Vec3::Z };
-        let m = transfer(&a, &b);
-        // A point just behind A (entering) appears just in front of B.
-        let p = m.transform_point3(Vec3::new(-1.0, 0.0, 0.0));
-        assert!(b.to_local(p).x > 0.9);
-        // Moving into A (-X) means moving out of B (+Y).
-        let v = m.transform_vector3(Vec3::new(-10.0, 0.0, 0.0));
-        assert!(v.abs_diff_eq(Vec3::new(0.0, 10.0, 0.0), 1e-4));
-    }
-
-    #[test]
-    fn floor_to_wall_turns_fall_into_forward_motion() {
-        let floor = PortalFrame { center: Vec3::ZERO, forward: Vec3::Z, up: Vec3::X };
-        let wall = PortalFrame { center: Vec3::new(0.0, 500.0, 64.0), forward: -Vec3::Y, up: Vec3::Z };
-        let v = transfer(&floor, &wall).transform_vector3(Vec3::new(0.0, 0.0, -400.0));
-        assert!(v.abs_diff_eq(Vec3::new(0.0, -400.0, 0.0), 1e-3), "{v:?}");
     }
 }

@@ -20,7 +20,6 @@ use bevy::render::render_resource::{AsBindGroup, CompareFunction, RenderPipeline
 use bevy::shader::ShaderRef;
 use serde::{Deserialize, Serialize};
 
-use crate::collision::Physics;
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
 use portal2_core::entity::MapEntity;
@@ -28,6 +27,7 @@ use portal2_core::vfs::GameFs;
 use portal2_core::view::MainCamera;
 use portal2_render::materials::load_vmt;
 use portal2_render::textures::TextureCache;
+use portal2_world::collision::Physics;
 
 pub const SPRITE_SHADER: &str = "embedded://portal2_render/shaders/sprite.wesl";
 
@@ -323,7 +323,7 @@ fn glow_visibility(
             .iter()
             .filter(|&&o| {
                 let target = centre + o;
-                let t = physics.trace(eye_pos, target, Vec3::ZERO, Vec3::ZERO, crate::collision::mask::SOLID_ALL, &[]);
+                let t = physics.trace(eye_pos, target, Vec3::ZERO, Vec3::ZERO, portal2_world::collision::mask::SOLID_ALL, &[]);
                 !t.hit() || t.fraction > 0.999
             })
             .count() as f32

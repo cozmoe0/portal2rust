@@ -178,7 +178,7 @@ fn log_state(
     ap: Option<ResMut<Autopilot>>,
     players: Query<(Entity, &Player)>,
     input: Res<PlayerInput>,
-    physics: crate::collision::Physics,
+    physics: portal2_world::collision::Physics,
     entities: Query<&portal2_core::entity::MapEntity>,
     props: Query<(&portal2_core::entity::MapEntity, &GlobalTransform), With<crate::entities::props::PhysicsProp>>,
     holding: Option<Res<crate::physics::carry::Holding>>,
@@ -196,7 +196,7 @@ fn log_state(
         let ahead = Vec3::new(yaw.cos(), yaw.sin(), 0.0) * 8.0;
         let (mins, maxs) = s.hull();
         let up = Vec3::Z * 2.0;
-        let tr = physics.trace(s.origin + up, s.origin + up + ahead, mins, maxs, crate::collision::mask::PLAYER_SOLID, &[pe]);
+        let tr = physics.trace(s.origin + up, s.origin + up + ahead, mins, maxs, portal2_world::collision::mask::PLAYER_SOLID, &[pe]);
         let blocker = if tr.fraction < 1.0 {
             match tr.entity {
                 Some(e) => entities.get(e).map(|m| m.classname.clone()).unwrap_or_else(|_| "entity".into()),
@@ -213,7 +213,7 @@ fn log_state(
             None => "world".into(),
         };
         let inside: Vec<String> =
-            physics.overlapping(s.origin, mins, maxs, crate::collision::mask::PLAYER_SOLID).into_iter().map(describe).collect();
+            physics.overlapping(s.origin, mins, maxs, portal2_world::collision::mask::PLAYER_SOLID).into_iter().map(describe).collect();
         info!(
             "player at ({:.1}, {:.1}, {:.1}) speed {:.1} vz {:.1} ground {} on {} ducked {} ahead {} inside [{}]",
             s.origin.x,

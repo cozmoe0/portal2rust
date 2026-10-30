@@ -1,0 +1,14 @@
+[package]
+name = "portal2_world"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The portal2rust world: BSP maps turned into meshes, the sky, ropes, the collision world, the paint map and the main camera"
+
+[dependencies]
+bevy.workspace = true
+portal2_core.workspace = true
+portal2_render.workspace = true
+source_formats.workspace = true
+serde.workspace = true
+half = "2"

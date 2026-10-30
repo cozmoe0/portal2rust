@@ -11,13 +11,13 @@ use source_formats::bsp::contents;
 
 use super::io::{InputCall, InputHandlers};
 use super::{EntityRegistry, MapEntity, SpawnHandlers};
-use crate::collision::Physics;
 use crate::player::{Player, PlayerInput};
 use portal2_core::clock::GameClock;
 use portal2_core::console::Console;
 use portal2_core::coords::angles_forward;
 use portal2_core::events::{EventValue, GameEvent};
 use portal2_core::sets::ThinkSet;
+use portal2_world::collision::Physics;
 
 pub fn register(app: &mut App) {
     app.add_message::<GameEvent>().add_systems(FixedUpdate, (watch_new, poll_visibility).chain().in_set(ThinkSet));

@@ -3,9 +3,7 @@
 //! Requires a local Portal 2 installation; all game content (maps, models,
 //! textures, sounds, scripts) is read from it at runtime.
 
-mod camera;
 mod chain;
-mod collision;
 mod commands;
 mod devices;
 mod entities;
@@ -26,7 +24,6 @@ mod shots;
 mod smoke;
 mod sound;
 mod visuals;
-mod world;
 
 use bevy::prelude::*;
 use bevy::window::{PresentMode, WindowResolution};
@@ -59,7 +56,12 @@ fn main() {
         .insert_resource(args)
         .add_plugins((
             (portal2_core::CorePlugin, commands::GameCommandsPlugin),
-            (portal2_render::RenderSetupPlugin, world::WorldPlugin, portal2_render::models::ModelsPlugin, collision::CollisionPlugin),
+            (
+                portal2_render::RenderSetupPlugin,
+                portal2_world::WorldPlugin,
+                portal2_render::models::ModelsPlugin,
+                portal2_world::collision::CollisionPlugin,
+            ),
             (entities::EntitiesPlugin, script::ScriptPlugin, player::PlayerPlugin, physics::GamePhysicsPlugin),
             (
                 portals::PortalsPlugin,
@@ -76,7 +78,7 @@ fn main() {
                 portal2_ui::captions::CaptionsPlugin,
             ),
             (
-                camera::CameraPlugin,
+                portal2_world::camera::CameraPlugin,
                 screenshot::ScreenshotPlugin,
                 shots::ShotsPlugin,
                 smoke::SmokePlugin,

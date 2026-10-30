@@ -96,10 +96,10 @@ fn stuck(world: &mut World, _args: &CommandArgs) {
     let Some(state) = player_mut(world).map(|p| p.state) else { return };
     let (mins, maxs) = state.hull();
     let lines: Vec<String> = {
-        let cw = world.resource::<crate::collision::CollisionWorld>();
+        let cw = world.resource::<portal2_world::collision::CollisionWorld>();
         cw.statics
             .iter()
-            .filter(|v| v.contents & crate::collision::mask::PLAYER_SOLID != 0 && v.overlaps_box(state.origin, mins, maxs))
+            .filter(|v| v.contents & portal2_world::collision::mask::PLAYER_SOLID != 0 && v.overlaps_box(state.origin, mins, maxs))
             .map(|v| {
                 format!(
                     "static volume {:?}..{:?} contents {:#x} surface {:?}",

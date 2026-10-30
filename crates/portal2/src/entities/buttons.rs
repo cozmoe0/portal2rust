@@ -9,12 +9,12 @@ use bevy::prelude::*;
 
 use super::io::{FireOutput, InputCall, InputHandlers, fire_output};
 use super::{EntityRegistry, MapEntity, SpawnHandlers};
-use crate::collision::Physics;
 use crate::player::Player;
-use crate::world::CurrentMap;
 use portal2_core::clock::GameClock;
 use portal2_core::coords::angles_forward;
 use portal2_core::sets::ThinkSet;
+use portal2_world::CurrentMap;
+use portal2_world::collision::Physics;
 
 const SF_DONT_MOVE: u32 = 1;
 const SF_TOGGLE: u32 = 32;

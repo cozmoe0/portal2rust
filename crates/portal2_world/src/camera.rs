@@ -6,7 +6,7 @@ use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
-use crate::world::PlayerStart;
+use crate::PlayerStart;
 use portal2_core::args::Args;
 use portal2_core::coords::{angles_to_quat, camera_rotation};
 pub use portal2_core::view::{MainCamera, ViewAngles};
@@ -80,11 +80,11 @@ fn grab_cursor(
     mut cursor: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
-    ui: Option<Res<crate::gameui::GameUi>>,
+    focus: Option<Res<portal2_core::view::UiFocus>>,
 ) {
     let Ok(mut cursor) = cursor.single_mut() else { return };
     // The menus own the mouse while they are up.
-    if ui.is_some_and(|u| u.active()) {
+    if focus.is_some_and(|f| f.0) {
         return;
     }
     if mouse.just_pressed(MouseButton::Left) {

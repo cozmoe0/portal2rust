@@ -409,7 +409,7 @@ fn bounds(world: &World, e: Entity) -> (Vec3, Vec3) {
     if let Some(p) = world.get::<crate::player::Player>(e) {
         return p.state.hull();
     }
-    world.get::<crate::collision::Collider>(e).map(|c| (c.shape.mins, c.shape.maxs)).unwrap_or((Vec3::ZERO, Vec3::ZERO))
+    world.get::<portal2_world::collision::Collider>(e).map(|c| (c.shape.mins, c.shape.maxs)).unwrap_or((Vec3::ZERO, Vec3::ZERO))
 }
 
 fn get_mins(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {

@@ -9,13 +9,13 @@
 use avian3d::prelude::LinearVelocity;
 use bevy::prelude::*;
 
-use crate::collision::{Physics, mask};
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{FireOutput, InputCall, InputHandlers, resolve_targets};
 use crate::player::Player;
 use portal2_audio::SoundRequest;
 use portal2_core::entity::{EntityRegistry, MapEntity};
 use portal2_core::sets::ThinkSet;
+use portal2_world::collision::{Physics, mask};
 
 const TICK: f32 = 1.0 / 60.0;
 const MODEL: &str = "models/props/futbol.mdl";

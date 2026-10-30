@@ -20,7 +20,6 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use crate::screen::Localization;
-use crate::world::CurrentMap;
 use portal2_core::args::Args;
 use portal2_core::console::Console;
 use portal2_core::vfs::GameFs;
@@ -28,6 +27,7 @@ use portal2_ui::vgui::layout::ResFile;
 use portal2_ui::vgui::scheme::proportional;
 use portal2_ui::vgui::{Schemes, Surface, VguiPaint, layer};
 use portal2_ui::video::{VideoId, Videos};
+use portal2_world::CurrentMap;
 use window::Window;
 
 /// Single-player maps by chapter, and the act of each (from the game's
@@ -256,7 +256,7 @@ impl Plugin for GameUiPlugin {
         let mut console = app.world_mut().resource_mut::<Console>();
         console.register_command("gameui_activate", |world, _| open_pause_menu(world));
         console.register_command("gameui_hide", |world, _| close_all(world));
-        console.register_command("disconnect", |world, _| crate::world::unload_map(world));
+        console.register_command("disconnect", |world, _| portal2_world::unload_map(world));
         // Development aid: opens a menu by name (singleplayer, newgame, quit).
         console.register_command("ui_open", |world, args| {
             let kind = match args.arg(1).to_ascii_lowercase().as_str() {
@@ -273,7 +273,7 @@ impl Plugin for GameUiPlugin {
     }
 }
 
-fn start(mut ui: ResMut<GameUi>, args: Res<Args>, fs: Res<GameFs>, mut pending: ResMut<crate::world::PendingLoad>) {
+fn start(mut ui: ResMut<GameUi>, args: Res<Args>, fs: Res<GameFs>, mut pending: ResMut<portal2_world::PendingLoad>) {
     let batch = args.batch();
     // `P2R_UI=1` keeps the menus in screenshot runs (for comparing them).
     let batch = batch && std::env::var_os("P2R_UI").is_none();
@@ -716,7 +716,7 @@ fn paint_loading(ui: &mut GameUi, surface: &mut Surface, now: f64) {
 #[allow(clippy::too_many_arguments)]
 fn paint(
     mut ui: ResMut<GameUi>,
-    pending: Res<crate::world::PendingLoad>,
+    pending: Res<portal2_world::PendingLoad>,
     time: Res<Time<Real>>,
     schemes: Res<Schemes>,
     loc: Option<Res<Localization>>,

@@ -11,12 +11,12 @@ use portal2_core::rng::random_range;
 use source_formats::soundscape::{Position, Soundscapes};
 use source_formats::soundscript::{Interval, WaveName};
 
-use crate::collision::Physics;
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::world::CurrentMap;
 use portal2_audio::{Emit, Sounds};
 use portal2_core::entity::{EntityRegistry, MapEntity};
+use portal2_world::CurrentMap;
+use portal2_world::collision::Physics;
 
 /// Seconds between soundscape choices.
 const CHECK_PERIOD: f64 = 0.25;
@@ -285,7 +285,7 @@ fn choose(world: &mut World, state: &mut SoundscapeState, now: f64) {
     let clear = |world: &mut World, from: Vec3| -> bool {
         let mut sys: bevy::ecs::system::SystemState<Physics> = bevy::ecs::system::SystemState::new(world);
         let Ok(physics) = sys.get(world) else { return true };
-        let t = physics.trace(from, ear, Vec3::ZERO, Vec3::ZERO, crate::collision::SOLID, &[player]);
+        let t = physics.trace(from, ear, Vec3::ZERO, Vec3::ZERO, portal2_world::collision::SOLID, &[player]);
         t.fraction >= 1.0 && !t.start_solid
     };
     let mut current = state.current;

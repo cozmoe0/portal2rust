@@ -1,7 +1,10 @@
 //! Map loading: BSP geometry, lightmaps, brush entities and static props.
 
 pub mod bsp_mesh;
+pub mod camera;
+pub mod collision;
 mod commands;
+pub mod paint_map;
 pub mod ropes;
 pub mod sky;
 
@@ -90,7 +93,7 @@ pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((sky::SkyPlugin, ropes::RopePlugin))
+        app.add_plugins((sky::SkyPlugin, ropes::RopePlugin, paint_map::PaintMapPlugin))
             .add_message::<LoadMap>()
             .add_message::<MapLoaded>()
             .init_resource::<PendingLoad>()
@@ -201,12 +204,12 @@ fn load_map_system(
     let skybox_batches = std::mem::take(&mut geometry.skybox);
     material_cache.lightmap = Some(lightmap.clone());
     // Maps with paint draw it from a paint map laid out like the lightmaps.
-    match crate::paint::build_paint_map(&bsp, &geometry, &fs, &mut images) {
+    match paint_map::build_paint_map(&bsp, &geometry, &fs, &mut images) {
         Some(paint) => {
-            material_cache.paint = Some(crate::paint::paint_textures(&paint, &fs, &mut textures, &mut images));
+            material_cache.paint = Some(paint_map::paint_textures(&paint, &fs, &mut textures, &mut images));
             commands.insert_resource(paint);
         }
-        None => commands.remove_resource::<crate::paint::PaintMap>(),
+        None => commands.remove_resource::<paint_map::PaintMap>(),
     }
 
     let mut ctx = MaterialContext { fs: &fs, textures: &mut textures, images: &mut images };

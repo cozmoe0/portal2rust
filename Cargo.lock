@@ -4981,6 +4981,7 @@ dependencies = [
  "portal2_core",
  "portal2_render",
  "portal2_ui",
+ "portal2_world",
  "serde",
  "serde_derive",
  "source_formats",
@@ -5029,6 +5030,18 @@ dependencies = [
  "portal2_core",
  "source_formats",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "portal2_world"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "half",
+ "portal2_core",
+ "portal2_render",
+ "serde",
+ "source_formats",
 ]
 
 [[package]]

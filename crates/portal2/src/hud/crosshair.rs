@@ -42,7 +42,7 @@ fn paint(
     fade: Res<ScreenFade>,
     clock: Res<portal2_core::clock::GameClock>,
     ui: Res<crate::gameui::GameUi>,
-    map: Option<Res<crate::world::CurrentMap>>,
+    map: Option<Res<portal2_world::CurrentMap>>,
     mut surface: ResMut<Surface>,
 ) {
     if map.is_none() || ui.active() || !portal2_ui::hud::visible(&console) {

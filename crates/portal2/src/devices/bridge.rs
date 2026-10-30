@@ -8,16 +8,16 @@ use bevy::prelude::*;
 use source_formats::bsp::contents;
 
 use super::{EffectMaterial, linked_frames, with_ancestors};
-use crate::collision::volume::ConvexVolume;
-use crate::collision::{Collider as TraceCollider, Physics, Shape};
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
 use crate::entities::spawner::{ModelOptions, attach_studio_model};
 use crate::physics::layers;
-use crate::portals::placement::transfer;
 use crate::portals::{Portal, Portals};
-use crate::world::MapObject;
 use portal2_core::entity::MapEntity;
+use portal2_world::MapObject;
+use portal2_world::collision::portal::transfer;
+use portal2_world::collision::volume::ConvexVolume;
+use portal2_world::collision::{Collider as TraceCollider, Physics, Shape};
 
 /// Bridges stop at walls and glass.
 const BRIDGE_MASK: u32 = contents::SOLID | contents::MOVEABLE | contents::WINDOW;
@@ -90,7 +90,7 @@ fn projector_input(world: &mut World, call: &InputCall) -> bool {
 /// Casts the bridge path, carrying its "up" through portals.
 fn cast(
     physics: &Physics,
-    frames: Option<[crate::portals::placement::PortalFrame; 2]>,
+    frames: Option<[portal2_world::collision::portal::PortalFrame; 2]>,
     start: Vec3,
     dir: Vec3,
     up: Vec3,

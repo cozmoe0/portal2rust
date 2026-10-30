@@ -11,12 +11,12 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 use source_formats::kv;
 
-use crate::collision::Physics;
 use crate::player::Player;
-use crate::world::CurrentMap;
 use portal2_audio::Emit;
 use portal2_core::entity::EntityRegistry;
 use portal2_core::vfs::GameFs;
+use portal2_world::CurrentMap;
+use portal2_world::collision::Physics;
 
 const RUN_SPEED: f32 = 220.0;
 const MIN_SPEED: f32 = 10.0;
@@ -134,7 +134,8 @@ pub fn player_footsteps(world: &mut World, mut state: Local<FootstepState>) {
     let surface = {
         let mut sys: bevy::ecs::system::SystemState<Physics> = bevy::ecs::system::SystemState::new(world);
         let Ok(physics) = sys.get(world) else { return };
-        let t = physics.trace(s.origin + Vec3::Z, s.origin - Vec3::Z * 8.0, Vec3::ZERO, Vec3::ZERO, crate::collision::SOLID, &[player]);
+        let t =
+            physics.trace(s.origin + Vec3::Z, s.origin - Vec3::Z * 8.0, Vec3::ZERO, Vec3::ZERO, portal2_world::collision::SOLID, &[player]);
         t.hit().then_some(t.surface)
     };
     let prop = match surface {

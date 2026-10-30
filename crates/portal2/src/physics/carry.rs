@@ -5,13 +5,13 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 
 use super::{layers, layers_for};
-use crate::collision::{Collider as TraceCollider, Physics, mask};
 use crate::entities::io::{EventQueue, EventTarget, FireOutput};
 use crate::entities::props::PhysicsProp;
 use crate::player::{Player, PlayerInput};
 use portal2_core::coords::{angles_forward, quat_to_angles};
 use portal2_core::events::{EventValue, GameEvent};
 use portal2_core::sets::PlayerMoveSet;
+use portal2_world::collision::{Collider as TraceCollider, Physics, mask};
 
 /// Horizontal radius of the player's hull, part of the hold distance.
 const PLAYER_RADIUS: f32 = 22.627_417;

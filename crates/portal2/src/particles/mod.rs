@@ -22,15 +22,15 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use source_formats::pcf::{self, Pcf};
 
-use crate::collision::Physics;
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
-use crate::world::{CurrentMap, MapLoaded, MapObject};
 use defs::{Def, DefRef};
 use portal2_core::entity::{EntityRegistry, MapEntity};
 use portal2_core::vfs::GameFs;
 use portal2_core::view::MainCamera;
 use portal2_render::textures::TextureCache;
+use portal2_world::collision::Physics;
+use portal2_world::{CurrentMap, MapLoaded, MapObject};
 use render::{Batch, Looks, ParticleMaterial, Seen};
 use sim::{Collection, ControlPoint, Env, MAX_CONTROL_POINTS};
 
@@ -227,7 +227,7 @@ struct World2<'a, 'w, 's> {
 
 impl Env for World2<'_, '_, '_> {
     fn trace(&self, start: Vec3, end: Vec3) -> Option<(f32, Vec3)> {
-        let t = self.physics.trace(start, end, Vec3::ZERO, Vec3::ZERO, crate::collision::mask::SOLID_ALL, &[]);
+        let t = self.physics.trace(start, end, Vec3::ZERO, Vec3::ZERO, portal2_world::collision::mask::SOLID_ALL, &[]);
         (t.fraction < 1.0 && !t.start_solid).then_some((t.fraction, t.normal))
     }
 
@@ -357,7 +357,7 @@ fn draw(
         let seen = pts
             .iter()
             .filter(|&&o| {
-                let tr = physics.trace(eye, centre + o, Vec3::ZERO, Vec3::ZERO, crate::collision::mask::SOLID_ALL, &[]);
+                let tr = physics.trace(eye, centre + o, Vec3::ZERO, Vec3::ZERO, portal2_world::collision::mask::SOLID_ALL, &[]);
                 !tr.hit() || tr.fraction > 0.999
             })
             .count();

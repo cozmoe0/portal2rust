@@ -5,10 +5,10 @@ use bevy::prelude::*;
 
 use super::io::{FireOutput, InputCall, InputHandlers, fire_output};
 use super::{MapEntity, SpawnHandlers};
-use crate::world::CurrentMap;
 use portal2_core::clock::GameClock;
 use portal2_core::coords::angles_forward;
 use portal2_core::sets::ThinkSet;
+use portal2_world::CurrentMap;
 
 pub fn register(app: &mut App) {
     app.add_systems(FixedUpdate, (move_doors, rotate_brushes).in_set(ThinkSet));
@@ -37,7 +37,7 @@ fn clip_input(world: &mut World, call: &InputCall) -> bool {
         "disable" => false,
         _ => return false,
     };
-    if let Some(mut c) = world.get_mut::<crate::collision::Collider>(call.target) {
+    if let Some(mut c) = world.get_mut::<portal2_world::collision::Collider>(call.target) {
         c.enabled = enabled;
     }
     true
@@ -301,7 +301,7 @@ fn brush_input(world: &mut World, call: &InputCall) -> bool {
     }
     // Collision follows unless the brush is always solid.
     let always_solid = world.get::<MapEntity>(e).is_some_and(|m| m.get_i32("solidity") == Some(2));
-    if !always_solid && let Some(mut c) = world.get_mut::<crate::collision::Collider>(e) {
+    if !always_solid && let Some(mut c) = world.get_mut::<portal2_world::collision::Collider>(e) {
         c.enabled = enabled;
     }
     true

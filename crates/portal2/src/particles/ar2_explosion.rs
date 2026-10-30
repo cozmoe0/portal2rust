@@ -21,15 +21,15 @@ use bevy::camera::visibility::NoFrustumCulling;
 use bevy::prelude::*;
 
 use super::render::{self, Batch, Looks, ParticleMaterial};
-use crate::collision::Physics;
 use crate::entities::io::{InputCall, InputHandlers};
 use crate::entities::{SpawnHandlers, world_transform};
-use crate::world::MapObject;
 use portal2_core::entity::MapEntity;
 use portal2_core::rng::random_range;
 use portal2_core::vfs::GameFs;
 use portal2_core::view::MainCamera;
 use portal2_render::textures::TextureCache;
+use portal2_world::MapObject;
+use portal2_world::collision::Physics;
 
 const PUFFS: usize = 70;
 const RADIUS: f32 = 240.0;
@@ -109,7 +109,7 @@ fn throw_puffs(world: &mut World, centre: Vec3) -> Vec<Puff> {
     for _ in 0..PUFFS {
         for _ in 0..3 {
             let (a, b) = (centre + unit_random() * RADIUS, centre + unit_random() * RADIUS);
-            let tr = physics.trace(a, b, Vec3::ZERO, Vec3::ZERO, crate::collision::mask::SOLID_BRUSH_ONLY, &[]);
+            let tr = physics.trace(a, b, Vec3::ZERO, Vec3::ZERO, portal2_world::collision::mask::SOLID_BRUSH_ONLY, &[]);
             if !tr.hit() || tr.start_solid {
                 continue;
             }

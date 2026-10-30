@@ -3,6 +3,7 @@
 
 pub mod build;
 pub mod bvh;
+pub mod portal;
 pub mod volume;
 
 use std::sync::Arc;
@@ -11,7 +12,7 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use source_formats::bsp::contents;
 
-use crate::world::{CurrentMap, MapLoaded};
+use crate::{CurrentMap, MapLoaded};
 use bvh::Bvh;
 use portal2_core::vfs::GameFs;
 use volume::ConvexVolume;
@@ -146,7 +147,7 @@ impl Trace {
 pub struct Physics<'w, 's> {
     pub world: Res<'w, CollisionWorld>,
     colliders: Query<'w, 's, (Entity, &'static Collider, &'static GlobalTransform)>,
-    holes: Option<Res<'w, crate::portals::PortalHoles>>,
+    holes: Option<Res<'w, portal::PortalHoles>>,
 }
 
 impl Physics<'_, '_> {
@@ -178,7 +179,7 @@ impl Physics<'_, '_> {
 
         // A box inside a linked portal's opening passes through the wall the
         // portal is on, but is held in the tunnel by the opening's frame.
-        let in_holes: Vec<&crate::portals::PortalHole> = match &self.holes {
+        let in_holes: Vec<&portal::PortalHole> = match &self.holes {
             Some(h) if mins != maxs => {
                 h.holes.iter().filter(|hole| hole.contains_box(start, mins, maxs) || hole.contains_box(end, mins, maxs)).collect()
             }

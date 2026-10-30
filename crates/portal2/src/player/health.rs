@@ -4,9 +4,9 @@ use bevy::prelude::*;
 
 use super::Player;
 use crate::entities::triggers::PlayerDied;
-use crate::world::PlayerStart;
 use portal2_core::clock::GameClock;
 use portal2_core::sets::PlayerMoveSet;
+use portal2_world::PlayerStart;
 
 pub const MAX_HEALTH: f32 = 100.0;
 /// Seconds without damage before health starts coming back

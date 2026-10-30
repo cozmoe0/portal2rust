@@ -11,6 +11,7 @@ portal2_core.workspace = true
 portal2_render.workspace = true
 portal2_audio.workspace = true
 portal2_ui.workspace = true
+portal2_world.workspace = true
 source_formats = { path = "../source_formats" }
 squirrel = { path = "../squirrel", features = ["serde"] }
 bink = { path = "../bink" }

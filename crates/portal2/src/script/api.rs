@@ -299,9 +299,9 @@ fn trace_line(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
     let start = arg_vec(vm, args, 1)?;
     let end = arg_vec(vm, args, 2)?;
     let ignore: Vec<Entity> = opt_entity(vm, world, &arg(args, 3)).into_iter().collect();
-    let mut state: SystemState<crate::collision::Physics> = SystemState::new(world);
+    let mut state: SystemState<portal2_world::collision::Physics> = SystemState::new(world);
     let physics = state.get(world).expect("physics");
-    let tr = physics.trace(start, end, Vec3::ZERO, Vec3::ZERO, crate::collision::mask::SOLID_ALL, &ignore);
+    let tr = physics.trace(start, end, Vec3::ZERO, Vec3::ZERO, portal2_world::collision::mask::SOLID_ALL, &ignore);
     Ok(Value::Float(tr.fraction))
 }
 
@@ -314,7 +314,7 @@ fn send_to_console(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {
 
 fn get_map_name(ctx: &mut Ctx, _args: &[Value]) -> Result<Value> {
     let (_, world) = parts(ctx);
-    let name = world.get_resource::<crate::world::CurrentMap>().map(|m| m.name.clone()).unwrap_or_default();
+    let name = world.get_resource::<portal2_world::CurrentMap>().map(|m| m.name.clone()).unwrap_or_default();
     Ok(Value::str(&name))
 }
 

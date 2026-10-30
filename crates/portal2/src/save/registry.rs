@@ -80,7 +80,7 @@ pub fn register_all(r: &mut SaveRegistry) {
 /// The player's portal pair (placed again a frame after the load, once the
 /// map change has cleared the old ones).
 #[derive(Resource, serde::Serialize, serde::Deserialize)]
-pub struct PendingPortals(pub [Option<crate::portals::placement::PortalFrame>; 2]);
+pub struct PendingPortals(pub [Option<portal2_world::collision::portal::PortalFrame>; 2]);
 
 fn save_portals(world: &World) -> Option<Result<Vec<u8>, String>> {
     // Saved again before the restored portals were placed: keep them.
