@@ -192,7 +192,9 @@ cargo run --release -p portal2 -- sp_a2_laser_intro
 The installation is found in the default Steam library, any library listed in Steam's
 `libraryfolders.vdf`, or the folder given by `PORTAL2_DIR` (the one that contains `portal2.exe`).
 Controls come from your own `portal2/cfg/config.cfg`; `Esc` opens the pause menu, `` ` `` the
-console, `V` toggles noclip.
+console, `V` toggles noclip. An optional [visual overhaul](docs/visual_overhaul.md) (real-time
+portal and laser light, wet reflections, volumetric light, bloom) is on by default;
+`r_fx_preset 0` (or `--fx off`) gives the faithful picture.
 
 <details>
 <summary><strong>Command-line options</strong></summary>
@@ -203,6 +205,7 @@ console, `V` toggles noclip.
 | `-novid` / `-nomenuvid` | Skip the intro video / show the menu background still instead of the movie |
 | `--pos x,y,z` / `--ang p,y,r` | Override the start view (Source units / degrees) |
 | `--exposure <scale>` | Fixed exposure instead of the dynamic tone map |
+| `--fx off\|medium\|high\|ultra` | The [visual overhaul](docs/visual_overhaul.md)'s preset (default high; off is the faithful picture) |
 | `--fullbright` | Ignore lighting (debugging) |
 | `--noclip` | Start in free flight |
 | `--portalgun none\|blue\|both` | Override the portal gun |
