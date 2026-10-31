@@ -1,0 +1,59 @@
+// Surface profiles for the visual overhaul (see src/surfaces.rs): how rough
+// and reflective a material is, whether it can turn wet, whether it is
+// foliage and how much its self-illumination is boosted. A material takes
+// its surface property's game material first, then its surface property,
+// then every path pattern it contains, later entries overriding earlier
+// ones key by key. Keys:
+//   roughness  perceptual roughness, 0 (mirror) to 1
+//   f0         reflectance at normal incidence (dielectrics about 0.04)
+//   wet        0..1, how far wet patches can form on it (floors only)
+//   foliage    1 for leaves and vines (wrapped and transmitted light)
+//   emissive   multiplier on the preset's self-illumination boost
+"FxSurfaces"
+{
+	// By surfaceproperties `gamematerial`.
+	"gamematerial"
+	{
+		"C"	{ "roughness" "0.85"	"wet" "1" }		// concrete, the default
+		"D"	{ "roughness" "0.92"	"wet" "1" }		// dirt
+		"T"	{ "roughness" "0.6"		"wet" "0.9" }	// tile
+		"W"	{ "roughness" "0.75"	"wet" "0.5" }	// wood
+		"M"	{ "roughness" "0.5"		"f0" "0.08"	"wet" "0.35" }	// metal panels (painted)
+		"G"	{ "roughness" "0.55"	"f0" "0.1"	"wet" "0" }		// grates and chains
+		"V"	{ "roughness" "0.5"		"f0" "0.1"	"wet" "0" }		// vents
+		"P"	{ "roughness" "0.4"		"wet" "0" }		// computers
+		"L"	{ "roughness" "0.45"	"wet" "0.3" }	// plastic
+		"Y"	{ "roughness" "0.08"	"wet" "0" }		// glass
+		"O"	{ "roughness" "0.65"	"wet" "0.2"	"foliage" "1" }	// foliage
+		"S"	{ "roughness" "0.1"		"wet" "0" }		// water and slime
+	}
+
+	// By `$surfaceprop`, over the game material.
+	"surfaceprop"
+	{
+		"glass"			{ "roughness" "0.08" }
+		"metalgrate"	{ "wet" "0" }
+		"solidmetal"	{ "roughness" "0.4"	"f0" "0.12" }
+		"rubber"		{ "roughness" "0.8"	"wet" "0.4" }
+		"paper"			{ "roughness" "0.9"	"wet" "0.6" }
+		"cardboard"		{ "roughness" "0.9"	"wet" "0.6" }
+	}
+
+	// By a substring of the material path, over both.
+	"path"
+	{
+		"nature/"			{ "roughness" "0.9"	"wet" "1" }
+		"foliage"			{ "foliage" "1"	"wet" "0.2" }
+		"vine"				{ "foliage" "1"	"wet" "0.2" }
+		"ivy"				{ "foliage" "1"	"wet" "0.2" }
+		"leaves"			{ "foliage" "1"	"wet" "0.2" }
+		"moss"				{ "roughness" "0.95"	"wet" "0.4" }
+		"signage/"			{ "emissive" "1"	"wet" "0" }
+		"lights/"			{ "emissive" "1.25"	"wet" "0" }
+		"indicator"			{ "emissive" "1" }
+		"elevator_screen"	{ "emissive" "0.6" }
+		"glass"				{ "roughness" "0.08"	"wet" "0" }
+		"/white"			{ "wet" "0.25" }
+		"metal/black_floor"	{ "roughness" "0.55"	"wet" "0.3" }
+	}
+}

@@ -174,6 +174,10 @@ pub struct WorldParams {
     pub envmap_light_scale: f32,
     pub _pad1: f32,
     pub _pad2: f32,
+    /// The overhaul's surface profile: roughness, f0, wet, flags (see [`crate::surfaces`]).
+    pub fx: Vec4,
+    /// x: self-illumination boost share.
+    pub fx2: Vec4,
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
@@ -248,6 +252,10 @@ pub struct WorldMaterial {
     pub fx_shadow2: Option<Handle<Image>>,
     #[texture(41)]
     pub fx_shadow3: Option<Handle<Image>>,
+    /// The map's reflection probes (its baked cube maps) for the overhaul.
+    #[texture(42, dimension = "cube_array")]
+    #[sampler(43)]
+    pub fx_probes: Option<Handle<Image>>,
     pub alpha_mode: AlphaMode,
     pub cull: Option<Face>,
     pub depth_bias: i32,
@@ -268,6 +276,8 @@ impl Default for WorldMaterial {
                 lightmap_scale: 1.0,
                 envmap_saturation: 1.0,
                 alpha_ref: 0.5,
+                fx: crate::surfaces::SurfaceProfile::default().params(),
+                fx2: Vec4::X,
                 ..default()
             },
             base: None,
@@ -295,6 +305,7 @@ impl Default for WorldMaterial {
             fx_shadow1,
             fx_shadow2,
             fx_shadow3,
+            fx_probes: crate::fx::fx_probes(),
             alpha_mode: AlphaMode::Opaque,
             cull: Some(Face::Back),
             depth_bias: 0,
@@ -375,6 +386,10 @@ pub struct ModelParams {
     /// a model partly through a portal is cut off at it (see the game's
     /// `portals::ghosts`). Zero draws everything.
     pub clip_plane: Vec4,
+    /// The overhaul's surface profile: roughness, f0, wet, flags (see [`crate::surfaces`]).
+    pub fx: Vec4,
+    /// x: self-illumination boost share.
+    pub fx2: Vec4,
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
@@ -427,6 +442,10 @@ pub struct ModelMaterial {
     pub fx_shadow2: Option<Handle<Image>>,
     #[texture(41)]
     pub fx_shadow3: Option<Handle<Image>>,
+    /// The map's reflection probes (its baked cube maps) for the overhaul.
+    #[texture(42, dimension = "cube_array")]
+    #[sampler(43)]
+    pub fx_probes: Option<Handle<Image>>,
     pub alpha_mode: AlphaMode,
     pub cull: Option<Face>,
     pub depth_bias: i32,
@@ -449,6 +468,8 @@ impl Default for ModelMaterial {
                 envmap_saturation: Vec4::ONE,
                 ambient: [Vec4::splat(0.2); 6],
                 alpha_ref: 0.5,
+                fx: crate::surfaces::SurfaceProfile::default().params(),
+                fx2: Vec4::X,
                 ..default()
             },
             base: None,
@@ -469,6 +490,7 @@ impl Default for ModelMaterial {
             fx_shadow1,
             fx_shadow2,
             fx_shadow3,
+            fx_probes: crate::fx::fx_probes(),
             alpha_mode: AlphaMode::Opaque,
             cull: Some(Face::Back),
             depth_bias: 0,

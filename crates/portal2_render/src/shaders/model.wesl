@@ -6,7 +6,7 @@ import bevy_pbr::render::forward_io::VertexOutput;
 import bevy_pbr::render::mesh_view_bindings::view;
 import bevy_pbr::render::mesh_view_bindings::fog;
 import portal2_render::shaders::projected::{is_shadow_view, projected_lighting};
-import portal2_render::shaders::fx::{FxSurface, fx_emissive_boost, fx_lighting};
+import portal2_render::shaders::fx::{FX_REFLECTIONS, FxSurface, fx_emissive_boost, fx_fresnel, fx_lighting, fx_on, fx_probe, fx_wetness};
 
 struct ModelLight {
     // xyz: position, w: kind (0 point, 1 spot, 2 directional)
@@ -41,6 +41,10 @@ struct ModelParams {
     _pad: f32,
     // xyz: normal, w: offset; the side below zero is cut away (all zero: none)
     clip_plane: vec4<f32>,
+    // The overhaul's surface profile: roughness, f0, wet, flags
+    fx: vec4<f32>,
+    // x: self-illumination boost share
+    fx2: vec4<f32>,
 }
 
 const FLAG_BUMP: u32 = 1u;
@@ -201,6 +205,21 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     let p = in.world_position.xyz;
     let v = normalize(view.world_position - p);
     let n_dot_v = saturate(dot(n, v));
+
+    // The overhaul's wet patches (on upward faces of props lying about).
+    var fx_rough = material.fx.x;
+    var fx_wet = 0.0;
+    @if(FX) {
+        if has(FLAG_PHONG) {
+            fx_rough = pow(2.0 / (exponent + 2.0), 0.25);
+        }
+        if !has(FLAG_UNLIT) && !has(FLAG_TRANSLUCENT) {
+            let wet = fx_wetness(p, n, material.fx.z);
+            fx_wet = max(wet.puddle, wet.damp * 0.3);
+            albedo = albedo * mix(1.0, 0.65, wet.damp * material.fx.x);
+            fx_rough = mix(mix(fx_rough, fx_rough * 0.6, wet.damp), 0.08, wet.puddle);
+        }
+    }
     var diffuse = vec3<f32>(0.0);
     var specular = vec3<f32>(0.0);
     if has(FLAG_UNLIT) {
@@ -252,12 +271,8 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
                 s.n = n;
                 s.geometric_n = select(-1.0, 1.0, is_front) * normalize(in.world_normal);
                 s.v = v;
-                var rough = 0.7;
-                if has(FLAG_PHONG) {
-                    rough = pow(2.0 / (exponent + 2.0), 0.25);
-                }
-                s.roughness = rough;
-                s.f0 = vec3<f32>(0.04);
+                s.roughness = fx_rough;
+                s.f0 = vec3<f32>(material.fx.y);
                 s.baked = diffuse;
                 s.fixtures = has(FLAG_BAKED);
                 let lit = fx_lighting(s);
@@ -272,7 +287,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
         }
         var tint = material.selfillum_tint.rgb;
         @if(FX) {
-            tint = tint * fx_emissive_boost();
+            tint = tint * (1.0 + (fx_emissive_boost() - 1.0) * material.fx2.x);
         }
         color = mix(color, base.rgb * tint, mask);
     }
@@ -329,6 +344,20 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
             spec = mix(vec3<f32>(grey), spec, material.envmap_saturation.rgb);
         }
         color = color + spec * mask;
+    }
+    // The overhaul's probe reflections on wet patches and glossy props the
+    // game draws without a cube map.
+    @if(FX) {
+        if fx_on(FX_REFLECTIONS) && !has(FLAG_UNLIT) && !has(FLAG_ADDITIVE) && !has(FLAG_ENVMAP) {
+            let g = saturate(1.0 - fx_rough);
+            let weight = max(g * g * 0.4, fx_wet);
+            if weight > 0.0 {
+                let refl = fx_probe(p, reflect(-v, n), fx_rough);
+                let f = fx_fresnel(vec3<f32>(max(material.fx.y, 0.02)), n_dot_v);
+                let shade = mix(1.0, saturate(dot(diffuse, vec3<f32>(0.299, 0.587, 0.114)) * 2.5), 0.6);
+                color = color + refl * f * (weight * shade);
+            }
+        }
     }
     if has(FLAG_ADDITIVE) {
         // Premultiplied blending: added in full, fogging toward black.

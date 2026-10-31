@@ -29,6 +29,7 @@ struct FxGlobals {
     sun_dir: vec4<f32>,
     // rgb: sun colour
     sun_color: vec4<f32>,
+    // x: reflection probe count
     reserved0: vec4<f32>,
     reserved1: vec4<f32>,
     shadow_from_world: array<mat4x4<f32>, 4>,
@@ -38,6 +39,8 @@ struct FxGlobals {
     shadow_info: vec4<f32>,
     reserved2: array<vec4<f32>, 3>,
     lights: array<FxLight, 64>,
+    // The map's reflection probes (xyz: origin), as many as reserved0.x.
+    probes: array<vec4<f32>, 128>,
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(37) var<storage, read> fx: FxGlobals;
@@ -45,6 +48,8 @@ struct FxGlobals {
 @group(constants::MATERIAL_BIND_GROUP) @binding(39) var fx_shadow1: texture_2d<f32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(40) var fx_shadow2: texture_2d<f32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(41) var fx_shadow3: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(42) var fx_probes: texture_cube_array<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(43) var fx_probe_samp: sampler;
 
 // Feature bits (visuals/fx/mod.rs `features`).
 const FX_LIGHTS: u32 = 1u;
@@ -351,5 +356,80 @@ fn fx_lighting(s: FxSurface) -> FxLit {
             }
         }
     }
+    return out;
+}
+
+// The baked cube map nearest to `p` (by straight distance, as the engine
+// picks them for models), or -1.
+fn fx_nearest_probe(p: vec3<f32>) -> i32 {
+    let count = min(u32(fx.reserved0.x), 128u);
+    var best = -1;
+    var best_d = 1e30;
+    for (var i = 0u; i < count; i++) {
+        let d = p - fx.probes[i].xyz;
+        let dd = dot(d, d);
+        if dd < best_d {
+            best_d = dd;
+            best = i32(i);
+        }
+    }
+    return best;
+}
+
+// Reflected light along `dir` from the probe nearest to `p`, blurrier for
+// rougher surfaces.
+fn fx_probe(p: vec3<f32>, dir: vec3<f32>, roughness: f32) -> vec3<f32> {
+    let index = fx_nearest_probe(p);
+    if index < 0 {
+        return vec3<f32>(0.0);
+    }
+    let levels = f32(textureNumLevels(fx_probes)) - 1.0;
+    return textureSampleLevel(fx_probes, fx_probe_samp, dir, index, sqrt(roughness) * levels).rgb;
+}
+
+// Hash and value noise (Hoskins' hash12) for the wet patches.
+fn fx_hash(p: vec2<f32>) -> f32 {
+    var q = fract(p * 0.1031);
+    q += dot(q, q.yx + 33.33);
+    return fract((q.x + q.y) * q.x);
+}
+
+fn fx_value_noise(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let f = fract(p);
+    let u = f * f * (3.0 - 2.0 * f);
+    let a = fx_hash(i);
+    let b = fx_hash(i + vec2<f32>(1.0, 0.0));
+    let c = fx_hash(i + vec2<f32>(0.0, 1.0));
+    let d = fx_hash(i + vec2<f32>(1.0, 1.0));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+struct FxWet {
+    // Darkened, damp surface around the patches.
+    damp: f32,
+    // Standing water: smooth and flat.
+    puddle: f32,
+}
+
+// Wet patches on upward-facing surfaces of materials that can be wet,
+// from world-space noise so they stay put as the view moves.
+fn fx_wetness(pos: vec3<f32>, n: vec3<f32>, eligibility: f32) -> FxWet {
+    var out: FxWet;
+    out.damp = 0.0;
+    out.puddle = 0.0;
+    if !fx_on(FX_WETNESS) || eligibility <= 0.0 {
+        return out;
+    }
+    let up = smoothstep(0.6, 0.92, n.z);
+    if up <= 0.0 {
+        return out;
+    }
+    let p = pos.xy;
+    let f = 0.55 * fx_value_noise(p / 190.0) + 0.3 * fx_value_noise(p / 67.0 + vec2<f32>(17.3, 4.1)) + 0.15 * fx_value_noise(p / 23.0 + vec2<f32>(5.1, 9.7));
+    let t = 0.64 - 0.1 * fx.surface.x;
+    let w = eligibility * up * saturate(fx.surface.x);
+    out.damp = smoothstep(t - 0.1, t, f) * w;
+    out.puddle = smoothstep(t + 0.015, t + 0.07, f) * w;
     return out;
 }

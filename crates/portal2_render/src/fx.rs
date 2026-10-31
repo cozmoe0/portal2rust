@@ -21,9 +21,15 @@ pub const HEADER_FLOATS: usize = 128;
 /// Floats per light: five vectors.
 pub const LIGHT_FLOATS: usize = 20;
 pub const MAX_LIGHTS: usize = 64;
-pub const BUFFER_FLOATS: usize = HEADER_FLOATS + MAX_LIGHTS * LIGHT_FLOATS;
+pub const PROBES_OFFSET: usize = HEADER_FLOATS + MAX_LIGHTS * LIGHT_FLOATS;
+pub const BUFFER_FLOATS: usize = PROBES_OFFSET + PROBE_FLOATS;
 /// Shadow maps for overhaul lights.
 pub const MAX_SHADOWS: usize = 4;
+/// Reflection probes the cube array holds, and their face size.
+pub const MAX_PROBES: usize = 128;
+pub const PROBE_SIZE: u32 = 64;
+/// Floats of probe origins after the lights (one vector each).
+pub const PROBE_FLOATS: usize = MAX_PROBES * 4;
 
 /// Handles every world and model material binds. Set once at startup;
 /// materials built before that (tests) bind nothing usable.
@@ -32,6 +38,8 @@ pub struct FxHandles {
     pub buffer: Handle<ShaderBuffer>,
     /// Distance-to-light maps drawn like the projected textures' ones.
     pub shadows: [Handle<Image>; MAX_SHADOWS],
+    /// The map's baked cube maps, resampled into one cube array.
+    pub probes: Handle<Image>,
 }
 
 pub static FX: OnceLock<FxHandles> = OnceLock::new();
@@ -56,4 +64,8 @@ pub(crate) fn fx_shadows() -> [Option<Handle<Image>>; MAX_SHADOWS] {
         Some(h) => h.shadows.clone().map(Some),
         None => [None, None, None, None],
     }
+}
+
+pub(crate) fn fx_probes() -> Option<Handle<Image>> {
+    FX.get().map(|h| h.probes.clone())
 }

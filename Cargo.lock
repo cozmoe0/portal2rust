@@ -4590,6 +4590,7 @@ dependencies = [
  "bevy_transform_interpolation",
  "ciborium",
  "flate2",
+ "half",
  "portal2_audio",
  "portal2_core",
  "portal2_particles",

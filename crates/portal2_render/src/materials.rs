@@ -282,6 +282,9 @@ impl MaterialCache {
         }
         let surface = surface_info(&key, vmt.as_ref());
         let mut m = WorldMaterial { lightmap: self.lightmap.clone(), ..default() };
+        let profile = crate::surfaces::profile(ctx.fs, &key, &surface.surface_prop);
+        m.params.fx = profile.params();
+        m.params.fx2.x = profile.emissive;
         let p = &mut m.params;
         p.flags |= world_flags::LIGHTMAPPED;
         match &vmt {
@@ -416,6 +419,9 @@ impl MaterialCache {
         let vmt = load_vmt(ctx.fs, path);
         let surface = surface_info(path, vmt.as_ref());
         let mut m = ModelMaterial::default();
+        let profile = crate::surfaces::profile(ctx.fs, path, &surface.surface_prop);
+        m.params.fx = profile.params();
+        m.params.fx2.x = profile.emissive;
         let p = &mut m.params;
         if baked {
             p.flags |= model_flags::BAKED;

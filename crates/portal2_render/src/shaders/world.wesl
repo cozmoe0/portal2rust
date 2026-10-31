@@ -7,7 +7,7 @@ import bevy_pbr::render::mesh_view_bindings::view;
 import bevy_pbr::render::mesh_view_bindings::fog;
 import bevy_pbr::render::mesh_view_bindings::globals;
 import portal2_render::shaders::projected::{is_shadow_view, projected_lighting};
-import portal2_render::shaders::fx::{FxSurface, fx_emissive_boost, fx_lighting};
+import portal2_render::shaders::fx::{FX_REFLECTIONS, FxSurface, fx_emissive_boost, fx_fresnel, fx_lighting, fx_on, fx_probe, fx_wetness};
 
 struct WorldParams {
     color: vec4<f32>,
@@ -23,6 +23,10 @@ struct WorldParams {
     envmap_light_scale: f32,
     _pad1: f32,
     _pad2: f32,
+    // The overhaul's surface profile: roughness, f0, wet, flags
+    fx: vec4<f32>,
+    // x: self-illumination boost share
+    fx2: vec4<f32>,
 }
 
 const FLAG_BASE2: u32 = 1u;
@@ -366,6 +370,19 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
         tangent_normal = normalize(bump.xyz * 2.0 - 1.0);
     }
 
+    // The overhaul's wet patches: darker, smoother and, in puddles, flat.
+    var fx_rough = material.fx.x;
+    var fx_wet = 0.0;
+    @if(FX) {
+        if !has(FLAG_UNLIT) && !has(FLAG_TRANSLUCENT) {
+            let wet = fx_wetness(in.world_position.xyz, n, material.fx.z);
+            fx_wet = max(wet.puddle, wet.damp * 0.3);
+            albedo = albedo * mix(1.0, 0.6, wet.damp * material.fx.x);
+            tangent_normal = normalize(mix(tangent_normal, vec3<f32>(0.0, 0.0, 1.0), wet.puddle));
+            fx_rough = mix(mix(fx_rough, fx_rough * 0.6, wet.damp), 0.05, wet.puddle);
+        }
+    }
+
     var diffuse = vec3<f32>(1.0);
     if has(FLAG_LIGHTMAPPED) && !has(FLAG_UNLIT) {
         var lm_uv = vec2<f32>(0.0);
@@ -424,8 +441,8 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
                 s.n = light_n;
                 s.geometric_n = n;
                 s.v = normalize(view.world_position - in.world_position.xyz);
-                s.roughness = select(0.75, 0.4, has(FLAG_ENVMAP));
-                s.f0 = vec3<f32>(0.04);
+                s.roughness = fx_rough;
+                s.f0 = vec3<f32>(material.fx.y);
                 s.baked = diffuse;
                 s.fixtures = true;
                 let lit = fx_lighting(s);
@@ -466,10 +483,40 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
         color = color + spec;
     }
 
+    // The overhaul's reflections from the map's probes: wet patches, and
+    // glossy materials the game draws without any.
+    @if(FX) {
+        if fx_on(FX_REFLECTIONS) && !has(FLAG_UNLIT) && !has(FLAG_ADDITIVE) {
+            var gloss = 0.0;
+            if !has(FLAG_ENVMAP) {
+                let g = saturate(1.0 - material.fx.x);
+                gloss = g * g * 0.5;
+            }
+            let weight = max(gloss, fx_wet);
+            if weight > 0.0 {
+                var wn = n;
+                @if(VERTEX_TANGENTS) {
+                    if has(FLAG_BUMP) && !has(FLAG_SSBUMP) {
+                        let t = normalize(in.world_tangent.xyz);
+                        let b = cross(n, t) * in.world_tangent.w;
+                        wn = normalize(t * tangent_normal.x + b * tangent_normal.y + n * tangent_normal.z);
+                    }
+                }
+                let v = normalize(view.world_position - in.world_position.xyz);
+                let refl = fx_probe(in.world_position.xyz, reflect(-v, wn), fx_rough);
+                let f = fx_fresnel(vec3<f32>(max(material.fx.y, 0.02)), saturate(dot(wn, v)));
+                // Dimmer where the baked light is dim, as the game's own
+                // reflections can be.
+                let shade = mix(1.0, saturate(dot(diffuse, vec3<f32>(0.299, 0.587, 0.114)) * 2.5), 0.6);
+                color = color + refl * f * (weight * shade);
+            }
+        }
+    }
+
     if has(FLAG_SELFILLUM) {
         var tint = material.selfillum_tint.rgb;
         @if(FX) {
-            tint = tint * fx_emissive_boost();
+            tint = tint * (1.0 + (fx_emissive_boost() - 1.0) * material.fx2.x);
         }
         color = mix(color, albedo * tint, base.a);
     }

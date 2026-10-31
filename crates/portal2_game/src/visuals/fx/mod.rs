@@ -16,6 +16,7 @@ pub mod lights;
 pub mod material;
 pub mod portal_light;
 pub mod postfx;
+pub mod reflections;
 pub mod screen;
 pub mod shadows;
 
@@ -275,6 +276,7 @@ impl Plugin for VisualFxPlugin {
                 portal_light::PortalLightingPlugin,
                 shadows::FxShadowsPlugin,
                 screen::FxScreenPlugin,
+                reflections::FxReflectionsPlugin,
                 postfx::PostFxPlugin,
             ));
     }

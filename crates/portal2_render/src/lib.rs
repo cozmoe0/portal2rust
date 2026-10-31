@@ -8,6 +8,7 @@ pub mod fx;
 pub mod materials;
 pub mod models;
 pub mod source_material;
+pub mod surfaces;
 pub mod textures;
 
 use bevy::asset::embedded_asset;

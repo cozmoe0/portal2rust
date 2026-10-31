@@ -48,11 +48,12 @@ impl Plugin for FxMaterialPlugin {
             .world_mut()
             .resource_mut::<Assets<ShaderBuffer>>()
             .add(ShaderBuffer::new(vec![0f32; BUFFER_FLOATS], RenderAssetUsages::default()));
-        let shadows = {
+        let (shadows, probes) = {
             let mut images = app.world_mut().resource_mut::<Assets<Image>>();
-            std::array::from_fn(|_| images.add(crate::visuals::projected::shadow_image()))
+            let shadows = std::array::from_fn(|_| images.add(crate::visuals::projected::shadow_image()));
+            (shadows, images.add(super::reflections::probe_image()))
         };
-        let _ = FX.set(FxHandles { buffer: handle.clone(), shadows });
+        let _ = FX.set(FxHandles { buffer: handle.clone(), shadows, probes });
         let settings = app.world().resource::<FxSettings>().clone();
         portal2_render::fx::set_fx_enabled(settings.enabled());
         app.insert_resource(FxBuffer { handle, data: vec![0.0; BUFFER_FLOATS] })

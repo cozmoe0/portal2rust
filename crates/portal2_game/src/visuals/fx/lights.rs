@@ -26,7 +26,7 @@ use super::{FxSettings, features};
 use crate::devices::laser::LaserEmitter;
 use crate::portals::{Portal, Portals};
 use portal2_core::view::MainCamera;
-use portal2_world::{CurrentMap, MapLoaded};
+use portal2_world::CurrentMap;
 
 /// [`FxLightData::flags`], shared with `shaders/fx.wesl`.
 pub mod light_flags {
@@ -197,10 +197,19 @@ const FIXTURE_SPECULAR: f32 = 1.0;
 /// The faintest fixture light kept, at its range.
 const FIXTURE_CUTOFF: f32 = 0.004;
 
-fn load_fixtures(mut loaded: MessageReader<MapLoaded>, map: Option<Res<CurrentMap>>, mut fixtures: ResMut<Fixtures>) {
-    if loaded.read().last().is_none() {
+fn load_fixtures(
+    loaded: Option<Res<portal2_core::LoadedMap>>,
+    mut seen: Local<u64>,
+    map: Option<Res<CurrentMap>>,
+    mut fixtures: ResMut<Fixtures>,
+) {
+    // Every load changes the generation (MapLoaded messages are drained by
+    // the entity spawner).
+    let generation = loaded.map_or(0, |l| l.generation);
+    if generation == *seen {
         return;
     }
+    *seen = generation;
     *fixtures = Fixtures::default();
     let Some(map) = map else { return };
     let luma = |c: Vec3| c.dot(Vec3::new(0.299, 0.587, 0.114));
