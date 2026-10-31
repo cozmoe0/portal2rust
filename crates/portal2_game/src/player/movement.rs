@@ -251,6 +251,9 @@ impl Mover<'_, '_, '_> {
         s.velocity.z += s.base_velocity.z * dt;
         s.base_velocity.z = 0.0;
         let base = s.base_velocity;
+        if !self.stuck_in_something_else(s) {
+            return false;
+        }
         self.unstick(s);
         self.update_duck(s, input, dt);
         self.contacts.borrow_mut().clear();
@@ -463,7 +466,42 @@ impl Mover<'_, '_, '_> {
         s.duck_fraction += (goal - s.duck_fraction).clamp(-step, step);
     }
 
-    /// Nudges the player out of geometry it starts inside of.
+    /// A player standing on something whom something else moved into
+    /// (Wheatley in his socket sweeping past as the breaker room turns): as
+    /// the game's `CheckStuck`, a few small nudges are tried and, failing
+    /// those, the player stays put this tick, still standing where they
+    /// stood (and so still carried by it). Returns whether to move on.
+    fn stuck_in_something_else(&self, s: &mut MoveState) -> bool {
+        if !s.on_ground {
+            return true;
+        }
+        let (mins, maxs) = s.hull();
+        let tr = self.trace(s.origin, s.origin, mins, maxs);
+        if !tr.start_solid || tr.entity.is_none() || tr.entity == s.ground_entity {
+            return true;
+        }
+        const NUDGES: [Vec3; 7] = [
+            Vec3::new(0.0, 0.0, 0.125),
+            Vec3::new(0.0, 0.0, 1.0),
+            Vec3::new(2.0, 0.0, 0.0),
+            Vec3::new(-2.0, 0.0, 0.0),
+            Vec3::new(0.0, 2.0, 0.0),
+            Vec3::new(0.0, -2.0, 0.0),
+            Vec3::new(0.0, 0.0, 6.0),
+        ];
+        for n in NUDGES {
+            let p = s.origin + n;
+            if !self.trace(p, p, mins, maxs).start_solid {
+                s.origin = p;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Nudges the player out of geometry it starts inside of: up, sideways,
+    /// and only a little down, so that a floor rising into the player never
+    /// puts them below it.
     fn unstick(&self, s: &mut MoveState) {
         let (mins, maxs) = s.hull();
         if !self.trace(s.origin, s.origin, mins, maxs).start_solid {
@@ -471,6 +509,9 @@ impl Mover<'_, '_, '_> {
         }
         for dz in [1.0, 2.0, 4.0, 8.0, 12.0, 18.0, 24.0, 32.0] {
             for dir in [Vec3::Z, Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y, -Vec3::Z] {
+                if dir.z < 0.0 && dz > 2.0 {
+                    continue;
+                }
                 let p = s.origin + dir * dz;
                 if !self.trace(p, p, mins, maxs).start_solid {
                     s.origin = p;

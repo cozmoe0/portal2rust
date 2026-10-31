@@ -6,6 +6,14 @@
 //! node's `OnPass`, may change the train's speed, stop it (node flag
 //! "disable train") or branch to the node's alternate path. Moving backward
 //! follows the nodes that point at the current one.
+//!
+//! The train turns by its `orientationtype`: never (0), toward the way it
+//! moves (1, kept while it moves straight up or down), or blending from the
+//! orientation of the node it left to that of the node ahead with the share
+//! of the way covered (2 linear, 3 eased). A node's orientation is its own
+//! angles with its `orientationtype` 2, else the direction to the node after
+//! it (`sp_a1_wakeup`'s breaker room turns a quarter turn on a one-unit move,
+//! then back and on as it climbs its shaft).
 
 use bevy::prelude::*;
 
@@ -147,16 +155,47 @@ fn node_position(world: &World, node: Entity, height: f32) -> Vec3 {
     world_transform(world, node).translation() + Vec3::Z * height
 }
 
-/// Moves the train's origin to a world position, keeping its parent space.
-fn place(world: &mut World, e: Entity, pos: Vec3, facing: Option<Vec3>, no_pitch: bool) {
+/// The rotation facing along `d` (level with `no_pitch`); none for a
+/// direction straight up or down, which keeps the train as it is.
+fn facing_rotation(d: Vec3, no_pitch: bool) -> Option<Quat> {
+    if d.truncate().length() < 1e-3 {
+        return None;
+    }
+    let yaw = d.y.atan2(d.x);
+    let pitch = if no_pitch { 0.0 } else { -(d.z / d.length()).clamp(-1.0, 1.0).asin() };
+    Some(Quat::from_rotation_z(yaw) * Quat::from_rotation_y(-pitch))
+}
+
+/// A node's orientation for a blending train: its own angles, or facing the
+/// node after it in the direction of travel (from the one before at a dead
+/// end).
+fn node_orientation(world: &mut World, node: Entity, forward: bool, no_pitch: bool) -> Quat {
+    let own_angles = world.get::<MapEntity>(node).and_then(|m| m.get_i32("orientationtype")) == Some(2);
+    let q = if own_angles {
+        world_transform(world, node).compute_transform().rotation
+    } else {
+        let (from, to) = match (next_node(world, node, forward), next_node(world, node, !forward)) {
+            (Some(n), _) => (node, n),
+            (None, Some(p)) => (p, node),
+            (None, None) => (node, node),
+        };
+        let d = world_transform(world, to).translation() - world_transform(world, from).translation();
+        facing_rotation(d, false).unwrap_or(Quat::IDENTITY)
+    };
+    if !no_pitch {
+        return q;
+    }
+    let (yaw, _, _) = q.to_euler(EulerRot::ZYX);
+    Quat::from_rotation_z(yaw)
+}
+
+/// Moves the train's origin to a world position, keeping its parent space,
+/// and turns it to `rotation` (world space) when given.
+fn place(world: &mut World, e: Entity, pos: Vec3, rotation: Option<Quat>) {
     let parent = world.get::<ChildOf>(e).map(|c| c.parent());
     let parent_affine = parent.map(|p| world_transform(world, p).affine()).unwrap_or(bevy::math::Affine3A::IDENTITY);
     let local = parent_affine.inverse().transform_point3(pos);
-    let rotation = facing.filter(|d| d.length_squared() > 1e-6).map(|d| {
-        let d = if no_pitch { Vec3::new(d.x, d.y, 0.0) } else { d };
-        let yaw = d.y.atan2(d.x);
-        let pitch = -(d.z / d.length().max(1e-6)).clamp(-1.0, 1.0).asin();
-        let world_rot = Quat::from_rotation_z(yaw) * Quat::from_rotation_y(-pitch);
+    let rotation = rotation.map(|world_rot| {
         let (_, parent_rot, _) = parent_affine.to_scale_rotation_translation();
         parent_rot.inverse() * world_rot
     });
@@ -177,7 +216,7 @@ fn activate_trains(world: &mut World) {
         let start = first.as_deref().and_then(|n| named(world, n));
         if let Some(s) = start {
             let pos = node_position(world, s, height);
-            place(world, e, pos, None, false);
+            place(world, e, pos, None);
         }
         let forward = world.get::<Train>(e).is_some_and(|t| t.forward);
         let toward = start.and_then(|s| next_node(world, s, forward));
@@ -206,12 +245,31 @@ fn move_trains(world: &mut World) {
         let to_goal = goal - here;
         let step = t.speed.abs() * dt;
         let dist = to_goal.length();
-        let facing = (!t.fixed_orientation).then(|| if t.forward { to_goal } else { -to_goal });
+        let next = if dist > step { here + to_goal / dist * step } else { goal };
+        // `orientationtype`: 1 faces the way it moves, 2 / 3 blend between the
+        // nodes' orientations (linear / eased).
+        let orientation = world.get::<MapEntity>(e).and_then(|m| m.get_i32("orientationtype")).unwrap_or(1);
+        let rotation = if t.fixed_orientation {
+            None
+        } else if matches!(orientation, 2 | 3) {
+            t.last.map(|prev| {
+                let from = node_position(world, prev, t.height);
+                let span = goal.distance(from);
+                let mut share = if span > 0.0 { (next.distance(from) / span).min(1.0) } else { 1.0 };
+                if orientation == 3 {
+                    share = share * share * (3.0 - 2.0 * share);
+                }
+                let a = node_orientation(world, prev, t.forward, t.no_pitch);
+                let b = node_orientation(world, target, t.forward, t.no_pitch);
+                a.slerp(b, share)
+            })
+        } else {
+            facing_rotation(if t.forward { to_goal } else { -to_goal }, t.no_pitch)
+        };
+        place(world, e, next, rotation);
         if dist > step {
-            place(world, e, here + to_goal / dist * step, facing, t.no_pitch);
             continue;
         }
-        place(world, e, goal, facing, t.no_pitch);
         arrive(world, e, target);
     }
 }
@@ -245,7 +303,7 @@ fn arrive(world: &mut World, e: Entity, node: Entity) {
         && world.get::<MapEntity>(next).is_some_and(|m| m.has_flag(path_flags::TELEPORT))
     {
         let pos = node_position(world, next, t.height);
-        place(world, e, pos, None, false);
+        place(world, e, pos, None);
     }
     let stopped = !t.moving;
     if let Some(mut tt) = world.get_mut::<Train>(e) {
@@ -311,7 +369,7 @@ fn train_input(world: &mut World, call: &InputCall) -> bool {
         "teleporttopathtrack" | "teleporttopathnode" => {
             let Some(node) = named(world, &call.param.trim().to_ascii_lowercase()) else { return true };
             let pos = node_position(world, node, t.height);
-            place(world, e, pos, None, false);
+            place(world, e, pos, None);
             t.last = Some(node);
             t.toward = next_node(world, node, t.forward);
         }

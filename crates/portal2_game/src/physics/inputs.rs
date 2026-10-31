@@ -49,13 +49,17 @@ fn motion_input(world: &mut World, call: &InputCall) -> bool {
                 me.set_flag(super::SF_MOTION_DISABLED, false);
             }
             let dynamic = world.get::<RigidBody>(e).is_some_and(|b| b.is_dynamic());
-            if !dynamic && let Some(shape) = world.get::<TraceCollider>(e).map(|c| c.shape.clone()) {
+            // A prop on a parent keeps riding it, free to fall once
+            // `ClearParent` lets it go: maps send both when they drop one
+            // (Wheatley out of a socket), and `sp_a1_wakeup` enables motion on
+            // Wheatley as it plugs him into his socket.
+            let parented = crate::entities::map_parent(world, e).is_some();
+            if !dynamic
+                && !parented
+                && let Some(shape) = world.get::<TraceCollider>(e).map(|c| c.shape.clone())
+            {
                 let Some(collider) = super::prop_collider(&shape) else { return true };
                 let mass = world.get::<MapEntity>(e).map_or(40.0, |me| super::prop_mass(world.resource::<portal2_core::vfs::GameFs>(), me));
-                // A frozen prop may hang from a parent; it falls free now.
-                if let Some(gt) = world.get::<GlobalTransform>(e).copied() {
-                    world.entity_mut(e).remove::<ChildOf>().insert(gt.compute_transform());
-                }
                 let mut commands = world.commands();
                 super::make_dynamic(&mut commands, e, collider, mass);
                 world.flush();

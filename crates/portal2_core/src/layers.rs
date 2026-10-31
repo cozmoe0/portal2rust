@@ -14,3 +14,5 @@ pub const PORTAL_INNER_LAYER: usize = 5;
 pub const PORTAL_END_LAYER: usize = 6;
 /// The player's body, seen by the portal views only.
 pub const PLAYER_BODY_LAYER: usize = 7;
+/// A prop the player holds as a view model clone, drawn over the world.
+pub const HELD_CLONE_LAYER: usize = 8;

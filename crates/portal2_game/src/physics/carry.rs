@@ -8,7 +8,7 @@ use super::{layers, layers_for};
 use crate::entities::io::{EventQueue, EventTarget, FireOutput};
 use crate::entities::props::PhysicsProp;
 use crate::player::{Player, PlayerInput};
-use portal2_core::coords::{angles_forward, quat_to_angles};
+use portal2_core::coords::{angles_forward, angles_to_quat, quat_to_angles};
 use portal2_core::events::{EventValue, GameEvent};
 use portal2_core::sets::PlayerMoveSet;
 use portal2_world::collision::portal::{HALF_HEIGHT, HALF_WIDTH, PortalHoles, transfer};
@@ -60,6 +60,9 @@ pub struct Holding {
     /// Weighted cubes ride lower than other props.
     #[serde(default)]
     pub cube: bool,
+    /// Personality cores ride lower still as view model clones.
+    #[serde(default)]
+    pub core: bool,
     /// Running average of how far the prop trails its hold point.
     #[serde(default)]
     pub error: f32,
@@ -78,6 +81,34 @@ pub struct Holding {
     /// (Wheatley, once picked up). The game resets it when the player spawns.
     #[serde(default)]
     pub drop_locked: bool,
+    /// Held as a view model clone (personality cores): put at its hold point
+    /// whatever is in the way, and drawn over the world.
+    #[serde(default)]
+    pub view_model: bool,
+    /// `logic_playerproxy`'s forced grab controller, used from the next
+    /// pickup on: 1 view model, 2 physics, 0 the usual choice.
+    #[serde(default)]
+    pub forced_controller: u8,
+}
+
+/// Whether a `classname` prop is held as a view model clone: forced by
+/// `logic_playerproxy`, else by `player_held_object_use_view_model`, whose
+/// -1 picks personality cores only in single player.
+pub fn held_as_view_model(console: &portal2_core::console::Console, forced: u8, classname: &str) -> bool {
+    match forced {
+        1 => true,
+        2 => false,
+        _ => match console.i32("player_held_object_use_view_model") {
+            0 => false,
+            n if n > 0 => true,
+            _ => classname == "npc_personality_core",
+        },
+    }
+}
+
+/// Collision for a held prop: a view model clone meets nothing.
+fn held_layers(view_model: bool) -> CollisionLayers {
+    if view_model { layers_for(layers::HELD, 0) } else { layers_for(layers::HELD, layers::WORLD | layers::PROP | layers::MOVER) }
 }
 
 /// A prop to put in the player's hands (`ForcePickup`), taken as soon as it
@@ -135,6 +166,7 @@ fn use_or_grab(
     mut sounds: MessageWriter<portal2_audio::SoundRequest>,
     mut events: MessageWriter<GameEvent>,
     mut forced: ResMut<ForcedPickup>,
+    console: Res<portal2_core::console::Console>,
 ) {
     let pressed = buttons.just_pressed("use") || std::mem::take(&mut auto.0);
     let Ok((pe, p)) = players.single() else { return };
@@ -146,7 +178,7 @@ fn use_or_grab(
                     release(&mut commands, held);
                 }
                 let yaw = quat_to_angles(gt.compute_transform().rotation).y;
-                grab(&mut holding, &mut commands, &mut out, &mut sounds, pe, target, col, yaw - input.input.angles.y, me);
+                grab(&mut holding, &mut commands, &mut out, &mut sounds, &console, pe, target, col, yaw - input.input.angles.y, me);
             }
             Ok(_) => {}
             Err(_) => forced.0 = None,
@@ -189,7 +221,7 @@ fn use_or_grab(
     match props.get(target) {
         Ok((col, gt, body, me)) if *body == RigidBody::Dynamic && !me.has_flag(crate::entities::props::SF_PREVENT_PICKUP) => {
             let yaw = quat_to_angles(gt.compute_transform().rotation).y;
-            grab(&mut holding, &mut commands, &mut out, &mut sounds, pe, target, col, yaw - input.input.angles.y, me);
+            grab(&mut holding, &mut commands, &mut out, &mut sounds, &console, pe, target, col, yaw - input.input.angles.y, me);
         }
         _ => queue.push(0.0, EventTarget::Entity(target), "use", "", Some(pe), Some(pe)),
     }
@@ -202,6 +234,7 @@ fn grab(
     commands: &mut Commands,
     out: &mut MessageWriter<FireOutput>,
     sounds: &mut MessageWriter<portal2_audio::SoundRequest>,
+    console: &portal2_core::console::Console,
     pe: Entity,
     target: Entity,
     col: &TraceCollider,
@@ -212,11 +245,13 @@ fn grab(
     holding.yaw_offset = yaw_offset;
     holding.radius = prop_radius(col);
     holding.cube = me.classname == "prop_weighted_cube";
+    holding.core = me.classname == "npc_personality_core";
     holding.error = 0.0;
     holding.lift = 0.0;
     holding.clear = None;
     holding.portal = None;
-    commands.entity(target).insert((GravityScale(0.0), layers_for(layers::HELD, layers::WORLD | layers::PROP | layers::MOVER)));
+    holding.view_model = held_as_view_model(console, holding.forced_controller, &me.classname);
+    commands.entity(target).insert((GravityScale(0.0), held_layers(holding.view_model)));
     sounds.write(portal2_audio::SoundRequest::on("Weapon_Portalgun.HoldSound", pe));
     out.write(FireOutput::new(target, "OnPlayerPickup").with_activator(Some(pe)));
     out.write(FireOutput::new(target, "OnPhysGunPickup").with_activator(Some(pe)));
@@ -225,17 +260,24 @@ fn grab(
 /// Puts a prop back in the player's hands (a restored saved game): no
 /// gravity, held collision and the hold sound.
 pub fn resume_hold(world: &mut World, prop: Entity) {
+    // Saves from before view model holding was kept do not say; the choice
+    // is the pickup rule's either way.
+    let classname = world.get::<portal2_core::entity::MapEntity>(prop).map(|me| me.classname.clone()).unwrap_or_default();
+    let view_model =
+        held_as_view_model(world.resource::<portal2_core::console::Console>(), world.resource::<Holding>().forced_controller, &classname);
     if let Ok(mut e) = world.get_entity_mut(prop) {
-        e.insert((GravityScale(0.0), layers_for(layers::HELD, layers::WORLD | layers::PROP | layers::MOVER)));
+        e.insert((GravityScale(0.0), held_layers(view_model)));
     }
     // Saves from before the radius was kept stored a hold distance instead.
     let radius = world.get::<TraceCollider>(prop).map(prop_radius);
-    let cube = world.get::<portal2_core::entity::MapEntity>(prop).is_some_and(|me| me.classname == "prop_weighted_cube");
+    let cube = classname == "prop_weighted_cube";
     let mut holding = world.resource_mut::<Holding>();
+    holding.view_model = view_model;
     if let Some(r) = radius {
         holding.radius = r;
     }
     holding.cube = cube;
+    holding.core = classname == "npc_personality_core";
     if let Some(p) = world.resource::<portal2_core::entity::EntityRegistry>().player {
         world.write_message(portal2_audio::SoundRequest::on("Weapon_Portalgun.HoldSound", p));
     }
@@ -303,6 +345,37 @@ fn hold_point(
     target
 }
 
+/// Where a view model clone is held (`docs/re/gameplay.md`, view model
+/// holding): out along the view, moved along the flat forward as the view
+/// pitches and lowered by the object's offset as it levels, then pulled in
+/// to what is in the way, but no nearer than the minimum distance.
+fn view_model_hold_point(
+    physics: &Physics,
+    ignore: &[Entity],
+    console: &portal2_core::console::Console,
+    holding: &Holding,
+    player: &crate::player::movement::MoveState,
+    view: Vec3,
+) -> Vec3 {
+    let eye = player.origin + Vec3::Z * player.eye_offset();
+    let q = portal2_core::coords::angles_to_quat(view);
+    let (forward, right, up) = (q * Vec3::X, -(q * Vec3::Y), q * Vec3::Z);
+    let t = (view.x.abs() / 75.0).clamp(0.0, 1.0);
+    let lowered = if holding.cube {
+        console.f32("player_held_object_offset_up_cube_vm")
+    } else if holding.core {
+        console.f32("player_held_object_offset_up_sphere")
+    } else {
+        0.0
+    };
+    let offset = forward * console.f32("player_held_object_distance_vm")
+        + Vec3::Z.cross(right) * (console.f32("player_held_object_look_down_adjustment") * t)
+        + up * (lowered * (1.0 - t));
+    let tr = physics.trace(eye, eye + offset, Vec3::ZERO, Vec3::ZERO, mask::SOLID_ALL, ignore);
+    let length = (offset.length() * tr.fraction).max(console.f32("player_held_object_min_distance"));
+    eye + offset.normalize_or(forward) * length
+}
+
 /// Steers the held prop toward its hold point, dropping it when it trails
 /// too far behind for too long.
 fn hold_held(
@@ -321,12 +394,11 @@ fn hold_held(
     portal_query: Query<&crate::portals::Portal>,
     spatial: SpatialQuery,
     mut commands: Commands,
-    (bodies, mut out, mut sounds, followers, passes): (
+    (bodies, mut out, mut sounds, followers): (
         Query<(&RigidBody, Has<ChildOf>)>,
         MessageWriter<FireOutput>,
         MessageWriter<portal2_audio::SoundRequest>,
         Query<&portal2_world::collision::BoneFollower>,
-        Query<Entity, With<super::PassesHeld>>,
     ),
 ) {
     let Some(held) = holding.entity else { return };
@@ -345,6 +417,29 @@ fn hold_held(
         holding.entity = None;
         return;
     };
+    // Held beyond a portal, the hold point (and the prop's facing) are
+    // carried through it; the prop is let go when that portal closes.
+    let through = match (holding.portal, crate::portals::linked_frames(&portals, &portal_query)) {
+        (Some(k), Some(frames)) => Some(transfer(&frames[k], &frames[1 - k])),
+        (Some(_), None) => {
+            holding.entity = None;
+            release(&mut commands, held);
+            return;
+        }
+        (None, _) => None,
+    };
+    let turn = through.map_or(Quat::IDENTITY, |m| Quat::from_mat3a(&m.matrix3));
+    if holding.view_model {
+        let at = view_model_hold_point(&physics, &[pe, held], &console, &holding, &p.state, input.input.angles);
+        let facing = angles_to_quat(input.input.angles.with_z(0.0)) * Quat::from_rotation_z(holding.yaw_offset.to_radians());
+        commands
+            .entity(held)
+            .insert((Position(through.map_or(at, |m| m.transform_point3(at))), Rotation::from((turn * facing).normalize())));
+        lin.0 = Vec3::ZERO;
+        ang.0 = Vec3::ZERO;
+        holding.error = 0.0;
+        return;
+    }
     // The contact solver only pushes back softly, so a prop turned or
     // squeezed into a wall can work its way in and through a thin pane.
     // Sunk in too deep, it goes back to where it last was clear (passing
@@ -365,24 +460,12 @@ fn hold_held(
         ang.0 = Vec3::ZERO;
         return;
     }
-    // Held beyond a portal, the hold point (and the prop's facing) are
-    // carried through it; the prop is let go when that portal closes.
-    let through = match (holding.portal, crate::portals::linked_frames(&portals, &portal_query)) {
-        (Some(k), Some(frames)) => Some(transfer(&frames[k], &frames[1 - k])),
-        (Some(_), None) => {
-            holding.entity = None;
-            release(&mut commands, held);
-            return;
-        }
-        (None, _) => None,
-    };
     let dt = time.delta_secs().max(1e-4);
     let eye = p.state.origin + Vec3::Z * p.state.eye_offset();
-    // Models with collision on their bones and unblockable trains do not
-    // hold a carried prop back (see `layers::FOLLOWER`), so neither do they
-    // move its hold point.
+    // Models with collision on their bones do not hold a carried prop back
+    // (see `layers::FOLLOWER`), so neither do they move its hold point.
     let mut ignore = vec![pe, held];
-    for owner in followers.iter().map(|f| f.owner).chain(&passes) {
+    for owner in followers.iter().map(|f| f.owner) {
         if !ignore.contains(&owner) {
             ignore.push(owner);
         }
@@ -418,7 +501,6 @@ fn hold_held(
     let step = swept_step(&blockers, collider, pos.0, rot.0, error, &filter);
     let wanted = step / dt * 0.5;
     lin.0 = wanted.clamp_length_max(HOLD_MAX_SPEED);
-    let turn = through.map_or(Quat::IDENTITY, |m| Quat::from_mat3a(&m.matrix3));
     let target_rot = turn * Quat::from_rotation_z((input.input.angles.y + holding.yaw_offset).to_radians());
     let (axis, angle) = (target_rot * rot.0.inverse()).normalize().to_axis_angle();
     let angle = if angle > std::f32::consts::PI { angle - std::f32::consts::TAU } else { angle };

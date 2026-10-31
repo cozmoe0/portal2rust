@@ -105,7 +105,7 @@ fn spawn_viewmodel_camera(mut commands: Commands) {
         Name::new("viewmodel camera"),
         ViewmodelCamera,
         Camera3d { depth_load_op: Camera3dDepthLoadOp::Clear(0.0), ..default() },
-        Camera { order: 1, clear_color: ClearColorConfig::None, ..default() },
+        Camera { order: 2, clear_color: ClearColorConfig::None, ..default() },
         Hdr,
         Tonemapping::None,
         bevy::render::view::DebandDither::Disabled,

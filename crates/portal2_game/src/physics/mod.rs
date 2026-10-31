@@ -4,6 +4,7 @@
 
 pub mod carry;
 pub mod constraints;
+pub mod held_clone;
 pub mod inputs;
 pub mod portal_travel;
 
@@ -31,24 +32,10 @@ pub mod layers {
     pub const PLAYER: u32 = 1 << 2;
     pub const HELD: u32 = 1 << 3;
     pub const MOVER: u32 = 1 << 4;
-    /// Collision riding a model's bones (a prop_dynamic's moving parts),
-    /// and trains the player cannot block ([`PassesHeld`]). Props resting
-    /// on it collide with it, but not one the player holds: in the game
-    /// Wheatley goes into his socket's claws while carried, though he
-    /// bounces off them dropped.
+    /// Collision riding a model's bones (a prop_dynamic's moving parts).
+    /// Props resting on it collide with it, but not one the player holds.
     pub const FOLLOWER: u32 = 1 << 5;
 }
-
-/// A `func_tracktrain` with spawnflag 512 ("unblockable by player"): the
-/// game flags it so the player cannot stop it, and what the player carries
-/// passes through it too. `sp_a1_wakeup`'s breaker room is such a train,
-/// and its socket's trigger sits inside the train's central block, where
-/// the game lets the carried Wheatley go (measured: held 30 units inside it).
-#[derive(Component)]
-pub struct PassesHeld;
-
-/// `func_tracktrain` spawnflag: unblockable by player.
-const SF_TRAIN_UNBLOCKABLE: u32 = 512;
 
 pub struct GamePhysicsPlugin;
 
@@ -61,7 +48,7 @@ impl Plugin for GamePhysicsPlugin {
                 build_static_world.after(portal2_world::collision::rebuild_on_map_load).before(portal2_core::sets::EntitySpawnSet),
             )
             .add_systems(Update, (attach_bodies, attach_follower_bodies, attach_player_body, sync_portal_slabs, sync_disabled_colliders))
-            .add_plugins((carry::CarryPlugin, portal_travel::PortalTravelPlugin));
+            .add_plugins((carry::CarryPlugin, held_clone::HeldClonePlugin, portal_travel::PortalTravelPlugin));
         inputs::register(app);
         constraints::register(app);
     }
@@ -259,8 +246,6 @@ fn attach_bodies(
         let Some(collider) = collider else { continue };
         if is_prop && !parented && !me.has_flag(SF_MOTION_DISABLED) {
             make_dynamic(&mut commands, e, collider, prop_mass(&fs, me));
-        } else if me.classname == "func_tracktrain" && me.has_flag(SF_TRAIN_UNBLOCKABLE) {
-            commands.entity(e).insert((RigidBody::Kinematic, collider, layers_for(layers::FOLLOWER, layers::PROP), PassesHeld));
         } else {
             // Spawnflag 8 on physics props: start motion disabled.
             commands.entity(e).insert((RigidBody::Kinematic, collider, layers_for(layers::MOVER, layers::PROP | layers::HELD)));

@@ -152,10 +152,26 @@ and horizontally slower than 64 u/s:
 - `logic_playerproxy`'s `SetDropEnabled 0` stops `+use` letting go (set on
   picking up Wheatley); it is a flag on the player (server.dll writes it in
   `sub_10195940`), set back to allowed only when the player spawns.
-- A held object passes through bone followers (below): measured in the game
-  in `sp_a1_intro7` with `ForcePickup`, Wheatley held at his socket's
-  trigger sits with his centre inside the socket's arm and housing solids,
-  while dropped onto the socket from above he bounces off them.
+- View model holding (server.dll `sub_103CBCC0`, the player's flag at
+  +0x1366 says it is in use): the hold point is the eye plus
+  `forward × player_held_object_distance_vm` (65)
+  `+ flat forward × player_held_object_look_down_adjustment (20) × t`
+  `+ up × offset × (1 - t)`, with `t = |pitch| / 75` (clamped to 0..1),
+  the eye's unclamped angles, the flat forward the player's up crossed with
+  the view's right, and the offset `player_held_object_offset_up_sphere`
+  (-15) for cores (`..._cube_vm`, -20, for cubes). A line trace from the eye
+  (`MASK_SOLID`, skipping the player and the object) shortens it to where it
+  hits, but never below `player_held_object_min_distance` (50). The object
+  is put there whatever is in the way (no shadow controller), so it can sit
+  inside a solid: measured in `sp_a1_intro7` (Wheatley's centre inside his
+  socket's arm and housing) and `sp_a1_wakeup` (inside the breaker train's
+  central block, at exactly 50 from the eye, where the socket's trigger
+  is). Measured on the walkway outside the breaker room at pitch 10 and 38
+  the core sits at the formula's point to 0.1 unit.
+- `logic_playerproxy`'s `ForcePhysicsGrabController` /
+  `ForceVMGrabController` / `ResetGrabControllerBehavior` store 2 / 1 / 0
+  on the player (+0x1370); the controller is chosen with it on the next
+  pickup, so the core already held stays a view model clone.
 - Personality cores (`npc_personality_core`) are physics props: hanging on a
   parent they ride it, and `ClearParent` lets them fall (Wheatley popping
   off his management rail is the `@sphere ClearParent` the scene fires).
@@ -225,6 +241,16 @@ The placement check runs in this order and stops at the first failure:
 - Personality cores are handled separately, and a list of classes never
   fizzles.
 
+## Stuck players
+
+- `CGameMovement::CheckStuck`: a player whose box starts inside something
+  tries one small nudge from a fixed table (an eighth of a unit, then 1 or
+  6 up, 2 sideways) and otherwise does not move that tick, keeping their
+  ground entity, so a pusher they stand on keeps carrying them. In
+  `sp_a1_wakeup` Wheatley, riding his socket on the shaft model's animation
+  while the breaker train turns a little differently, sweeps through where
+  a player can stand; the player stays on the train.
+
 ## Physics-solid brush entities
 
 - Brush entities the game makes physics-solid (doors unless under a
@@ -238,9 +264,10 @@ The placement check runs in this order and stops at the first failure:
   doorway lintel, so the player is already under the lintel when the step
   up is tried and rises only to it. The game's walk ends at
   (8976, 1115.53, −476.47), as here.
-- A prop the player carries passes through a train flagged unblockable by
-  the player: in `sp_a1_wakeup` the carried Wheatley is held 30 units inside
-  the breaker train's central block, where the socket's trigger sits.
+- In `sp_a1_wakeup` the carried Wheatley is held inside the breaker
+  train's central block, where the socket's trigger sits: he is held as a
+  view model clone, which no solid stops (carrying, above), not because of
+  the train's "unblockable" flag.
 
 ## Bone followers
 

@@ -1,0 +1,7 @@
+# Plugging Wheatley into the breaker room's socket, in time order (each
+# shot waits the settle time). See wakeup.txt for the commands.
+plug_0 sp_a1_wakeup 8976 1115.5 -476 40.3 248 0 ent_fire basement_breakers_prop_0 setanimation breaker_shaft_open_hatch; ent_fire breaker_bottom_light turnon; ent_fire light_orange_glados turnon; ent_fire basement_breakers_socket_relay trigger; r_drawviewmodel 1; ent_teleport @sphere; ent_fire @sphere forcepickup
+plug_1 sp_a1_wakeup 8976 1115.5 -476 40.3 248 0 r_drawviewmodel 1
+plug_2 sp_a1_wakeup 8976 1115.5 -476 40.3 248 0 r_drawviewmodel 1
+plug_3 sp_a1_wakeup 8976 1115.5 -476 40.3 248 0 r_drawviewmodel 1
+plug_4 sp_a1_wakeup 8976 1115.5 -476 40.3 248 0 r_drawviewmodel 1

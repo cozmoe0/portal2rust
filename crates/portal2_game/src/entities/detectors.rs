@@ -139,12 +139,20 @@ fn proxy_input(world: &mut World, call: &InputCall) -> bool {
         world.resource_mut::<crate::physics::carry::Holding>().drop_locked = !enabled;
         return true;
     }
+    // The grab controller for the next pickup (`docs/re/gameplay.md`).
+    let forced = match call.input.as_str() {
+        "forcevmgrabcontroller" => Some(1),
+        "forcephysicsgrabcontroller" => Some(2),
+        "resetgrabcontrollerbehavior" => Some(0),
+        _ => None,
+    };
+    if let Some(forced) = forced {
+        world.resource_mut::<crate::physics::carry::Holding>().forced_controller = forced;
+        return true;
+    }
     matches!(
         call.input.as_str(),
         "setmotionbluramount"
-            | "forcevmgrabcontroller"
-            | "forcephysicsgrabcontroller"
-            | "resetgrabcontroller"
             | "addpotatostoportalgun"
             | "removepotatosfromportalgun"
             | "lowerweapon"

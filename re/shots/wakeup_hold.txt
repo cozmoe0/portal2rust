@@ -1,0 +1,6 @@
+# Wheatley in the player's hands (view model clone in the game), for the
+# hold point and how he is drawn. See wakeup.txt for the commands.
+wake_hold_start sp_a1_wakeup 6976 560 384 0 90 0 r_drawviewmodel 1; ent_teleport @sphere; ent_fire @sphere forcepickup
+wake_hold_down sp_a1_wakeup 6976 560 384 40 90 0 r_drawviewmodel 1
+wake_hold_wall sp_a1_wakeup 6976 560 384 0 0 0 r_drawviewmodel 1; ent_teleport @sphere; ent_fire @sphere forcepickup
+wake_hold_socket sp_a1_wakeup 8976 1116 -476 40.3 248 0 ent_fire basement_breakers_prop_0 setanimation breaker_shaft_open_hatch; ent_fire breaker_bottom_light turnon; ent_fire light_orange_glados turnon; r_drawviewmodel 1; ent_teleport @sphere; ent_fire @sphere forcepickup

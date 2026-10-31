@@ -62,6 +62,17 @@ scripts. Written in our own words; no code is copied.
   `sp_a1_wakeup`'s breaker room makes a one-unit move at its starting
   maximum of 1, raises the maximum to 52 and later rides up the shaft with
   another `MoveToPathNode`, so it climbs at 52 (155 past `breaker_train_path_2`).
+- `orientationtype` 2 (linear blend) and 3 (eased) turn the train from the
+  orientation of the node it left to that of the node ahead with the share
+  of the segment covered (a slerp, so the short way round); a node's
+  orientation is its own angles with its `orientationtype` 2, else the
+  direction to the next node. Type 1 faces the way it moves and keeps its
+  angles while moving straight up or down. Measured in `sp_a1_wakeup`
+  (nodes at yaw 0, 270, 0, 135): the breaker train turns 0 → −108 on its
+  one-unit move, back to +8 on the first climb and to 131 at the top (the
+  game's think steps overshoot and undershoot the nodes' −90 / 0 / 135),
+  while the shaft model's own animation turns the socket a quarter turn
+  the same way.
 
 ## linked_portal_door
 
