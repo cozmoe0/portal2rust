@@ -214,6 +214,12 @@ impl Env for World2<'_, '_, '_> {
         (t.fraction < 1.0 && !t.start_solid).then_some((t.fraction, t.normal))
     }
 
+    fn trace_with_water(&self, start: Vec3, end: Vec3) -> Option<(f32, Vec3)> {
+        use source_formats::bsp::contents::{SLIME, WATER};
+        let t = self.physics.trace(start, end, Vec3::ZERO, Vec3::ZERO, portal2_world::collision::mask::SOLID_ALL | WATER | SLIME, &[]);
+        (t.fraction < 1.0 && !t.start_solid).then_some((t.fraction, t.normal))
+    }
+
     fn light(&self, at: Vec3) -> Vec3 {
         self.map.and_then(|m| m.bsp.ambient_cube(at)).map(|c| c.iter().copied().sum::<Vec3>() / 6.0).unwrap_or(Vec3::splat(0.5))
     }

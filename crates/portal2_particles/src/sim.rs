@@ -18,6 +18,10 @@ pub const MAX_CONTROL_POINTS: usize = 64;
 pub trait Env {
     /// Fraction along `start..end` to the first solid hit and its normal.
     fn trace(&self, start: Vec3, end: Vec3) -> Option<(f32, Vec3)>;
+    /// As [`Env::trace`], water surfaces counting as solid.
+    fn trace_with_water(&self, start: Vec3, end: Vec3) -> Option<(f32, Vec3)> {
+        self.trace(start, end)
+    }
     /// Light arriving at a point (linear RGB).
     fn light(&self, at: Vec3) -> Vec3;
 }
@@ -1099,20 +1103,26 @@ impl Collection {
                     self.particles.v[PREV_POSITION][i] = pos;
                 }
             }
-            InitKind::PlaceOnGround { offset, max_length, kill } => {
+            // Missing the ground, a particle still goes to the end of the
+            // trace, as in the game: GLaDOS's drag ripples placed below her
+            // head as it rises end up far from it, where their distance fade
+            // hides them.
+            InitKind::PlaceOnGround { offset, max_length, kill, water } => {
                 for i in first..n {
                     let p = self.particles.v[POSITION][i];
                     let start = p + Vec3::Z * max_length;
                     let end = p - Vec3::Z * max_length;
-                    match env.trace(start, end) {
-                        Some((f, _)) => {
-                            let z = start.lerp(end, f).z + offset;
-                            self.particles.v[POSITION][i].z = z;
-                            self.particles.v[PREV_POSITION][i].z += z - p.z;
+                    let hit = if water { env.trace_with_water(start, end) } else { env.trace(start, end) };
+                    let z = match hit {
+                        Some((f, _)) => start.lerp(end, f).z + offset,
+                        None if kill => {
+                            self.kill(i);
+                            continue;
                         }
-                        None if kill => self.kill(i),
-                        None => {}
-                    }
+                        None => end.z + offset,
+                    };
+                    self.particles.v[POSITION][i].z = z;
+                    self.particles.v[PREV_POSITION][i].z += z - p.z;
                 }
             }
             InitKind::LifetimeFromSequence { fps } => {

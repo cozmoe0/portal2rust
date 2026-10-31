@@ -8,7 +8,8 @@
 //!
 //! The uniform has no slot for the maximum density, so it travels in
 //! `directional_light_exponent` (our shaders do not use directional fog
-//! light).
+//! light). The colour is scaled by the view's exposure, as the game scales
+//! it by the tone map scale.
 
 use bevy::pbr::{DistanceFog, FogFalloff};
 use bevy::prelude::*;
@@ -172,14 +173,15 @@ fn apply_fog(world: &mut World) {
         c.enabled.then(|| c.clone())
     });
     // The 3D sky box camera keeps the sky camera's own fog.
-    let mut cameras = world.query_filtered::<(Entity, &GlobalTransform, Option<&DistanceFog>), (
+    let mut cameras = world.query_filtered::<(Entity, &GlobalTransform, Option<&DistanceFog>, Option<&bevy::camera::Exposure>), (
         With<Camera3d>,
         Without<portal2_world::sky::SkyboxCamera>,
         Without<crate::visuals::projected::ShadowCamera>,
         Without<crate::visuals::fx::shadows::FxShadowCamera>,
     )>();
-    let views: Vec<(Entity, Vec3, bool)> = cameras.iter(world).map(|(e, gt, f)| (e, gt.forward().into(), f.is_some())).collect();
-    for (e, forward, has_fog) in views {
+    let views: Vec<(Entity, Vec3, bool, f32)> =
+        cameras.iter(world).map(|(e, gt, f, x)| (e, gt.forward().into(), f.is_some(), x.map_or(1.0, |x| x.exposure()))).collect();
+    for (e, forward, has_fog, exposure) in views {
         // The world and model shaders read the fog uniform, which only exists
         // on views with fog, so views without fog get a zero-density one.
         let Some(c) = &fog else {
@@ -202,7 +204,10 @@ fn apply_fog(world: &mut World) {
         } else {
             c.values.color
         } / 255.0;
-        let linear = Vec3::new(srgb_to_linear(gamma.x), srgb_to_linear(gamma.y), srgb_to_linear(gamma.z)) * c.hdr_scale;
+        // The surfaces it blends with are scaled by the tone map, and the
+        // game scales the fog colour by it too (a foggy view brightens with
+        // the exposure as a whole).
+        let linear = Vec3::new(srgb_to_linear(gamma.x), srgb_to_linear(gamma.y), srgb_to_linear(gamma.z)) * c.hdr_scale * exposure;
         let distance_fog = DistanceFog {
             color: Color::linear_rgb(linear.x, linear.y, linear.z),
             directional_light_color: Color::NONE,

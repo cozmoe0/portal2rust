@@ -231,6 +231,8 @@ pub enum InitKind {
         offset: f32,
         max_length: f32,
         kill: bool,
+        /// Water surfaces count as ground.
+        water: bool,
     },
     LifetimeFromSequence {
         fps: f32,
@@ -965,6 +967,7 @@ fn initializer(op: &ParticleOperator) -> InitKind {
             offset: p.f("offset", 0.0),
             max_length: p.f("max trace length", 128.0),
             kill: p.b("kill on no collision", false),
+            water: p.b("include water", false),
         },
         "lifetime from sequence" => InitKind::LifetimeFromSequence { fps: p.f("Frames Per Second", 30.0) },
         "remap initial scalar" => InitKind::RemapScalar {

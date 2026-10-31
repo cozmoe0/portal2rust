@@ -40,6 +40,7 @@ mod cmd {
     pub mod mdlinfo;
     pub mod mdlscan;
     pub mod mdlseq;
+    pub mod mdluv;
     pub mod modelbounds;
     pub mod modelbrushes;
     pub mod modellights;
@@ -127,6 +128,7 @@ const COMMANDS: &[(&str, &str, fn())] = &[
         "Prints a model's pose parameters, bones (with `--bones`) and sequences (flags, blend grid, pose parameter axes).",
         cmd::mdlseq::main,
     ),
+    ("mdluv", "Prints the range of a model's texture coordinates and normals.", cmd::mdluv::main),
     ("modelbounds", "Prints a brush model's bounds", cmd::modelbounds::main),
     ("modelbrushes", "Lists a brush model's brushes with their contents and bounds", cmd::modelbrushes::main),
     ("modellights", "Prints the lighting inputs a dynamic model at a point would see", cmd::modellights::main),

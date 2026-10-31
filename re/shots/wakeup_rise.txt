@@ -1,0 +1,8 @@
+# Dormant GLaDOS waking (glados_start fired by the first shot; each later
+# shot waits the settle time). See wakeup.txt for the commands.
+rise_0 sp_a1_wakeup 8975 1139 355 -30 3.6 0 ent_fire glados_start trigger; ent_fire glados_start_cables trigger
+rise_1 sp_a1_wakeup 8975 1139 355 -30 3.6 0
+rise_2 sp_a1_wakeup 8975 1139 355 -30 3.6 0
+rise_3 sp_a1_wakeup 8975 1139 355 -30 3.6 0
+rise_4 sp_a1_wakeup 8975 1139 355 -30 3.6 0
+rise_5 sp_a1_wakeup 8975 1139 355 -30 3.6 0

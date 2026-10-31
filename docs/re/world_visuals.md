@@ -265,6 +265,11 @@ descriptions are our own; the code in `crates/portal2` is written from them.
   view's exposure directly; the histogram comes from a compute pass over
   the finished view, read back a frame or two later.
 
+- The fog colour is scaled by the tone map scale like the surfaces it
+  blends with: measured in `sp_a1_wakeup`'s fog-filled GLaDOS chamber, the
+  game's view brightens 4.6 times between scale 1 and its automatic 5,
+  ours only 1.5 times while the fog stayed at scale 1.
+
 ## Additive blending in Bevy
 
 - Bevy 0.20 draws `AlphaMode::Add` with premultiplied-alpha blending, so

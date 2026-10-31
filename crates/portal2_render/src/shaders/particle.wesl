@@ -169,7 +169,11 @@ fn fragment(in: ParticleVertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(rgb * alpha * (1.0 - f) * view.exposure, 0.0);
     }
     if (flags & FLAG_MOD2X) != 0u {
-        rgb = mix(vec3<f32>(0.5), tex.rgb, alpha);
+        // Multiplied in: the blend gives what is behind × (1 + output) with
+        // zero alpha, so twice the colour eased to grey by the alpha (and by
+        // the fog) goes out less one.
+        let m = mix(mix(vec3<f32>(0.5), tex.rgb * to_linear(clamp(in.color.rgb, vec3<f32>(0.0), vec3<f32>(1.0))), alpha), vec3<f32>(0.5), f);
+        return vec4<f32>(m * 2.0 - 1.0, 0.0);
     }
     let c = mix(rgb * view.exposure, fog.base_color.rgb, f);
     return vec4<f32>(c, alpha);

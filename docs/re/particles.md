@@ -310,3 +310,15 @@ entity's material (`particle/particle_noisesphere` by default):
   trail width (we draw trails a radius wide in all, which matches the
   look of sparks in the game) and the rope texture scale.
 - Tractor beams, paint and code effects beyond the ones above.
+
+## Place on ground and modulate sprites
+
+- `Position Modify Place On Ground` traces down `max trace length` (with
+  `include water`, water surfaces stop it too); a particle the trace does
+  not stop still goes to the trace's end unless `kill on no collision`.
+  GLaDOS's drag ripples (`glados_head_drag_mod`) are placed so: as her head
+  rises they land far below it, and their initial distance to it fades
+  them out.
+- SpriteCard `$mod2x` multiplies what is behind by twice the colour, eased
+  to grey (no change) by the alpha; `$addself` does not make such a sprite
+  additive (`particle/wake/ring_wake_mod` has both).

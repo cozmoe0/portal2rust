@@ -246,7 +246,11 @@ fn load_look(
     let get = |k: &str| vmt.as_ref().is_some_and(|v| v.get_bool(k));
     // `$addself` adds the texture in, scaled by its amount.
     let add_self = vmt.as_ref().and_then(|v| v.get_f32("$addself")).unwrap_or(0.0);
-    let additive = get("$additive") || add_self > 0.0;
+    // `$mod2x` multiplies what is behind by twice the colour (eased toward
+    // grey, which leaves it as it is, by the alpha): ripples darken and
+    // lighten water rather than adding light, whatever `$addself` says.
+    let mod2x = get("$mod2x");
+    let additive = !mod2x && (get("$additive") || add_self > 0.0);
     let mut f = 0u32;
     if additive {
         f |= flags::ADDITIVE;
@@ -261,7 +265,7 @@ fn load_look(
     if get("$nofog") {
         f |= flags::NO_FOG;
     }
-    if get("$mod2x") {
+    if mod2x {
         f |= flags::MOD2X;
     }
     let mut overbright = vmt.as_ref().and_then(|v| v.get_f32("$overbrightfactor")).unwrap_or(1.0);
@@ -282,7 +286,13 @@ fn load_look(
     let material = materials.add(ParticleMaterial {
         params: ParticleParams { params: Vec4::new(overbright, f as f32, blend_mode, 0.0) },
         base,
-        alpha_mode: if additive { AlphaMode::Add } else { AlphaMode::Blend },
+        alpha_mode: if mod2x {
+            AlphaMode::Multiply
+        } else if additive {
+            AlphaMode::Add
+        } else {
+            AlphaMode::Blend
+        },
     });
     Look { material, sheet: Arc::new(sheet), additive, hidden: shader == "refract" || vmt.is_none() }
 }
