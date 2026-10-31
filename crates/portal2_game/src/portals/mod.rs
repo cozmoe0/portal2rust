@@ -72,6 +72,8 @@ impl Default for PortalColors {
 pub struct PortalParams {
     pub color: Vec4,
     pub state: Vec4,
+    /// x: rim brightness multiplier (the visual overhaul's HDR glow, 1 otherwise).
+    pub glow: Vec4,
 }
 
 /// A portal's opening and rim (the game's `PortalRefract` stages, see
@@ -267,7 +269,7 @@ fn apply_placements(
         let gradient = if req.slot == 0 { "portal-blue-color" } else { "portal-orange-color" };
         let gradient = format!("materials/models/portals/{gradient}.vtf");
         let base_material = PortalMaterial {
-            params: PortalParams { color: color.extend(4.0), state: Vec4::ZERO },
+            params: PortalParams { color: color.extend(4.0), state: Vec4::ZERO, glow: Vec4::ONE },
             view: Some(texture.clone()),
             noise: textures.load(&fs, &mut images, "materials/models/portals/noise-blur-256x256.vtf", false).map(|t| t.handle),
             gradient: textures.load(&fs, &mut images, &gradient, true).map(|t| t.handle),

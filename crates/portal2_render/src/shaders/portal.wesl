@@ -15,6 +15,8 @@ struct PortalParams {
     color: vec4<f32>,
     // x: linked (0/1), y: time, z: open amount (0..1), w: clarity (1 - static)
     state: vec4<f32>,
+    // x: rim brightness multiplier (the visual overhaul's HDR glow, else 1)
+    glow: vec4<f32>,
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> portal: PortalParams;
@@ -68,7 +70,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let ramp = textureSampleLevel(gradient_tex, gradient_samp, vec2<f32>(clamp(look, 0.0, 1.0), 0.5), 0.0).rgb;
     // The game saturates its light scale here, so dark scenes do not
     // brighten the fire.
-    let fire = ramp * portal.color.a * min(view.exposure, 1.0);
+    let fire = ramp * portal.color.a * min(view.exposure, 1.0) * portal.glow.x;
     let cover = min(alpha, 1.0);
 
     if inside > 0.5 && portal.state.x > 0.5 {

@@ -20,6 +20,7 @@ pub mod postfx;
 pub mod reflections;
 pub mod screen;
 pub mod shadows;
+pub mod ssr;
 
 use std::path::PathBuf;
 
@@ -279,6 +280,7 @@ impl Plugin for VisualFxPlugin {
                 screen::FxScreenPlugin,
                 reflections::FxReflectionsPlugin,
                 atmosphere::FxAtmospherePlugin,
+                ssr::FxSsrPlugin,
                 postfx::PostFxPlugin,
             ));
     }

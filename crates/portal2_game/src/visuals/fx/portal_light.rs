@@ -38,7 +38,24 @@ pub struct PortalLightingPlugin;
 
 impl Plugin for PortalLightingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PostUpdate, (attach, portal_lights).chain().in_set(FxProduceSet));
+        app.add_systems(PostUpdate, ((attach, portal_lights).chain().in_set(FxProduceSet), rim_glow));
+    }
+}
+
+/// The rims' HDR boost, so their fire blooms; 1 (the game's own look)
+/// without the overhaul's emissive feature.
+const RIM_GLOW: f32 = 1.6;
+
+fn rim_glow(settings: Res<FxSettings>, portals: Query<&Portal>, mut materials: ResMut<Assets<crate::portals::PortalMaterial>>) {
+    let glow = if settings.has(features::EMISSIVE) { RIM_GLOW } else { 1.0 };
+    for p in &portals {
+        for handle in [&p.material, &p.inner_material, &p.end_material] {
+            if materials.get(handle).is_some_and(|m| m.params.glow.x != glow)
+                && let Some(mut m) = materials.get_mut(handle)
+            {
+                m.params.glow.x = glow;
+            }
+        }
     }
 }
 

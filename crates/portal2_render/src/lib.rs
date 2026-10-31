@@ -35,6 +35,7 @@ impl Plugin for RenderSetupPlugin {
         embedded_asset!(app, "shaders/fx_post.wesl");
         embedded_asset!(app, "shaders/fx_ao.wesl");
         embedded_asset!(app, "shaders/fx_volumetric.wesl");
+        embedded_asset!(app, "shaders/fx_ssr.wesl");
         app.add_plugins((
             MaterialPlugin::<source_material::WorldMaterial>::default(),
             MaterialPlugin::<source_material::ModelMaterial>::default(),

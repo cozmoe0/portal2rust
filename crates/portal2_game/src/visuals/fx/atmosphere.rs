@@ -68,7 +68,10 @@ impl Plugin for FxAtmospherePlugin {
             .init_resource::<VolumeUniformBuffer>()
             .add_systems(RenderStartup, init_pipelines)
             .add_systems(Render, prepare.in_set(RenderSystems::PrepareResources))
-            .add_systems(Core3d, volumetrics.after(main_transparent_pass_3d).in_set(Core3dSystems::MainPass));
+            .add_systems(
+                Core3d,
+                volumetrics.after(main_transparent_pass_3d).after(super::ssr::FxReflectionSet).in_set(Core3dSystems::MainPass),
+            );
     }
 }
 

@@ -7,7 +7,7 @@ import bevy_pbr::render::mesh_view_bindings::view;
 import bevy_pbr::render::mesh_view_bindings::fog;
 import bevy_pbr::render::mesh_view_bindings::globals;
 import portal2_render::shaders::projected::{is_shadow_view, projected_lighting};
-import portal2_render::shaders::fx::{FX_LEAF_TRANSMISSION, FX_REFLECTIONS, FxSurface, fx_emissive_boost, fx_fresnel, fx_haze, fx_is_foliage, fx_lighting, fx_on, fx_probe, fx_wetness};
+import portal2_render::shaders::fx::{FX_LEAF_TRANSMISSION, FX_REFLECTIONS, FX_SSR, FxSurface, fx_emissive_boost, fx_fresnel, fx_haze, fx_is_foliage, fx_lighting, fx_on, fx_probe, fx_wetness};
 
 struct WorldParams {
     color: vec4<f32>,
@@ -546,6 +546,13 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     }
     @if(FX) {
         color = fx_haze(color, in.world_position.xyz, view.world_position);
+        // How mirror-like the pixel is, for the screen-space reflections
+        // (which put alpha back to 1); only opaque surfaces.
+        if fx_on(FX_SSR) && !has(FLAG_TRANSLUCENT) {
+            let puddle = saturate((fx_wet - 0.3) / 0.7);
+            let glossy = saturate((0.2 - fx_rough) / 0.2) * 0.5;
+            alpha = 1.0 - max(puddle, glossy);
+        }
     }
     return vec4<f32>(apply_source_fog(color * view.exposure, in.world_position.xyz), alpha);
 }
