@@ -54,8 +54,16 @@ The engine's light cache picks lights per cache point (the model's
 lighting origin):
 
 - Candidates are the world lights whose cluster is in the point's PVS (the
-  sky light instead needs a leaf flagged as seeing the sky). Quake and sky
-  ambient lights are skipped. Surface lights reach only as far as their
+  sky light instead needs a leaf flagged as seeing the sky, and a ray from
+  the point toward the sun whose first opaque world brush it enters through
+  a sky face). Quake and sky ambient lights are skipped. A light hidden from
+  the point by the world or a static prop (a line from the light to the
+  point, opaque contents, no entities) gives nothing. Measured in
+  `sp_a1_wakeup`: dormant GLaDOS under the chamber's open roof is lit by
+  the sun (without it her white shell is a quarter as bright as the
+  game's), and the training door at the end of the hall gets only its
+  ambient cube, as a chamber spot light 777 units away shines at it through
+  the hall's windows, which are static props. Surface lights reach only as far as their
   radius; the other kinds may reach 1000 times theirs
   (`r_lightcache_radiusfactor`), in practice without limit.
 - With `r_radiosity 4` (the default) and the ambient cube taken from the

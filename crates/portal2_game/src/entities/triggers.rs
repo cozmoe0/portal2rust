@@ -222,9 +222,10 @@ const SF_PHYSICS: u32 = 8;
 /// trigger_teleport: keep the toucher's view angles.
 const SF_PRESERVE_ANGLES: u32 = 32;
 
-/// The player (unless in noclip) and physics props touch triggers; props
-/// only those that admit physics objects. Filters see each toucher as the
-/// activator.
+/// The player (in noclip too, as in the game: the reference captures fly
+/// there and the triggers on the way fire) and physics props touch
+/// triggers; props only those that admit physics objects. Filters see each
+/// toucher as the activator.
 fn touch_triggers(
     clock: Res<GameClock>,
     physics: Physics,
@@ -246,16 +247,8 @@ fn touch_triggers(
     let Ok((pe, mut player)) = players.single_mut() else { return };
     let (mins, maxs) = player.state.hull();
     let origin = player.state.origin;
-    let mut touchers = Vec::new();
-    if !player.noclip {
-        touchers.push(Toucher {
-            entity: pe,
-            is_player: true,
-            is_npc: false,
-            center: origin + (mins + maxs) * 0.5,
-            half: (maxs - mins) * 0.5,
-        });
-    }
+    let mut touchers =
+        vec![Toucher { entity: pe, is_player: true, is_npc: false, center: origin + (mins + maxs) * 0.5, half: (maxs - mins) * 0.5 }];
     for (e, col, gt) in &props {
         let t = gt.compute_transform();
         let (lo, hi) = crate::physics::world_bounds(&col.shape, t.translation, t.rotation);

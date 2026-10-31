@@ -848,6 +848,70 @@ impl Bsp {
         (-1 - node) as usize
     }
 
+    /// The surface flags of the first world brush (with contents in `mask`)
+    /// a ray from `start` to `end` enters, walking the BSP tree; `None` when
+    /// it meets none. Brushes the ray starts inside are passed through.
+    pub fn first_surface_along(&self, start: Vec3, end: Vec3, mask: u32) -> Option<u32> {
+        self.ray_walk(0, 0.0, 1.0, start, end - start, mask)
+    }
+
+    fn ray_walk(&self, node: i32, t1: f32, t2: f32, start: Vec3, delta: Vec3, mask: u32) -> Option<u32> {
+        if node < 0 {
+            let leaf = self.leafs.get((-1 - node) as usize)?;
+            if leaf.contents & mask == 0 {
+                return None;
+            }
+            let first = leaf.first_leaf_brush as usize;
+            let mut best: Option<(f32, u32)> = None;
+            for &b in self.leaf_brushes.get(first..first + leaf.num_leaf_brushes as usize)? {
+                let Some(brush) = self.brushes.get(b as usize).filter(|br| br.contents & mask != 0) else { continue };
+                let (mut enter, mut exit, mut side) = (f32::MIN, f32::MAX, None);
+                for s in self.brush_sides.get(brush.first_side as usize..(brush.first_side + brush.num_sides) as usize)? {
+                    if s.bevel != 0 {
+                        continue;
+                    }
+                    let p = &self.planes[s.plane as usize];
+                    let d0 = p.normal.dot(start) - p.dist;
+                    let rate = p.normal.dot(delta);
+                    if rate.abs() < 1e-9 {
+                        if d0 > 0.0 {
+                            exit = f32::MIN;
+                        }
+                        continue;
+                    }
+                    let t = -d0 / rate;
+                    if rate < 0.0 {
+                        if t > enter {
+                            enter = t;
+                            side = Some(s);
+                        }
+                    } else {
+                        exit = exit.min(t);
+                    }
+                }
+                // A brush the ray starts inside does not count.
+                if enter <= exit && enter >= 0.0 && exit >= t1 && best.is_none_or(|(bt, _)| enter < bt) {
+                    let flags = side.and_then(|s| self.texinfo.get(s.texinfo.max(0) as usize)).map_or(0, |ti| ti.flags);
+                    best = Some((enter, flags));
+                }
+            }
+            return best.map(|(_, flags)| flags);
+        }
+        let n = self.nodes.get(node as usize)?;
+        let p = &self.planes[n.plane as usize];
+        let d1 = p.normal.dot(start + delta * t1) - p.dist;
+        let d2 = p.normal.dot(start + delta * t2) - p.dist;
+        if d1 >= 0.0 && d2 >= 0.0 {
+            return self.ray_walk(n.children[0], t1, t2, start, delta, mask);
+        }
+        if d1 < 0.0 && d2 < 0.0 {
+            return self.ray_walk(n.children[1], t1, t2, start, delta, mask);
+        }
+        let mid = t1 + (t2 - t1) * (d1 / (d1 - d2));
+        let (near, far) = if d1 >= 0.0 { (n.children[0], n.children[1]) } else { (n.children[1], n.children[0]) };
+        self.ray_walk(near, t1, mid, start, delta, mask).or_else(|| self.ray_walk(far, mid, t2, start, delta, mask))
+    }
+
     /// Point contents from the world BSP (brush contents of the containing leaf).
     pub fn point_contents(&self, point: Vec3) -> u32 {
         self.leafs.get(self.find_leaf(point)).map(|l| l.contents).unwrap_or(0)

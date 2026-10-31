@@ -1,0 +1,4 @@
+# More sp_a1_wakeup views with the tone map scale forced to 1 (see wakeup.txt).
+wake_stairs_tm1 sp_a1_wakeup 10463 1216 380 0 0 0 mat_force_tonemap_scale 1
+wake_walkway_tm1 sp_a1_wakeup 9600 1250 -480 0 180 0 mat_force_tonemap_scale 1
+wake_chamber_tm1 sp_a1_wakeup 9500 800 420 -10 90 0 mat_force_tonemap_scale 1

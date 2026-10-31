@@ -45,10 +45,12 @@ fn spawn_camera(mut commands: Commands) {
 }
 
 /// Moves the held clone's meshes onto the clone layer (and back to the
-/// world when it is let go). A scripted view sees it in the world.
+/// world when it is let go). A scripted view sees it in the world;
+/// `r_drawviewmodel 0` hides it with the weapon.
 fn draw_clone(
     holding: Res<Holding>,
     view: Res<crate::entities::viewcontrol::ActiveView>,
+    console: Res<portal2_core::console::Console>,
     children: Query<&Children>,
     layered: Query<&RenderLayers>,
     mut shown: Local<Option<Entity>>,
@@ -74,9 +76,10 @@ fn draw_clone(
         }
     }
     *shown = want;
+    let active = want.is_some() && console.bool("r_drawviewmodel");
     for mut cam in &mut cams {
-        if cam.is_active != want.is_some() {
-            cam.is_active = want.is_some();
+        if cam.is_active != active {
+            cam.is_active = active;
         }
     }
 }

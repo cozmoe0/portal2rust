@@ -76,6 +76,20 @@ impl CollisionWorld {
         Self { bvh: Bvh::build(&bounds), statics, brush_models: Vec::new(), brush_physics: Vec::new() }
     }
 
+    /// Whether a line meets a static volume (world brush or static prop)
+    /// with contents in `mask`: the light cache's visibility trace, which
+    /// sees the world and static props but no entities.
+    pub fn line_blocked(&self, start: Vec3, end: Vec3, mask: u32) -> bool {
+        let mut blocked = false;
+        self.bvh.query_sweep(start, end, Vec3::ZERO, Vec3::ZERO, |i| {
+            let v = &self.statics[i as usize];
+            if !blocked && v.contents & mask != 0 && v.sweep(start, end, Vec3::ZERO, Vec3::ZERO).is_some_and(|h| !h.start_solid) {
+                blocked = true;
+            }
+        });
+        blocked
+    }
+
     /// Indices of static volumes whose bounds overlap a box.
     pub fn statics_in(&self, mins: Vec3, maxs: Vec3) -> Vec<u32> {
         let mut out = Vec::new();

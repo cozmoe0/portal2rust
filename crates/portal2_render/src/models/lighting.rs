@@ -1,10 +1,12 @@
 //! Lighting for dynamic models, after the engine's light cache: the leaf
 //! ambient cube at the model plus its strongest few world lights. Lights the
 //! compiler already baked into the ambient samples are left out, and visible
-//! lights beyond the strongest few are folded into the ambient cube.
+//! lights beyond the strongest few are folded into the ambient cube. The sun
+//! (`light_environment`'s sky light) counts where the model sees the sky
+//! along it.
 
 use bevy::prelude::*;
-use source_formats::bsp::{Bsp, WorldLight};
+use source_formats::bsp::{Bsp, WorldLight, surf};
 
 use crate::source_material::{ModelLight, ModelParams};
 use crate::textures::TextureCache;
@@ -21,7 +23,12 @@ mod emit {
     pub const SURFACE: i32 = 0;
     pub const POINT: i32 = 1;
     pub const SPOT: i32 = 2;
+    pub const SKYLIGHT: i32 = 3;
 }
+
+/// Leaf flags: the leaf sees the 3D sky / the 2D sky.
+const LEAF_SKY: u16 = 0x1;
+const LEAF_SKY2D: u16 = 0x4;
 
 /// World light flag: the light is already part of the leaf ambient samples.
 const IN_AMBIENT_CUBE: i32 = 1;
@@ -99,10 +106,26 @@ fn light_at(l: &WorldLight, p: Vec3) -> Option<(f32, Vec3)> {
     Some((atten, dir))
 }
 
+/// Whether a ray from `p` along `dir` reaches the sky: the first opaque
+/// world brush it enters is entered through a sky face (the light cache's
+/// trace toward the sun for the sky light).
+pub fn sees_sky(bsp: &Bsp, p: Vec3, dir: Vec3) -> bool {
+    use source_formats::bsp::contents::{MOVEABLE, OPAQUE, SOLID};
+    bsp.first_surface_along(p, p + dir * 56756.0, SOLID | MOVEABLE | OPAQUE).is_some_and(|f| f & (surf::SKY | surf::SKY2D) != 0)
+}
+
+/// Whether no opaque world brush lies between a light and the point it
+/// lights (the light cache's visibility trace).
+fn light_reaches(bsp: &Bsp, light: Vec3, p: Vec3) -> bool {
+    use source_formats::bsp::contents::{MOVEABLE, OPAQUE, SOLID};
+    bsp.first_surface_along(light, p, SOLID | MOVEABLE | OPAQUE).is_none()
+}
+
 fn to_shader_light(l: &WorldLight, scale: f32) -> ModelLight {
     // Surface lights are spot lights whose cone covers the hemisphere with a
-    // cosine falloff.
+    // cosine falloff; the sky light shines along its direction.
     let (kind, inner, outer, exponent) = match l.kind {
+        emit::SKYLIGHT => (2.0, 1.0, -1.0, 1.0),
         emit::SPOT => (1.0, l.stopdot, l.stopdot2, spot_exponent(l)),
         emit::SURFACE => (1.0, 1.0, 0.0, 1.0),
         _ => (0.0, 1.0, -1.0, 1.0),
@@ -123,6 +146,12 @@ pub fn compute(bsp: &Bsp, p: Vec3) -> ModelLighting {
 /// Lighting at `p` with each world light scaled by its light style's
 /// brightness (`style value / 264`; switched-off lights give none).
 pub fn compute_styled(bsp: &Bsp, p: Vec3, style: &dyn Fn(i32) -> f32) -> ModelLighting {
+    compute_occluded(bsp, p, style, &|a, b| !light_reaches(bsp, a, b))
+}
+
+/// As [`compute_styled`], with `blocked(light, point)` telling which lights
+/// something hides from the point (the world and static props in the game).
+pub fn compute_occluded(bsp: &Bsp, p: Vec3, style: &dyn Fn(i32) -> f32, blocked: &dyn Fn(Vec3, Vec3) -> bool) -> ModelLighting {
     let leaf_cube = bsp.ambient_cube(p);
     // Lights flagged as part of the ambient samples only count when the cube
     // really comes from those samples.
@@ -134,6 +163,13 @@ pub fn compute_styled(bsp: &Bsp, p: Vec3, style: &dyn Fn(i32) -> f32) -> ModelLi
         _ => None,
     };
     let luma = |c: Vec3| c.dot(Vec3::new(0.299, 0.587, 0.114));
+    let leaf_flags = bsp.leafs.get(leaf).map_or(0, |l| l.flags);
+    let sky = bsp.world_lights.iter().filter(|l| l.kind == emit::SKYLIGHT).find_map(|l| {
+        let scale = style(l.style);
+        let toward = -l.normal.normalize_or_zero();
+        (scale > 0.0 && leaf_flags & (LEAF_SKY | LEAF_SKY2D) != 0 && sees_sky(bsp, p, toward))
+            .then(|| (luma(l.intensity) * scale, 1.0, toward, l, scale))
+    });
     let mut candidates: Vec<(f32, f32, Vec3, &WorldLight, f32)> = bsp
         .world_lights
         .iter()
@@ -148,6 +184,9 @@ pub fn compute_styled(bsp: &Bsp, p: Vec3, style: &dyn Fn(i32) -> f32) -> ModelLi
             light_at(l, p).map(|(atten, dir)| (luma(l.intensity) * scale * atten, atten, dir, l, scale))
         })
         .filter(|(score, _, _, l, _)| l.kind == emit::SURFACE || *score >= WORLD_LIGHT_MIN)
+        // Lights hidden from the point give it nothing.
+        .filter(|(_, _, _, l, _)| !blocked(l.origin, p))
+        .chain(sky)
         .collect();
     candidates.sort_by(|a, b| b.0.total_cmp(&a.0));
     // Lights that do not make the cut still brighten the ambient cube.

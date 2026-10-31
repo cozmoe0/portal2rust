@@ -96,7 +96,8 @@ pub fn attach_studio_model(world: &mut World, e: Entity, path: &str, opts: Model
     if opts.animated {
         commands.entity(e).insert(StudioAnimator::new(model.clone(), joints));
     }
-    commands.entity(e).insert(LitModel { lighting_origin, fixed: opts.light_origin, illum, last: Some(light_point), generation: 0 });
+    // Lit again on the next update, where static props can hide lights too.
+    commands.entity(e).insert(LitModel { lighting_origin, fixed: opts.light_origin, illum, last: None, generation: 0 });
     state.apply(world);
     Some(model)
 }
@@ -120,6 +121,7 @@ const RELIGHT_DISTANCE: f32 = 1.0;
 
 pub fn relight_models(
     map: Option<Res<CurrentMap>>,
+    collision: Res<portal2_world::collision::CollisionWorld>,
     styles: Res<portal2_world::lightstyles::LightStyles>,
     registry: Res<super::EntityRegistry>,
     mut models: Query<(Entity, &mut LitModel, &GlobalTransform)>,
@@ -144,7 +146,9 @@ pub fn relight_models(
         }
         lit.last = Some(point);
         lit.generation = styles.generation;
-        let light = lighting::compute_styled(&map.bsp, point, &|s| styles.value(s));
+        // The light cache's visibility trace sees the world and static props.
+        let opaque = source_formats::bsp::contents::SOLID | source_formats::bsp::contents::MOVEABLE | source_formats::bsp::contents::OPAQUE;
+        let light = lighting::compute_occluded(&map.bsp, point, &|s| styles.value(s), &|a, b| collision.line_blocked(a, b, opaque));
         for c in children.iter_descendants(e) {
             if let Ok(h) = mesh_materials.get(c)
                 && let Some(mut m) = materials.get_mut(&h.0)

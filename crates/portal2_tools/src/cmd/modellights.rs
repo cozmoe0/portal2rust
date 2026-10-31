@@ -36,7 +36,13 @@ pub fn main() {
     let v: Vec<f32> = point.split(',').map(|s| s.trim().parse().unwrap()).collect();
     let p = Vec3::new(v[0], v[1], v[2]);
     let leaf = bsp.find_leaf(p);
-    println!("leaf {leaf} cluster {}", bsp.leafs[leaf].cluster);
+    println!("leaf {leaf} cluster {} flags {:#x}", bsp.leafs[leaf].cluster, bsp.leafs[leaf].flags);
+    for l in bsp.world_lights.iter().filter(|l| l.kind == 3) {
+        println!("sky light intensity {} normal {}", l.intensity, l.normal);
+        let dir = -l.normal.normalize();
+        let best = bsp.first_surface_along(p, p + dir * 56756.0, 0x1 | 0x4000 | 0x80);
+        println!("toward the sun: surface flags {best:x?}");
+    }
     println!("ambient cube {:?}", bsp.ambient_cube(p));
     let pvs = bsp.visibility.as_ref().and_then(|vis| {
         let c = bsp.leafs[leaf].cluster;
@@ -57,8 +63,14 @@ pub fn main() {
     rows.sort_by(|a, b| b.0.total_cmp(&a.0));
     for (s, dist, l) in rows.iter().take(12) {
         println!(
-            "{:>9} strength {s:10.4} dist {dist:7.1} intensity {:?} attn c{} l{} q{} radius {} stopdot {} {} exp {} normal {:?}",
+            "{:>9} at {:.0?} strength {s:10.4} dist {dist:7.1} blocked {:?} cos {:.3} intensity {:?} attn c{} l{} q{} radius {} stopdot {} {} exp {} normal {:?}",
             kind_name(l.kind),
+            l.origin,
+            (
+                bsp.first_surface_along(l.origin, p, 0x1 | 0x4000 | 0x80).is_some(),
+                bsp.first_surface_along(l.origin, p, 0x1 | 0x2 | 0x8 | 0x4000 | 0x80).is_some()
+            ),
+            (p - l.origin).normalize().dot(l.normal),
             l.intensity,
             l.constant_attn,
             l.linear_attn,

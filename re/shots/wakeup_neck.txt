@@ -1,0 +1,3 @@
+# The cables above dormant GLaDOS's head (see wakeup.txt for the commands).
+cable_neck sp_a1_wakeup 9060 1216 400 -25 0 0 mat_force_tonemap_scale 3
+cable_neck2 sp_a1_wakeup 9090 1180 400 -40 20 0 mat_force_tonemap_scale 3

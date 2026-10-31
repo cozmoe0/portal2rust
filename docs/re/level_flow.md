@@ -108,3 +108,13 @@ scripts. Written in our own words; no code is copied.
 - Props that are physics-solid (`solid` 6) collide through their `.phy`
   only: without one they do not block anything. Only box-solid props
   (`solid` 2) use the model's hull box.
+
+## Triggers and the player's fog
+
+- A player in noclip still touches triggers: measured in `sp_a1_wakeup`,
+  teleported in noclip into the trigger past the hall (which enables
+  `hub_catwalk_door_reopen_trigger`) and then into that one, the training
+  door opens as when walking.
+- `SetFogController` on the player with a name no entity has leaves the fog
+  as it was (`sp_a1_wakeup`'s `relay_hub_fog_and_tonemap` names a
+  `fog_hub` the map lacks).

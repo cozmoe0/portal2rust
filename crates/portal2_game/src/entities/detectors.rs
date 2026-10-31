@@ -5,7 +5,7 @@
 use bevy::prelude::*;
 
 use super::io::{FireOutput, InputCall, InputHandlers};
-use super::{MapEntity, SpawnHandlers};
+use super::{EntityRegistry, MapEntity, SpawnHandlers};
 use crate::player::Player;
 use crate::portals::{Portal, Portals};
 use portal2_core::sets::ThinkSet;
@@ -192,9 +192,13 @@ pub struct PlayerFog {
 
 fn player_input(world: &mut World, call: &InputCall) -> bool {
     match call.input.as_str() {
+        // A name no entity has leaves the fog as it was, as in the game
+        // (`sp_a1_wakeup`'s relays name controllers the map lacks).
         "setfogcontroller" => {
             let name = call.param.trim().to_ascii_lowercase();
-            world.resource_mut::<PlayerFog>().controller = (!name.is_empty()).then_some(name);
+            if world.resource::<EntityRegistry>().first_named(&name).is_some() {
+                world.resource_mut::<PlayerFog>().controller = Some(name);
+            }
             true
         }
         _ => false,
