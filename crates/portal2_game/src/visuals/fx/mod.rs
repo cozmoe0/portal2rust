@@ -3,7 +3,7 @@
 //! touching the game's files or rules (see `docs/visual_overhaul.md`).
 //!
 //! Everything is driven by one preset, `r_fx_preset` (0 off, 1 medium,
-//! 2 high, 3 ultra; `--fx <preset>` on the command line), and per-feature
+//! 2 high, 3 ultra, the default; `--fx <preset>` on the command line), and per-feature
 //! overrides `r_fx_<feature>` (-1 follows the preset, 0 off, 1 on). With the
 //! preset off every shader takes the paths it took before the overhaul, so
 //! the picture is the faithful one. The settings resolve into [`FxSettings`]
@@ -81,8 +81,8 @@ pub const FEATURE_CVARS: &[(&str, u32)] = &[
 pub enum FxPreset {
     Off,
     Medium,
-    #[default]
     High,
+    #[default]
     Ultra,
 }
 
@@ -262,7 +262,7 @@ impl Plugin for VisualFxPlugin {
         {
             let mut console = app.world_mut().resource_mut::<Console>();
             let archive = portal2_core::console::cvars::flags::ARCHIVE;
-            console.register_cvar("r_fx_preset", "2", archive);
+            console.register_cvar("r_fx_preset", "3", archive);
             for (name, _) in FEATURE_CVARS {
                 console.register_cvar(name, "-1", archive);
             }

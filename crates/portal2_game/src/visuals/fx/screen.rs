@@ -41,11 +41,18 @@ const MAIN_SAMPLES: u32 = 4;
 #[extract_app(RenderApp)]
 pub struct FxMainView;
 
+/// A portal's view of the other side, which runs the volumetric light too
+/// (so the air looks the same through the opening as around it).
+#[derive(Component, Clone, Copy, Default, ExtractComponent)]
+#[extract_app(RenderApp)]
+pub struct FxPortalView;
+
 pub struct FxScreenPlugin;
 
 impl Plugin for FxScreenPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(ExtractComponentPlugin::<FxMainView>::default()).add_systems(PostUpdate, mark_main_view);
+        app.add_plugins((ExtractComponentPlugin::<FxMainView>::default(), ExtractComponentPlugin::<FxPortalView>::default()))
+            .add_systems(PostUpdate, (mark_main_view, mark_portal_views));
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else { return };
         render_app
             .init_resource::<AoUniformBuffer>()
@@ -67,6 +74,24 @@ fn mark_main_view(mut commands: Commands, mut cameras: Query<(Entity, &mut Camer
         }
         if !marked {
             commands.entity(e).insert(FxMainView);
+        }
+    }
+}
+
+/// Marks each portal's (first-level) view and lets its depth be sampled.
+fn mark_portal_views(
+    mut commands: Commands,
+    portals: Query<&crate::portals::Portal>,
+    mut cameras: Query<(&mut Camera3d, Has<FxPortalView>)>,
+) {
+    for p in &portals {
+        let Ok((mut camera, marked)) = cameras.get_mut(p.camera) else { continue };
+        let usage: TextureUsages = camera.depth_texture_usages.into();
+        if !usage.contains(TextureUsages::TEXTURE_BINDING) {
+            camera.depth_texture_usages = (usage | TextureUsages::TEXTURE_BINDING).into();
+        }
+        if !marked {
+            commands.entity(p.camera).insert(FxPortalView);
         }
     }
 }

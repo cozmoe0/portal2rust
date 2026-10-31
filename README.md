@@ -205,7 +205,7 @@ portal and laser light, wet reflections, volumetric light, bloom) is on by defau
 | `-novid` / `-nomenuvid` | Skip the intro video / show the menu background still instead of the movie |
 | `--pos x,y,z` / `--ang p,y,r` | Override the start view (Source units / degrees) |
 | `--exposure <scale>` | Fixed exposure instead of the dynamic tone map |
-| `--fx off\|medium\|high\|ultra` | The [visual overhaul](docs/visual_overhaul.md)'s preset (default high; off is the faithful picture) |
+| `--fx off\|medium\|high\|ultra` | The [visual overhaul](docs/visual_overhaul.md)'s preset (default ultra; off is the faithful picture) |
 | `--fullbright` | Ignore lighting (debugging) |
 | `--noclip` | Start in free flight |
 | `--portalgun none\|blue\|both` | Override the portal gun |

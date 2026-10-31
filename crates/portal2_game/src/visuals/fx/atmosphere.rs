@@ -12,7 +12,9 @@
 //! volumetric lights (fixture spotlights, portals) and a little ambient
 //! haze, so huge dark spaces read as air rather than flat black. It is
 //! blended into the main view's multisampled scene after the transparent
-//! pass (see `screen.rs` for why), before the viewmodel is drawn.
+//! pass (see `screen.rs` for why), before the viewmodel is drawn. The
+//! portals' views run it too, so stepping through a portal does not change
+//! the air.
 
 use bevy::core_pipeline::core_3d::main_transparent_pass_3d;
 use bevy::core_pipeline::schedule::Core3d;
@@ -20,7 +22,7 @@ use bevy::core_pipeline::{Core3dSystems, FullscreenShader};
 use bevy::prelude::*;
 use bevy::render::render_asset::RenderAssets;
 use bevy::render::render_resource::binding_types::{
-    sampler, storage_buffer_read_only_sized, texture_2d, texture_2d_array, texture_depth_2d_multisampled, uniform_buffer,
+    sampler, storage_buffer_read_only_sized, texture_2d, texture_2d_array, texture_depth_2d, texture_depth_2d_multisampled, uniform_buffer,
 };
 use bevy::render::render_resource::*;
 use bevy::render::renderer::{RenderContext, RenderDevice, RenderQueue, ViewQuery};
@@ -28,11 +30,12 @@ use bevy::render::storage::GpuShaderBuffer;
 use bevy::render::texture::{GpuImage, TextureCache};
 use bevy::render::view::{ViewDepthStencilTexture, ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms};
 use bevy::render::{Render, RenderApp, RenderStartup, RenderSystems};
+use bevy::shader::ShaderDefVal;
 use portal2_render::fx::FX;
 use portal2_render::source_material::PROJECTED;
 
 use super::material::{FxBuffer, FxFillSet};
-use super::screen::FxMainView;
+use super::screen::{FxMainView, FxPortalView};
 use super::{FxSettings, features};
 use portal2_world::CurrentMap;
 
@@ -42,12 +45,13 @@ pub const VOLUMETRIC_SHADER: &str = "embedded://portal2_render/shaders/fx_volume
 const HAZE_START: f32 = 256.0;
 const HAZE_MAX: f32 = 0.35;
 /// The medium: in-scattering and extinction per unit, forward scattering.
-const SCATTERING: f32 = 0.003;
+const SCATTERING: f32 = 0.0022;
 const EXTINCTION: f32 = 0.00008;
 const ANISOTROPY: f32 = 0.35;
 /// How far the march goes into empty space, and how much ambient haze it adds.
 const MAX_DISTANCE: f32 = 3500.0;
-const AMBIENT_SCATTER: f32 = 0.0085;
+const AMBIENT_SCATTER: f32 = 0.0115;
+/// The main view's multisampling (portal views have none).
 const MAIN_SAMPLES: u32 = 4;
 
 /// The map's haze colour (its mean baked ambient light).
@@ -98,11 +102,25 @@ fn map_haze(loaded: Option<Res<portal2_core::LoadedMap>>, mut seen: Local<u64>, 
     haze.color = c * (luma.clamp(0.01, 0.25) / luma);
 }
 
-fn fill_haze(settings: Res<FxSettings>, haze: Res<Haze>, mut buffer: ResMut<FxBuffer>) {
+/// The game's flashlight brightness (`r_flashlightbrightness`), which
+/// scales every projected texture; the first map raises it twelvefold for
+/// its container ride.
+const DEFAULT_FLASHLIGHT: f32 = 0.25;
+
+fn fill_haze(
+    settings: Res<FxSettings>,
+    haze: Res<Haze>,
+    console: Option<Res<portal2_core::console::Console>>,
+    mut buffer: ResMut<FxBuffer>,
+) {
     let h = buffer.header_mut();
     let density = if settings.has(features::FOG) { settings.haze_density / 1000.0 } else { 0.0 };
     h[8..12].copy_from_slice(&[haze.color.x, haze.color.y, haze.color.z, density]);
     h[12..16].copy_from_slice(&[HAZE_START, HAZE_MAX, 0.0, 0.0]);
+    // Boosts make surfaces brighter (as in the game) but must not fill the
+    // air with glow: the volumetrics see the default brightness at most.
+    let flashlight = console.map_or(DEFAULT_FLASHLIGHT, |c| c.f32("r_flashlightbrightness"));
+    h[25] = (DEFAULT_FLASHLIGHT / flashlight.max(DEFAULT_FLASHLIGHT)).min(1.0);
 }
 
 #[derive(Clone, Copy, Debug, Default, ShaderType)]
@@ -117,25 +135,42 @@ struct VolumeUniformBuffer {
     time: f32,
 }
 
-#[derive(Resource)]
-struct VolumePipelines {
+/// The march and composite for one kind of view.
+struct VolumeVariant {
     march_layout: BindGroupLayoutDescriptor,
     composite_layout: BindGroupLayoutDescriptor,
     march: CachedRenderPipelineId,
     composite: CachedRenderPipelineId,
 }
 
+/// For the multisampled main view and the single-sampled portal views.
+#[derive(Resource)]
+struct VolumePipelines {
+    main: VolumeVariant,
+    portal: VolumeVariant,
+}
+
 #[derive(Component)]
 struct VolumeTexture(TextureView);
 
 fn init_pipelines(mut commands: Commands, asset_server: Res<AssetServer>, cache: Res<PipelineCache>, fullscreen: Res<FullscreenShader>) {
+    let shader: Handle<Shader> = asset_server.load(VOLUMETRIC_SHADER);
+    let main = variant(&cache, &fullscreen, &shader, MAIN_SAMPLES);
+    let portal = variant(&cache, &fullscreen, &shader, 1);
+    commands.insert_resource(VolumePipelines { main, portal });
+}
+
+fn variant(cache: &PipelineCache, fullscreen: &FullscreenShader, shader: &Handle<Shader>, samples: u32) -> VolumeVariant {
+    let multisampled = samples > 1;
+    let depth = || if multisampled { texture_depth_2d_multisampled() } else { texture_depth_2d() };
+    let defs: Vec<ShaderDefVal> = if multisampled { vec!["MULTISAMPLED".into()] } else { Vec::new() };
     let shadow = || texture_2d(TextureSampleType::Float { filterable: false });
     let march_layout = BindGroupLayoutDescriptor::new(
         "fx_volume_march",
         &BindGroupLayoutEntries::sequential(
             ShaderStages::FRAGMENT,
             (
-                texture_depth_2d_multisampled(),
+                depth(),
                 uniform_buffer::<ViewUniform>(true),
                 uniform_buffer::<VolumeUniform>(false),
                 storage_buffer_read_only_sized(false, None),
@@ -157,20 +192,16 @@ fn init_pipelines(mut commands: Commands, asset_server: Res<AssetServer>, cache:
         "fx_volume_composite",
         &BindGroupLayoutEntries::with_indices(
             ShaderStages::FRAGMENT,
-            (
-                (0, texture_depth_2d_multisampled()),
-                (1, uniform_buffer::<ViewUniform>(true)),
-                (15, texture_2d(TextureSampleType::Float { filterable: false })),
-            ),
+            ((0, depth()), (1, uniform_buffer::<ViewUniform>(true)), (15, texture_2d(TextureSampleType::Float { filterable: false }))),
         ),
     );
-    let shader: Handle<Shader> = asset_server.load(VOLUMETRIC_SHADER);
     let march = cache.queue_render_pipeline(RenderPipelineDescriptor {
         label: Some("fx_volume_march".into()),
         layout: vec![march_layout.clone()],
         vertex: fullscreen.to_vertex_state(),
         fragment: Some(FragmentState {
             shader: shader.clone(),
+            shader_defs: defs.clone(),
             entry_point: Some("march".into()),
             targets: vec![Some(ColorTargetState { format: TextureFormat::Rgba16Float, blend: None, write_mask: ColorWrites::ALL })],
             ..default()
@@ -187,15 +218,16 @@ fn init_pipelines(mut commands: Commands, asset_server: Res<AssetServer>, cache:
         layout: vec![composite_layout.clone()],
         vertex: fullscreen.to_vertex_state(),
         fragment: Some(FragmentState {
-            shader,
+            shader: shader.clone(),
+            shader_defs: defs,
             entry_point: Some("composite".into()),
             targets: vec![Some(ColorTargetState { format: TextureFormat::Rgba16Float, blend: Some(over), write_mask: ColorWrites::ALL })],
             ..default()
         }),
-        multisample: MultisampleState { count: MAIN_SAMPLES, ..default() },
+        multisample: MultisampleState { count: samples, ..default() },
         ..default()
     });
-    commands.insert_resource(VolumePipelines { march_layout, composite_layout, march, composite });
+    VolumeVariant { march_layout, composite_layout, march, composite }
 }
 
 fn prepare(
@@ -206,7 +238,7 @@ fn prepare(
     mut textures: ResMut<TextureCache>,
     device: Res<RenderDevice>,
     queue: Res<RenderQueue>,
-    views: Query<(Entity, &ViewTarget), With<FxMainView>>,
+    views: Query<(Entity, &ViewTarget), Or<(With<FxMainView>, With<FxPortalView>)>>,
 ) {
     let Some(settings) = settings else { return };
     if !settings.has(features::VOLUMETRICS) {
@@ -245,7 +277,10 @@ fn prepare(
 }
 
 fn volumetrics(
-    view: ViewQuery<(&ViewTarget, &ViewDepthStencilTexture, &ViewUniformOffset, &Msaa, Option<&VolumeTexture>), With<FxMainView>>,
+    view: ViewQuery<
+        (&ViewTarget, &ViewDepthStencilTexture, &ViewUniformOffset, &Msaa, Option<&VolumeTexture>),
+        Or<(With<FxMainView>, With<FxPortalView>)>,
+    >,
     settings: Option<Res<FxSettings>>,
     pipelines: Option<Res<VolumePipelines>>,
     uniform: Res<VolumeUniformBuffer>,
@@ -264,12 +299,14 @@ fn volumetrics(
     }
     let (target, depth, offset, msaa, volume) = view.into_inner();
     let Some(volume) = volume else { return };
-    if msaa.samples() != MAIN_SAMPLES {
-        return;
-    }
+    let variant = match msaa.samples() {
+        MAIN_SAMPLES => &pipelines.main,
+        1 => &pipelines.portal,
+        _ => return,
+    };
     let (Some(march), Some(composite), Some(params), Some(views)) = (
-        cache.get_render_pipeline(pipelines.march),
-        cache.get_render_pipeline(pipelines.composite),
+        cache.get_render_pipeline(variant.march),
+        cache.get_render_pipeline(variant.composite),
         uniform.buffer.binding(),
         view_uniforms.uniforms.binding(),
     ) else {
@@ -286,7 +323,7 @@ fn volumetrics(
     let depth_view = depth.texture().create_view(&TextureViewDescriptor { aspect: TextureAspect::DepthOnly, ..default() });
     let march_group = device.create_bind_group(
         "fx_volume_march",
-        &cache.get_bind_group_layout(&pipelines.march_layout),
+        &cache.get_bind_group_layout(&variant.march_layout),
         &BindGroupEntries::sequential((
             &depth_view,
             views.clone(),
@@ -307,7 +344,7 @@ fn volumetrics(
     );
     let composite_group = device.create_bind_group(
         "fx_volume_composite",
-        &cache.get_bind_group_layout(&pipelines.composite_layout),
+        &cache.get_bind_group_layout(&variant.composite_layout),
         &BindGroupEntries::with_indices(((0, &depth_view), (1, views), (15, &volume.0))),
     );
     let encoder = ctx.command_encoder();

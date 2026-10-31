@@ -2,7 +2,8 @@
 // shafts from the projected textures (the chambers' sunlight and
 // floodlights, through their real openings thanks to their shadow maps),
 // beams of the overhaul's volumetric lights and a faint ambient haze that
-// keeps large voids from reading as flat black. A half-resolution pass
+// keeps large voids from reading as flat black. It runs on the main view
+// and on the portals' views, so the air looks the same through a portal. A half-resolution pass
 // marches each view ray up to the depth buffer; the composite pass
 // upsamples it within surfaces and blends it over the multisampled scene
 // as in-scattered light plus transmittance.
@@ -56,7 +57,9 @@ struct FxVolume {
     medium: vec4<f32>,
 }
 
-@group(0) @binding(0) var depth_tex: texture_depth_multisampled_2d;
+// The main view is multisampled; the portals' views are not.
+@if(MULTISAMPLED) @group(0) @binding(0) var depth_tex: texture_depth_multisampled_2d;
+@if(!MULTISAMPLED) @group(0) @binding(0) var depth_tex: texture_depth_2d;
 @group(0) @binding(1) var<uniform> view: View;
 @group(0) @binding(2) var<uniform> vol: FxVolume;
 @group(0) @binding(3) var<storage, read> fx: FxGlobals;
@@ -79,7 +82,18 @@ const FX_SHADOWS: u32 = 2u;
 // The projected textures are the chambers' suns and floodlights, through
 // windows and gaps: their shafts carry more than their gentle falloff on
 // surfaces suggests.
-const PROJECTED_SHARE: f32 = 4.0;
+const PROJECTED_SHARE: f32 = 1.5;
+// Air right around the eye scatters less: a light beside the camera (an
+// elevator's lamp) must not fill the whole view with glow.
+const NEAR_FADE_START: f32 = 16.0;
+const NEAR_FADE_END: f32 = 128.0;
+// Lights this close to the eye (an elevator's lamp overhead, a lamp the
+// player carries) light the view, not the air in it.
+const OWN_LIGHT_NEAR: f32 = 64.0;
+const OWN_LIGHT_FAR: f32 = 320.0;
+// In-scattered light saturates toward this (display-linear luminance), so
+// no room fills with smoke however many beams cross it.
+const SCATTER_LIMIT: f32 = 0.08;
 // Lights the march looks at, at most.
 const MAX_VOLUME_LIGHTS: u32 = 8u;
 
@@ -183,7 +197,10 @@ fn projected_in(p: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
                 light = vec3<f32>(0.0);
             }
         }
-        total += light * l.color.rgb * (PROJECTED_SHARE * phase(dot(delta / dist, -dir)));
+        // reserved0.y undoes temporary flashlight boosts (the first map's
+        // container ride raises r_flashlightbrightness twelvefold).
+        let own = smoothstep(OWN_LIGHT_NEAR, OWN_LIGHT_FAR, distance(l.position.xyz, view.world_position));
+        total += light * l.color.rgb * (PROJECTED_SHARE * fx.reserved0.y * own * phase(dot(delta / dist, -dir)));
     }
     return total;
 }
@@ -241,7 +258,8 @@ fn fx_in(p: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
             }
         }
         // Fixtures are bright point sources; their beams stay a hint.
-        let share = select(1.0, 0.07, (u32(l.params.y) & FXL_FIXTURE) != 0u);
+        let share = select(1.0, 0.09, (u32(l.params.y) & FXL_FIXTURE) != 0u)
+            * smoothstep(OWN_LIGHT_NEAR, OWN_LIGHT_FAR, distance(l.position.xyz, view.world_position));
         total += l.color.rgb * (atten * share) * phase(dot(delta / d, -dir));
     }
     return total;
@@ -271,16 +289,23 @@ fn march(in: FsIn) -> @location(0) vec4<f32> {
     for (var i = 0; i < steps; i++) {
         let t = (f32(i) + jitter) * ds;
         let p = eye + dir * t;
-        var density = 1.0;
+        var density = smoothstep(NEAR_FADE_START, NEAR_FADE_END, t);
         if vol.medium.w > 0.5 {
-            density = 0.55 + 0.9 * noise3(p / 260.0 + vec3<f32>(0.0, 0.0, vol.medium.z * 0.015));
+            density *= 0.55 + 0.9 * noise3(p / 260.0 + vec3<f32>(0.0, 0.0, vol.medium.z * 0.015));
         }
         let lin = projected_in(p, dir) + fx_in(p, dir) + ambient;
         let step_t = exp(-sigma_t * density * ds);
         scatter += transmittance * lin * (sigma_s * density * ds);
         transmittance *= step_t;
     }
-    return vec4<f32>(scatter * view.exposure, transmittance);
+    // Linear while faint, rolling off toward the limit when strong.
+    let exposed = scatter * view.exposure;
+    let luma = dot(exposed, vec3<f32>(0.2126, 0.7152, 0.0722));
+    var limited = exposed;
+    if luma > 1e-5 {
+        limited = exposed * (SCATTER_LIMIT * (1.0 - exp(-luma / SCATTER_LIMIT)) / luma);
+    }
+    return vec4<f32>(limited, max(transmittance, 0.75));
 }
 
 // Upsamples the march within surfaces (the half-resolution texels whose

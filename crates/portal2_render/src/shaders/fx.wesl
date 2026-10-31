@@ -29,7 +29,7 @@ struct FxGlobals {
     sun_dir: vec4<f32>,
     // rgb: sun colour
     sun_color: vec4<f32>,
-    // x: reflection probe count
+    // x: reflection probe count, y: projected lights' share in the volumetrics
     reserved0: vec4<f32>,
     reserved1: vec4<f32>,
     shadow_from_world: array<mat4x4<f32>, 4>,

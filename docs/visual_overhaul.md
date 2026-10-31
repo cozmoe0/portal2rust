@@ -14,7 +14,7 @@ matches captures taken before the overhaul (see [Verification](#verification)).
 
 | | |
 | --- | --- |
-| `r_fx_preset 0..3` | off, medium, high (default), ultra |
+| `r_fx_preset 0..3` | off, medium, high, ultra (default) |
 | `--fx off\|medium\|high\|ultra` | the same on the command line (applied after `fx.cfg`) |
 | `r_fx_<feature> -1\|0\|1` | follow the preset, force off, force on |
 | `r_fx_save` | writes the `r_fx_*` values to `fx.cfg` beside the saves (`%LOCALAPPDATA%\portal2rust`), which runs at startup |
@@ -49,7 +49,7 @@ model material binds, with the shaders reading it.
 | Occlusion | `fx/screen.rs`, `shaders/fx_ao.wesl` | depth-based hemisphere occlusion on the main view after the opaque pass |
 | Surfaces | `portal2_render/src/surfaces.rs`, `fx_surfaces.txt` | data-driven profiles: roughness, reflectance, wet eligibility, foliage, emissive share |
 | Wetness, reflections | `shaders/fx.wesl`, `fx/reflections.rs` | world-space wet patches; the map's own baked cube maps in one cube array |
-| Atmosphere | `fx/atmosphere.rs`, `shaders/fx_volumetric.wesl` | haze coloured by the map's ambient light; volumetric scattering from projected textures, volumetric lights and ambient haze |
+| Atmosphere | `fx/atmosphere.rs`, `shaders/fx_volumetric.wesl` | haze coloured by the map's ambient light; volumetric scattering from projected textures, volumetric lights and ambient haze, on the main view and the portals' views, softly limited so no room fills with smoke |
 | Screen-space reflections | `fx/ssr.rs`, `shaders/fx_ssr.wesl` | puddles reflect the scene, portals and beams included (ultra) |
 | Post | `fx/postfx.rs`, `shaders/fx_post.wesl` | bloom, identity-below-the-knee tone curve, grade, dither |
 
@@ -71,9 +71,14 @@ Design decisions worth knowing:
   with blending (`out = add + dst × mul`). Occlusion lands before glass, beams and the portals'
   openings are drawn; volumetrics before the viewmodel.
 - **Portal views stay consistent.** Everything done in the materials (lights, wetness, probe
-  reflections, haze) is the same in the portals' views, so walking through a portal changes
-  nothing; the screen-space passes and the post chain run only once, on the main view and the
-  final picture.
+  reflections, haze) is the same in the portals' views, and the portals' first-level views run
+  the volumetric light too, so the air looks the same through an opening as after stepping
+  through it. Occlusion, screen-space reflections and the post chain run once, on the main view
+  and the final picture.
+- **The air never turns to smoke.** In-scattered light saturates toward a fixed brightness;
+  lights within a few metres of the eye (an elevator's lamp overhead) light the view, not the air
+  in it; and temporary `r_flashlightbrightness` boosts (the first map's container ride raises it
+  twelvefold) brighten surfaces as in the game but not the volumetrics.
 - **No temporal filter.** Noise in the occlusion and volumetrics uses a fixed per-pixel pattern
   and spatial filtering; the 4× MSAA stays, and highlights get specular antialiasing. Nothing can
   ghost behind moving objects or portal crossings.
@@ -184,9 +189,10 @@ ultra the 48-step volumetrics are the other big cost in huge, light-filled space
 noisy: Windows sometimes throttles a background window to 60 Hz, which shows as 16.7 ms; such
 runs were repeated.
 
-Recommended: **high** on desktop GPUs of this class (the default), **medium** where frames are
-tight (all the material-side effects, no extra views or screen-space passes), **ultra** for
-captures.
+Ultra is the default (it suits a GPU of this class at 1440p); **high** where frames are tight in
+portal-heavy rooms, **medium** on weaker GPUs (all the material-side effects, no extra views or
+screen-space passes). Ultra's volumetrics also run in the two portal views when a linked pair is
+on screen, about 1 ms more there.
 
 ## Limitations
 
@@ -203,9 +209,11 @@ captures.
   share is kept low for that reason.
 - Foliage is not animated by wind: the models use Bevy's vertex shader and a wind variant was left
   out to keep the skinned and static paths untouched.
-- Occlusion, screen-space reflections and volumetrics run on the main view only; through a portal
-  the materials' effects (lights, wetness, probe reflections, haze) are the same, the
-  screen-space ones are not.
+- Occlusion and screen-space reflections run on the main view only; through a portal the
+  materials' effects and the volumetric light match, those two do not. The second, recursive
+  portal view gets no volumetrics.
+- Stepping through a portal shows one black frame at the crossing. That predates the overhaul (it
+  happens identically with it off and in the build before it).
 
 ## Game files and gameplay
 
