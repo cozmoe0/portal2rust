@@ -37,6 +37,7 @@ pub fn register_all(r: &mut SaveRegistry) {
     r.component::<crate::entities::RidesAttachment>("rides_attachment");
     r.component::<triggers::Trigger>("trigger");
     r.component::<trains::Train>("train");
+    r.component::<crate::entities::linked_portals::LinkedDoor>("linked_door");
     r.component::<trains::PathTrack>("path_track");
     r.component::<templates::Template>("template");
     transition::register_save(r);
@@ -117,6 +118,10 @@ struct AnimatorSave {
     rate: f32,
     looping: bool,
     finished: bool,
+    /// Missing from saves made before animators could stand still; those
+    /// keep what the entity's spawn chose.
+    #[serde(default)]
+    playing: Option<bool>,
     default_sequence: Option<String>,
     layers: Vec<(String, f32, f32)>,
     pose: Vec<(String, f32)>,
@@ -135,6 +140,7 @@ fn save_animator(world: &World, e: Entity) -> Option<Result<Vec<u8>, String>> {
         rate: a.rate,
         looping: a.looping,
         finished: a.finished,
+        playing: Some(a.playing),
         default_sequence: a.default_sequence.map(|i| sequence_name(a, i)),
         layers: a.layers().iter().map(|l| (sequence_name(a, l.sequence), l.cycle, l.weight)).collect(),
         pose: studio
@@ -151,9 +157,11 @@ fn load_animator(world: &mut World, e: Entity, bytes: &[u8]) -> Result<(), Strin
     let s: AnimatorSave = decode(bytes)?;
     let Some(mut a) = world.get_mut::<StudioAnimator>(e) else { return Ok(()) };
     let find = |a: &StudioAnimator, name: &str| a.model.studio.find_sequence(name);
+    let spawn_playing = a.playing;
     if let Some(i) = find(&a, &s.sequence) {
         a.set_sequence_index(i);
     }
+    a.playing = s.playing.unwrap_or(spawn_playing);
     a.cycle = s.cycle;
     a.rate = s.rate;
     a.looping = s.looping;

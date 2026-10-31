@@ -53,6 +53,59 @@ pub fn model_volumes(bsp: &Bsp, model: usize) -> Vec<ConvexVolume> {
     model_brushes(bsp, model).into_iter().filter_map(|b| brush_volume(bsp, b)).collect()
 }
 
+/// The map's physics collision (`LUMP_PHYSCOLLIDE`) for every brush model,
+/// indexed by model: the convex pieces the game's physics builds from the
+/// brushes, each pulled in by half a unit. The engine traces brush entities
+/// that are physics-solid (doors, trains, `func_brush`...) through these
+/// rather than through the brushes. Each piece takes its contents from the
+/// brush it came from and each face the surface of that brush's face
+/// pointing the same way, so material lookups still work.
+pub fn model_physics(bsp: &Bsp) -> Vec<Option<Vec<ConvexVolume>>> {
+    let mut out: Vec<Option<Vec<ConvexVolume>>> = vec![None; bsp.models.len()];
+    let data = bsp.phys_collide.as_slice();
+    let read = |at: usize| data.get(at..at + 4).map(|b| i32::from_le_bytes(b.try_into().expect("four bytes")));
+    let mut at = 0;
+    while let (Some(model), Some(size), Some(key_size), Some(solids)) = (read(at), read(at + 4), read(at + 8), read(at + 12)) {
+        if model < 0 || size < 0 || key_size < 0 {
+            break;
+        }
+        let start = at + 16;
+        at = start + size as usize + key_size as usize;
+        let Some(slot) = out.get_mut(model as usize) else { continue };
+        if model == 0 {
+            continue;
+        }
+        let brushes = model_volumes(bsp, model as usize);
+        let mut pieces = Vec::new();
+        let mut cursor = start;
+        for _ in 0..solids.max(0) {
+            let Some(len) = read(cursor).filter(|l| *l >= 0).map(|l| l as usize) else { break };
+            let Some(block) = data.get(cursor + 4..cursor + 4 + len) else { break };
+            cursor += 4 + len;
+            let Some(solid) = Phy::parse_surface(block) else { continue };
+            for p in &solid.pieces {
+                let centre = p.points.iter().copied().sum::<Vec3>() / p.points.len().max(1) as f32;
+                let source = brushes.iter().find(|b| (b.mins - Vec3::ONE).cmple(centre).all() && centre.cmple(b.maxs + Vec3::ONE).all());
+                let contents = source.map_or(contents::SOLID, |b| b.contents);
+                let Some(mut v) = ConvexVolume::from_hull(&p.points, &p.triangles, contents, -1) else { continue };
+                if let Some(b) = source {
+                    for plane in &mut v.planes {
+                        let best = b.planes.iter().max_by(|x, y| x.normal.dot(plane.normal).total_cmp(&y.normal.dot(plane.normal)));
+                        if let Some(best) = best.filter(|q| q.normal.dot(plane.normal) > 0.9) {
+                            plane.surface = best.surface;
+                        }
+                    }
+                }
+                pieces.push(v);
+            }
+        }
+        if !pieces.is_empty() {
+            *slot = Some(pieces);
+        }
+    }
+    out
+}
+
 /// Every displacement (terrain) triangle in world space.
 pub fn displacement_triangles(bsp: &Bsp) -> Vec<[Vec3; 3]> {
     let mut out = Vec::new();

@@ -1,5 +1,5 @@
 //! Console commands that act on the game: `changelevel`, `setpos`,
-//! `noclip`, `god`, `kill`, `ent_fire`, the portal gun upgrades...
+//! `noclip`, `god`, `kill`, `ent_fire`, `script`, the portal gun upgrades...
 
 use bevy::prelude::*;
 use portal2_core::console::commands::{print, require_cheats as cheats};
@@ -29,10 +29,21 @@ fn register(c: &mut Console) {
     c.register_command("kill", kill);
     c.register_command("explode", kill);
     c.register_command("ent_fire", ent_fire);
+    c.register_command("script", script);
     c.register_command("give", give);
     c.register_command("give_portalgun", give_portalgun);
     c.register_command("upgrade_portalgun", upgrade_portalgun);
     c.register_command("upgrade_potatogun", upgrade_portalgun);
+}
+
+/// `script <code>`: runs Squirrel code in the VM's root table.
+fn script(world: &mut World, args: &CommandArgs) {
+    if !cheats(world, args) {
+        return;
+    }
+    let code = args.rest().to_owned();
+    let Some(root) = crate::script::with_vm(world, |_, vm| vm.root_value()) else { return };
+    crate::script::run_source(world, code.as_bytes(), "console", &root);
 }
 
 /// `kill` / `explode`: the player dies.

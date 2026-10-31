@@ -1,0 +1,2 @@
+# GLaDOS's head cable before the wake-up (see wakeup.txt for the commands).
+wake_cable sp_a1_wakeup 9150 1100 520 -27.9 46.8 0

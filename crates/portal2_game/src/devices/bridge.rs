@@ -182,7 +182,7 @@ fn update_bridges(
                     MapObject,
                     Transform::from_translation(center).with_rotation(rot),
                     Visibility::Visible,
-                    TraceCollider { shape: Arc::new(Shape::new(vec![local])), enabled: true, solid: true },
+                    TraceCollider::new(Arc::new(Shape::new(vec![local])), true, true),
                     RigidBody::Static,
                     PhysCollider::cuboid(len, width, THICKNESS),
                     CollisionLayers::new(LayerMask(layers::WORLD), LayerMask(layers::PROP | layers::HELD)),

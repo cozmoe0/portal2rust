@@ -5,8 +5,10 @@
 //! `r1` strafe, `j` jump tap, `d1` crouch, `t90` turn (degrees), `e` use,
 //! `@12.5` wait until the map clock reads 12.5 s, `c<text>` run console
 //! text (for replaying a timed run of the original game), `h1` / `h0`
-//! hold forward on / off across the steps that follow. Frame times are
-//! logged every half second (average and worst), for performance runs.
+//! hold forward on / off across the steps that follow, `g<x>;<y>` walk
+//! (turning as needed) until within 24 units of a point, giving up after
+//! 30 s. `\,` puts a comma into a step. Frame times are logged every half
+//! second (average and worst), for performance runs.
 
 use bevy::prelude::*;
 
@@ -44,7 +46,12 @@ enum Step {
     Until(f64),
     Command(String),
     Hold(f32),
+    GoTo(Vec2),
 }
+
+/// How close `GoTo` must get, and how long it may try.
+const GOTO_RADIUS: f32 = 24.0;
+const GOTO_LIMIT: f32 = 30.0;
 
 #[derive(Resource)]
 struct Autopilot {
@@ -56,8 +63,23 @@ struct Autopilot {
     hold_forward: f32,
 }
 
+/// Splits the steps at commas not escaped as `\,`.
+fn split_steps(spec: &str) -> Vec<String> {
+    let mut steps = vec![String::new()];
+    let mut chars = spec.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' if chars.peek() == Some(&',') => steps.last_mut().expect("never empty").push(chars.next().expect("peeked")),
+            ',' => steps.push(String::new()),
+            c => steps.last_mut().expect("never empty").push(c),
+        }
+    }
+    steps
+}
+
 fn parse(spec: &str) -> Vec<Step> {
-    spec.split(',')
+    split_steps(spec)
+        .iter()
         .filter_map(|s| {
             let s = s.trim();
             if let Some(text) = s.strip_prefix('c') {
@@ -84,6 +106,13 @@ fn parse(spec: &str) -> Vec<Step> {
                         return None;
                     }
                     Step::LookAt(Vec3::new(v[0], v[1], v[2]))
+                }
+                "g" => {
+                    let v: Vec<f32> = rest.split(';').filter_map(|x| x.parse().ok()).collect();
+                    if v.len() != 2 {
+                        return None;
+                    }
+                    Step::GoTo(Vec2::new(v[0], v[1]))
                 }
                 "e" => Step::Use,
                 "h" => Step::Hold(n),
@@ -131,6 +160,10 @@ fn drive(
         Step::Wait(d) | Step::Forward(d) | Step::Back(d) | Step::Left(d) | Step::Right(d) | Step::Duck(d) => d,
         Step::Jump => 2.0 / 60.0,
         Step::Until(t) if clock.curtime < t => return,
+        Step::GoTo(target) => {
+            let origin = players.single().map(|p| p.state.origin.truncate()).unwrap_or(target);
+            if origin.distance(target) > GOTO_RADIUS && ap.elapsed < GOTO_LIMIT { f32::MAX } else { 0.0 }
+        }
         Step::Turn(_)
         | Step::Pitch(_)
         | Step::Fire(_)
@@ -163,6 +196,13 @@ fn drive(
         Step::Hold(f) => {
             ap.hold_forward = f;
             i.forward = f;
+        }
+        Step::GoTo(target) => {
+            if let Ok(p) = players.single() {
+                let d = target - p.state.origin.truncate();
+                i.angles.y = d.y.atan2(d.x).to_degrees().rem_euclid(360.0);
+                i.forward = 1.0;
+            }
         }
         Step::Wait(_) | Step::Until(_) => {}
     }

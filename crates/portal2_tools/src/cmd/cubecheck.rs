@@ -10,7 +10,7 @@ pub fn main() {
     let pak = ZipArchive::new(bsp.pakfile.clone()).unwrap();
     let mut names: Vec<String> = pak.paths().filter(|p| p.ends_with(".vtf")).map(|s| s.to_owned()).collect();
     names.sort();
-    for n in names.iter().take(6) {
+    for n in names.iter().take(std::env::var("P2T_ALL").map_or(6, |_| usize::MAX)) {
         let v = Vtf::parse(&pak.read(n).unwrap()).unwrap();
         let px = v.decode_rgba_f32(0, 0, 4);
         let mut mx = [0f32; 4];

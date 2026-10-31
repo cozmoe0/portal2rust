@@ -1,0 +1,3 @@
+# Close views of dormant GLaDOS in sp_a1_wakeup (see wakeup.txt for the commands).
+wake_glados_near sp_a1_wakeup 9060 1216 400 5 0 0
+wake_glados_side sp_a1_wakeup 9300 900 400 -5 90 0

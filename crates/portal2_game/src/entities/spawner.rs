@@ -205,7 +205,7 @@ pub fn attach_bone_followers(world: &mut World, e: Entity) -> bool {
             .spawn((
                 Name::new("bone follower"),
                 BoneFollower { owner: e },
-                Collider { shape: shape.clone(), enabled: true, solid: true },
+                Collider::new(shape.clone(), true, true),
                 Transform::IDENTITY,
                 Visibility::Inherited,
             ))
@@ -214,6 +214,21 @@ pub fn attach_bone_followers(world: &mut World, e: Entity) -> bool {
     }
     world.entity_mut(e).remove::<Collider>();
     true
+}
+
+/// Brush entities the game makes physics-solid rather than BSP-solid, which
+/// the engine then traces through the map's physics hulls (half a unit in
+/// from the brushes): the player steps from `sp_a1_wakeup`'s catwalk onto
+/// the breaker room's floor only because the train's hull stops short of
+/// the doorway lintel above. Doors are BSP-solid only under a BSP-solid
+/// parent, which the campaign does not do; `func_brush` is unless
+/// `solidbsp` is set.
+fn physics_solid_brush(me: &MapEntity) -> bool {
+    match me.classname.as_str() {
+        "func_door" | "func_door_rotating" | "func_tracktrain" | "func_movelinear" | "func_rotating" | "func_physbox" => true,
+        "func_brush" => !me.get_bool("solidbsp"),
+        _ => false,
+    }
 }
 
 /// Attaches collision to brush entities (solid or touch-only) and to solid
@@ -230,7 +245,11 @@ pub fn attach_collider(world: &mut World, e: Entity) {
         let solidity = (me.classname == "func_brush").then(|| me.get_i32("solidity").unwrap_or(0));
         let solid = brush_class_is_solid(&me.classname) && solidity != Some(1);
         let enabled = solidity == Some(2) || world.get::<super::movers::Toggleable>(e).is_none_or(|t| t.enabled);
-        world.entity_mut(e).insert(Collider { shape, enabled, solid });
+        let mut collider = Collider::new(shape, enabled, solid);
+        if physics_solid_brush(&me) {
+            collider.movement_shape = world.resource::<CollisionWorld>().brush_physics.get(model).cloned().flatten();
+        }
+        world.entity_mut(e).insert(collider);
         return;
     }
     if !(me.classname.starts_with("prop_") || me.classname.starts_with("npc_")) || me.get_i32("solid") == Some(0) {
@@ -255,6 +274,6 @@ pub fn attach_collider(world: &mut World, e: Entity) {
         }
     };
     if let Some(shape) = shape {
-        world.entity_mut(e).insert(Collider { shape, enabled: true, solid: true });
+        world.entity_mut(e).insert(Collider::new(shape, true, true));
     }
 }

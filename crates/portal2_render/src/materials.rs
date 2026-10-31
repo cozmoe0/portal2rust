@@ -428,6 +428,12 @@ impl MaterialCache {
         }
         match &vmt {
             None => m.base = Some(ctx.missing()),
+            // The engine's `Black` shader draws plain black (fog still
+            // applies): `sp_a1_wakeup`'s far chamber wreckage.
+            Some(vmt) if vmt.shader == "black" => {
+                p.flags |= model_flags::UNLIT;
+                p.color = Vec4::new(0.0, 0.0, 0.0, 1.0);
+            }
             Some(vmt) => {
                 m.base = ctx.tex(vmt, "$basetexture", true).map(|t| t.handle).or_else(|| Some(ctx.missing()));
                 if let Some(t) = ctx.tex(vmt, "$bumpmap", false) {

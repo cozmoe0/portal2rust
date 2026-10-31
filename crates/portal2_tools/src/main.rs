@@ -14,6 +14,7 @@ mod cmd {
     pub mod actorscan;
     pub mod brushesat;
     pub mod bspcheck;
+    pub mod bspphys;
     pub mod cubecheck;
     pub mod devicemaps;
     pub mod entdump;
@@ -39,6 +40,7 @@ mod cmd {
     pub mod mdlscan;
     pub mod mdlseq;
     pub mod modelbounds;
+    pub mod modelbrushes;
     pub mod modellights;
     pub mod openspace;
     pub mod overlayfaces;
@@ -78,6 +80,7 @@ const COMMANDS: &[(&str, &str, fn())] = &[
     ("actorscan", "Survey for actor animation (names and counts only)", cmd::actorscan::main),
     ("brushesat", "Lists brush entities whose model bounds contain a point, with their class, name and bounds.", cmd::brushesat::main),
     ("bspcheck", "Winding and lightmap brightness diagnostics.", cmd::bspcheck::main),
+    ("bspphys", "Lists the physics collision pieces of a brush model from the map's physics lump", cmd::bspphys::main),
     ("cubecheck", "Reports formats and value ranges of a map's baked cube maps.", cmd::cubecheck::main),
     ("devicemaps", "Counts puzzle-device entities per single-player map (counts only).", cmd::devicemaps::main),
     (
@@ -123,6 +126,7 @@ const COMMANDS: &[(&str, &str, fn())] = &[
         cmd::mdlseq::main,
     ),
     ("modelbounds", "Prints a brush model's bounds", cmd::modelbounds::main),
+    ("modelbrushes", "Lists a brush model's brushes with their contents and bounds", cmd::modelbrushes::main),
     ("modellights", "Prints the lighting inputs a dynamic model at a point would see", cmd::modellights::main),
     ("openspace", "Distances from a point to solid world geometry along the six axes, for placing cameras", cmd::openspace::main),
     ("overlayfaces", "Prints the faces an overlay covers", cmd::overlayfaces::main),

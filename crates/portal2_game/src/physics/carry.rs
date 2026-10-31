@@ -321,11 +321,12 @@ fn hold_held(
     portal_query: Query<&crate::portals::Portal>,
     spatial: SpatialQuery,
     mut commands: Commands,
-    (bodies, mut out, mut sounds, followers): (
+    (bodies, mut out, mut sounds, followers, passes): (
         Query<(&RigidBody, Has<ChildOf>)>,
         MessageWriter<FireOutput>,
         MessageWriter<portal2_audio::SoundRequest>,
         Query<&portal2_world::collision::BoneFollower>,
+        Query<Entity, With<super::PassesHeld>>,
     ),
 ) {
     let Some(held) = holding.entity else { return };
@@ -377,12 +378,13 @@ fn hold_held(
     };
     let dt = time.delta_secs().max(1e-4);
     let eye = p.state.origin + Vec3::Z * p.state.eye_offset();
-    // Models with collision on their bones do not hold a carried prop back
-    // (see `layers::FOLLOWER`), so neither do they move its hold point.
+    // Models with collision on their bones and unblockable trains do not
+    // hold a carried prop back (see `layers::FOLLOWER`), so neither do they
+    // move its hold point.
     let mut ignore = vec![pe, held];
-    for f in &followers {
-        if !ignore.contains(&f.owner) {
-            ignore.push(f.owner);
+    for owner in followers.iter().map(|f| f.owner).chain(&passes) {
+        if !ignore.contains(&owner) {
+            ignore.push(owner);
         }
     }
     let seen_at = hold_point(&physics, &ignore, &console, &mut holding, &p.state, input.input.angles);

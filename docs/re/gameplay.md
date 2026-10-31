@@ -225,6 +225,23 @@ The placement check runs in this order and stops at the first failure:
 - Personality cores are handled separately, and a list of classes never
   fizzles.
 
+## Physics-solid brush entities
+
+- Brush entities the game makes physics-solid (doors unless under a
+  BSP-solid parent, trains without spawnflag 128, `func_brush` without
+  `solidbsp`, `func_movelinear`...) are traced through the map's physics
+  hulls (`LUMP_PHYSCOLLIDE`), which vbsp builds half a unit inside the
+  brushes. Measured in `sp_a1_wakeup`: the player stands on the breaker
+  train at −476.47, its brush top being −476 (hull top −476.5, less the
+  trace's 1/32 keep-off). The inset is what lets the player step from the
+  catwalk onto the train: the train's hull ends 0.54 units short of the
+  doorway lintel, so the player is already under the lintel when the step
+  up is tried and rises only to it. The game's walk ends at
+  (8976, 1115.53, −476.47), as here.
+- A prop the player carries passes through a train flagged unblockable by
+  the player: in `sp_a1_wakeup` the carried Wheatley is held 30 units inside
+  the breaker train's central block, where the socket's trigger sits.
+
 ## Bone followers
 
 - Dynamic props (`CDynamicProp`), floor buttons (`CPropFloorButton`) and

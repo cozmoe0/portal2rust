@@ -51,6 +51,27 @@ scripts. Written in our own words; no code is copied.
   the latter puts the player into the arrival elevator, whose interior trigger
   sends the train to its bottom node.
 
+## func_tracktrain
+
+- `Spawn` makes the train BSP-solid with spawnflag 128, physics-solid
+  otherwise; spawnflag 512 ("unblockable by player") sets an entity flag,
+  and spawnflag 8 makes it not solid.
+- `MoveToPathNode` sets the destination and starts the train at the speed of
+  the node it is at, or its maximum speed when that node has none,
+  whatever speed it last moved at. `SetMaxSpeed` only changes the maximum.
+  `sp_a1_wakeup`'s breaker room makes a one-unit move at its starting
+  maximum of 1, raises the maximum to 52 and later rides up the shaft with
+  another `MoveToPathNode`, so it climbs at 52 (155 past `breaker_train_path_2`).
+
+## linked_portal_door
+
+- A fixed portal opening (`width` x `height`, facing along its angles),
+  open from the start with `startactive`, toggled with `Open`/`Close`, and
+  linked to the door `partnername` or `SetPartner` names. `sp_a1_wakeup`
+  links and opens `incinerator_entry_portal_1` (a floor opening in the
+  incinerator) to `incinerator_entry_portal_2` (a ceiling opening above the
+  shaft whose trigger ends the level); `sp_a4_finale2` has two more pairs.
+
 ## point_teleport
 
 - On activation it saves its own absolute origin and angles; with spawnflag 1

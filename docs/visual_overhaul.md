@@ -157,6 +157,9 @@ in how bright the projected texture is drawn, not something the overhaul adds or
   was not confirmed and nothing was changed; the other two do not appear in these views. They are
   left as they were in every preset; the overhaul's probe reflections give `env_cubemap` surfaces
   a reflection when it is on.
+- **Broken probe captures are skipped.** `sp_a1_wakeup`'s cube map in the breaker shaft
+  (`c8976_1216_0`) reads 19.7 across a whole face; picked as the nearest probe it turned the
+  basement catwalks and breaker room white. A probe with a flat face brighter than 2 is left out.
 
 Reproduce:
 

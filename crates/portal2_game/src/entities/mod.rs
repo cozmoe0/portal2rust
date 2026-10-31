@@ -7,6 +7,7 @@ pub mod detectors;
 pub mod hints;
 pub mod io;
 pub mod lights;
+pub mod linked_portals;
 pub mod logic;
 pub mod movers;
 pub mod props;
@@ -66,6 +67,7 @@ impl Plugin for EntitiesPlugin {
         triggers::register(app);
         areaportal::register(app);
         lights::register(app);
+        linked_portals::register(app);
     }
 }
 

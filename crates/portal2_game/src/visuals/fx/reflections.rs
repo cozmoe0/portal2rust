@@ -115,6 +115,16 @@ fn face_pixels(vtf: &Vtf, face: u32, linear: bool) -> Vec<Vec3> {
     out
 }
 
+/// Whether a face is one flat, bright colour: a capture that went wrong
+/// (`sp_a1_wakeup`'s probe in the breaker shaft reads 19.7 across its whole
+/// top face), which would turn everything near it white. The game itself
+/// only shows such a probe on the few materials that ask for a reflection.
+fn saturated(face: &[Vec3]) -> bool {
+    let lum = |c: &Vec3| c.dot(Vec3::new(0.2126, 0.7152, 0.0722));
+    let (lo, hi) = face.iter().map(lum).fold((f32::MAX, f32::MIN), |(lo, hi), l| (lo.min(l), hi.max(l)));
+    hi > 2.0 && hi - lo < hi * 0.01
+}
+
 /// A face and its box-filtered mips, as RGBA 16-bit floats.
 fn face_with_mips(mut level: Vec<Vec3>) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(face_bytes());
@@ -173,9 +183,14 @@ fn load_probes(
             .map(|v| (v, true))
             .or_else(|| fs.read(&format!("{base}.vtf")).and_then(|b| Vtf::parse(&b).ok()).map(|v| (v, false)));
         let Some((vtf, linear)) = found.filter(|(v, _)| v.is_cubemap()) else { continue };
-        for f in 0..6u32 {
-            let o = (count * 6 + f as usize) * face;
-            data[o..o + face].copy_from_slice(&face_with_mips(face_pixels(&vtf, f, linear)));
+        let faces: Vec<Vec<Vec3>> = (0..6u32).map(|f| face_pixels(&vtf, f, linear)).collect();
+        if faces.iter().any(|f| saturated(f)) {
+            debug!("skipping reflection probe at {:?}: a face is one flat bright colour", c.origin);
+            continue;
+        }
+        for (f, pixels) in faces.into_iter().enumerate() {
+            let o = (count * 6 + f) * face;
+            data[o..o + face].copy_from_slice(&face_with_mips(pixels));
         }
         let origin = Vec3::new(c.origin[0] as f32, c.origin[1] as f32, c.origin[2] as f32);
         let p = PROBES_OFFSET + count * 4;
@@ -192,6 +207,17 @@ fn load_probes(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn flat_bright_face_is_saturated() {
+        let n = (PROBE_SIZE * PROBE_SIZE) as usize;
+        assert!(saturated(&vec![Vec3::splat(19.7); n]));
+        // A dim flat face (a dark corner) and a bright varied one are fine.
+        assert!(!saturated(&vec![Vec3::splat(0.02); n]));
+        let mut varied = vec![Vec3::splat(0.1); n];
+        varied[0] = Vec3::splat(19.7);
+        assert!(!saturated(&varied));
+    }
 
     #[test]
     fn mip_chain_layout() {

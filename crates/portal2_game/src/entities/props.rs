@@ -196,12 +196,20 @@ fn spawn_dynamic(world: &mut World, e: Entity) {
     attach_entity_model(world, e, true);
     let Some(me) = world.get::<MapEntity>(e).cloned() else { return };
     if let Some(mut anim) = world.get_mut::<StudioAnimator>(e) {
+        // A dynamic prop animates only once it thinks: from its default
+        // animation, a random animator, or later a `SetAnimation` or new
+        // playback rate. Until then it shows the first frame of sequence 0
+        // and never reports `OnAnimationDone` (`sp_a1_wakeup`'s `ghostAnim`
+        // would otherwise end the level the moment it starts). The rate
+        // starts at the keyvalue's, 0 without one, so `sp_a1_intro6`'s
+        // `SetPlaybackRate 1` counts as a change and starts its ramps.
+        anim.playing = me.get_bool("randomanimation");
+        anim.rate = me.get_f32("playbackrate").unwrap_or(if anim.playing { 1.0 } else { 0.0 });
         if let Some(default) = me.get("defaultanim").filter(|s| !s.is_empty()) {
             anim.set_default_sequence(default);
-            anim.set_sequence(default);
-        }
-        if let Some(rate) = me.get_f32("playbackrate").filter(|r| *r != 0.0) {
-            anim.rate = rate;
+            if anim.set_sequence(default) {
+                anim.rate = 1.0;
+            }
         }
         // `sp_a1_intro7`'s socket holds its lock pose, with Wheatley in it.
         anim.hold = me.get_bool("holdanimation");
@@ -243,7 +251,11 @@ fn model_inputs(world: &mut World, call: &InputCall) -> bool {
             if call.input == "setanimationnoreset" && anim.sequence_name().eq_ignore_ascii_case(&name) {
                 return true;
             }
+            // A new animation always plays forwards at rate 1: `sp_a1_wakeup`
+            // slows `ghostAnim` to 0.001 to hold the crush camera, then
+            // restarts the sequence to play it.
             if anim.set_sequence(&name) {
+                anim.rate = 1.0;
                 fire_output(world, e, "OnAnimationBegun", call.activator, None);
             }
             true
@@ -257,9 +269,16 @@ fn model_inputs(world: &mut World, call: &InputCall) -> bool {
             }
             true
         }
+        // A changed rate starts the prop thinking, so a prop without an
+        // animation plays sequence 0 (`sp_a1_intro6`'s exit ramps).
         "setplaybackrate" => {
             let Some(mut anim) = world.get_mut::<StudioAnimator>(e) else { return false };
-            anim.rate = source_formats::kv::parse_f32_lenient(&call.param);
+            let rate = source_formats::kv::parse_f32_lenient(&call.param);
+            if anim.rate != rate {
+                anim.rate = rate;
+                anim.finished = false;
+                anim.playing = true;
+            }
             true
         }
         "skin" | "setbodygroup" => {
@@ -268,7 +287,7 @@ fn model_inputs(world: &mut World, call: &InputCall) -> bool {
             }
             let key = if call.input == "skin" { "skin" } else { "body" };
             let value = source_formats::kv::parse_i32_lenient(&call.param).to_string();
-            let (sequence, cycle) = world.get::<StudioAnimator>(e).map(|a| (a.sequence, a.cycle)).unwrap_or((0, 0.0));
+            let old = world.get::<StudioAnimator>(e).map(|a| (a.sequence, a.cycle, a.rate, a.playing, a.hold, a.default_sequence));
             if let Some(mut me) = world.get_mut::<MapEntity>(e) {
                 me.set(key, &value);
             }
@@ -279,9 +298,15 @@ fn model_inputs(world: &mut World, call: &InputCall) -> bool {
             if solid == 6 && world.get::<portal2_world::collision::Collider>(e).is_none() {
                 super::spawner::attach_bone_followers(world, e);
             }
-            if let Some(mut anim) = world.get_mut::<StudioAnimator>(e) {
+            if let Some((sequence, cycle, rate, playing, hold, default)) = old
+                && let Some(mut anim) = world.get_mut::<StudioAnimator>(e)
+            {
                 anim.set_sequence_index(sequence);
                 anim.cycle = cycle;
+                anim.rate = rate;
+                anim.playing = playing;
+                anim.hold = hold;
+                anim.default_sequence = default;
             }
             true
         }

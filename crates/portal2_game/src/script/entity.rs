@@ -283,6 +283,12 @@ fn set_world_origin(world: &mut World, e: Entity, pos: Vec3) {
     if let Some(mut t) = world.get_mut::<Transform>(e) {
         t.translation = local;
     }
+    // A physics body is placed by the solver, which would put it back.
+    if parent.is_none()
+        && let Some(mut p) = world.get_mut::<avian3d::prelude::Position>(e)
+    {
+        p.0 = pos;
+    }
 }
 
 fn set_origin(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {

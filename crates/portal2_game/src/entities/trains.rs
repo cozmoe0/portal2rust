@@ -339,9 +339,12 @@ fn train_input(world: &mut World, call: &InputCall) -> bool {
                 t.destination = None;
                 world.write_message(FireOutput::new(e, "OnArrivedAtDestinationNode"));
             } else {
-                if t.speed == 0.0 {
-                    t.speed = t.max_speed;
-                }
+                // The ride takes the speed of the node the train is at, or
+                // its maximum speed, whatever it moved at before:
+                // `sp_a1_wakeup`'s breaker room crept up at the 1 unit/s
+                // of its first short move instead of the 52 set since.
+                let node_speed = t.last.and_then(|l| world.get::<PathTrack>(l)).map_or(0.0, |p| p.speed);
+                t.speed = if node_speed > 0.0 { node_speed } else { t.max_speed };
                 t.moving = true;
                 started = true;
             }

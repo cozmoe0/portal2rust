@@ -145,3 +145,32 @@ section's start.
 - Chell's `player.mdl` takes `head_yaw`, `head_pitch`, `body_yaw`,
   `body_pitch`, `move_x` and `move_y` from `player_animations.mdl` (11 blend
   grids, 19 sequences with automatic layers).
+
+## prop_dynamic playback (server.dll `CDynamicProp`)
+
+- A dynamic prop only advances its sequence while its `AnimThink` runs
+  (every 0.1 s). `Spawn` starts it for a random animator or a
+  `DefaultAnim`; otherwise the prop shows sequence 0 at cycle 0 and its
+  playback rate stays 0 (`ent_dump` in the game prints no `cycle` or
+  `playbackrate` for `sp_a1_wakeup`'s `glados_props_head` or `ghostAnim`).
+- `SetAnimation` (`PropSetAnim`) looks the sequence up (keeping the current
+  one when the name matches), sets it as the goal, restarts it at cycle 0
+  with the playback rate set to 1 (−1 when a transition node chain plays
+  it backwards), fires `OnAnimationBegun` and starts the think.
+  `SetAnimationNoReset` does nothing when that sequence already plays.
+- `SetPlaybackRate` with a rate different from the current one sets it,
+  clears the finished flag and starts the think if none is pending: this is
+  what starts `sp_a1_intro6`'s exit ramps (`SetPlaybackRate 1` seven seconds
+  in, on props without a default animation).
+- `SetDefaultAnimation` only stores the name.
+- The think finishes a non-looping sequence at cycle ≥ 0.999 (≤ 0 when the
+  rate is negative). On the goal sequence it fires `OnAnimationDone` once
+  (until the cycle leaves the end again), then: a random animator waits for
+  its next pick; with `HoldAnimation` the think keeps running and the pose
+  holds; otherwise a default animation is started again with `PropSetAnim`;
+  with neither, the think stops.
+- `sp_a1_wakeup`'s `ghostAnim` (no default animation) fires
+  `camera_ghostAnim_2.TeleportToView` from `OnAnimationDone`, so a prop that
+  played sequence 0 from spawn put the player beside GLaDOS a moment after
+  arriving. `relay_start_claw_pickup` slows its sequence to 0.001 and
+  restarts it 1.1 s later, which plays it at rate 1 again.

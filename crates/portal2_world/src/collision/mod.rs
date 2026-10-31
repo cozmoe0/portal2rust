@@ -65,12 +65,15 @@ pub struct CollisionWorld {
     bvh: Bvh,
     /// Shapes of brush models (index 0, the world, lives in `statics`).
     pub brush_models: Vec<Arc<Shape>>,
+    /// The same models' physics hulls, where the map has them (see
+    /// [`build::model_physics`]).
+    pub brush_physics: Vec<Option<Arc<Shape>>>,
 }
 
 impl CollisionWorld {
     pub fn from_statics(statics: Vec<ConvexVolume>) -> Self {
         let bounds: Vec<(Vec3, Vec3)> = statics.iter().map(|v| (v.mins, v.maxs)).collect();
-        Self { bvh: Bvh::build(&bounds), statics, brush_models: Vec::new() }
+        Self { bvh: Bvh::build(&bounds), statics, brush_models: Vec::new(), brush_physics: Vec::new() }
     }
 
     /// Indices of static volumes whose bounds overlap a box.
@@ -89,6 +92,25 @@ pub struct Collider {
     /// Whether the volumes block movement (false for triggers, which only
     /// use the shape for touch tests).
     pub solid: bool,
+    /// The physics hulls the engine traces a physics-solid brush entity
+    /// through. Only player movement uses them so far; other traces, touch
+    /// tests and physics bodies keep `shape`.
+    pub movement_shape: Option<Arc<Shape>>,
+}
+
+impl Collider {
+    pub fn new(shape: Arc<Shape>, enabled: bool, solid: bool) -> Self {
+        Self { shape, enabled, solid, movement_shape: None }
+    }
+
+    /// The shape a trace with `mask` sweeps against. Player movement is the
+    /// only trace that asks for player clips.
+    fn traced(&self, mask: u32) -> &Shape {
+        match &self.movement_shape {
+            Some(s) if mask & contents::PLAYERCLIP != 0 => s,
+            _ => &self.shape,
+        }
+    }
 }
 
 /// A piece of a model's collision that follows one of its animated bones
@@ -123,8 +145,9 @@ pub fn rebuild_on_map_load(
     let brush_models = (0..bsp.models.len())
         .map(|m| if m == 0 { Arc::new(Shape::default()) } else { Arc::new(Shape::new(build::model_volumes(bsp, m))) })
         .collect();
+    let brush_physics = build::model_physics(bsp).into_iter().map(|p| p.map(|v| Arc::new(Shape::new(v)))).collect();
     info!("collision: {brushes} brushes, {disp_count} displacement triangles, {prop_count} prop hulls in {:?}", started.elapsed());
-    *cw = CollisionWorld { statics, bvh, brush_models };
+    *cw = CollisionWorld { statics, bvh, brush_models, brush_physics };
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -235,17 +258,18 @@ impl Physics<'_, '_> {
                 continue;
             }
             let affine = gt.affine();
-            if !reach.may_touch(&affine, &col.shape) {
+            let shape = col.traced(mask);
+            if !reach.may_touch(&affine, shape) {
                 continue;
             }
             let inv = affine.inverse();
             let (ls, le) = (inv.transform_point3(start), inv.transform_point3(end));
             let (lmins, lmaxs) = rotated_box(inv.matrix3.into(), mins, maxs);
             let delta = le - ls;
-            if !bvh::segment_hits_aabb(ls, delta, col.shape.mins - lmaxs - Vec3::ONE, col.shape.maxs - lmins + Vec3::ONE) {
+            if !bvh::segment_hits_aabb(ls, delta, shape.mins - lmaxs - Vec3::ONE, shape.maxs - lmins + Vec3::ONE) {
                 continue;
             }
-            for v in &col.shape.volumes {
+            for v in &shape.volumes {
                 if v.contents & mask == 0 {
                     continue;
                 }
@@ -295,13 +319,14 @@ impl Physics<'_, '_> {
                 continue;
             }
             let affine = gt.affine();
-            if !reach.may_touch(&affine, &col.shape) {
+            let shape = col.traced(mask);
+            if !reach.may_touch(&affine, shape) {
                 continue;
             }
             let inv = affine.inverse();
             let lp = inv.transform_point3(pos);
             let (lmins, lmaxs) = rotated_box(inv.matrix3.into(), mins, maxs);
-            if col.shape.volumes.iter().any(|v| v.contents & mask != 0 && v.overlaps_box(lp, lmins, lmaxs)) {
+            if shape.volumes.iter().any(|v| v.contents & mask != 0 && v.overlaps_box(lp, lmins, lmaxs)) {
                 out.push(Some(e));
             }
         }

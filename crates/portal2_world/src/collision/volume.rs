@@ -6,6 +6,14 @@ use bevy::math::Vec3;
 /// Traces stop this far short of surfaces so the next move starts outside.
 pub const DIST_EPSILON: f32 = 0.031_25;
 
+/// A move that ends still in front of a plane, closing on it by less than
+/// this, runs along it rather than into it. A box resting within
+/// `DIST_EPSILON` of a face that is a hair off level (a prop's collision
+/// placed by its animated bones) would otherwise be stopped dead at the
+/// start of every move across it: the player stuck on `sp_a1_wakeup`'s
+/// opened entry door.
+const PARALLEL_SLOP: f32 = 0.001;
+
 #[derive(Clone, Copy, Debug)]
 pub struct Plane {
     /// Outward normal; points `p` with `normal·p > dist` are outside.
@@ -155,7 +163,7 @@ impl ConvexVolume {
                 ends_out = true;
             }
             // Completely in front of this face: no contact with the volume.
-            if d1 > 0.0 && (d2 >= DIST_EPSILON || d2 >= d1) {
+            if d1 > 0.0 && (d2 >= DIST_EPSILON || d2 >= d1 || (d2 > 0.0 && d1 - d2 < PARALLEL_SLOP)) {
                 return None;
             }
             if d1 <= 0.0 && d2 <= 0.0 {
@@ -253,6 +261,25 @@ mod tests {
         assert!((hit.fraction - 19.0 / 40.0).abs() < 0.01);
         assert!(hit.plane.normal.abs_diff_eq(-Vec3::X, 1e-5));
         assert!(!hit.start_solid);
+    }
+
+    #[test]
+    fn slide_along_slightly_tilted_face() {
+        // A floor whose top leans by a few millionths, with the box resting
+        // just inside the keep-off distance above it.
+        let n = Vec3::new(0.0, -5e-6, 1.0).normalize();
+        let mut v = ConvexVolume::from_box(Vec3::splat(-100.0), Vec3::new(100.0, 100.0, 0.0), 1, -1);
+        for p in &mut v.planes {
+            if p.normal.z > 0.5 {
+                p.normal = n;
+            }
+        }
+        let start = Vec3::new(0.0, 0.0, 0.02);
+        let hit = v.sweep(start, start + Vec3::new(0.0, 3.0, 0.0), Vec3::new(-16.0, -16.0, 0.0), Vec3::new(16.0, 16.0, 72.0));
+        assert!(hit.is_none());
+        // Moving down onto it still lands.
+        let hit = v.sweep(Vec3::new(0.0, 0.0, 10.0), Vec3::new(0.0, 0.0, -10.0), Vec3::new(-16.0, -16.0, 0.0), Vec3::new(16.0, 16.0, 72.0));
+        assert!(hit.is_some_and(|h| !h.start_solid && h.fraction > 0.4));
     }
 
     #[test]

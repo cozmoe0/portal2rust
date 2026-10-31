@@ -1,0 +1,15 @@
+# Views of sp_a1_wakeup for its parity pass: name map x y z pitch yaw roll
+# (feet origin, as setpos) [console commands]. Capture the game with
+#   python -I re/tools/capture.py re/shots/wakeup.txt --map-settle 20 --settle 8
+# and ours with
+#   cargo run --release -p portal2 -- --shots re/shots/wakeup.txt --shot-settle-time 8 --shot-map-settle 20
+wake_start sp_a1_wakeup 6976 560 384 0 90 0
+wake_hub sp_a1_wakeup 6976 1180 384 0 0 0
+wake_hall sp_a1_wakeup 7700 1216 400 0 0 0
+wake_glados sp_a1_wakeup 8900 1216 400 -20 0 0
+wake_chamber sp_a1_wakeup 9500 800 420 -10 90 0
+wake_stairs sp_a1_wakeup 10463 1216 380 0 0 0
+wake_basement sp_a1_wakeup 10628 1200 -356 0 180 0
+wake_walkway sp_a1_wakeup 9600 1250 -480 0 180 0
+wake_breaker_out sp_a1_wakeup 8976 1300 -480 10 270 0 ent_fire basement_breakers_prop_0 setanimation breaker_shaft_open_hatch; ent_fire breaker_bottom_light turnon; ent_fire light_orange_glados turnon
+wake_pedestal sp_a1_wakeup 8976 1135 -476 34.3 261.7 0 ent_fire basement_breakers_prop_0 setanimation breaker_shaft_open_hatch; ent_fire breaker_bottom_light turnon; ent_fire light_orange_glados turnon

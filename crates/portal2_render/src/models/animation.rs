@@ -61,6 +61,11 @@ pub struct StudioAnimator {
     /// A finished sequence stays on its last frame instead of going back
     /// to the default one (`prop_dynamic`'s `HoldAnimation`).
     pub hold: bool,
+    /// The cycle advances only while this is set. Starting a sequence sets
+    /// it; a finished sequence with neither a default to return to nor
+    /// `hold` clears it (a `prop_dynamic`'s think stops there), and a
+    /// `prop_dynamic` without `DefaultAnim` starts with it clear.
+    pub playing: bool,
     /// Layered sequences, applied in order after the base sequence.
     layers: Vec<Layer>,
     /// Pose parameter settings (0..=1 across each parameter's range), in
@@ -83,6 +88,7 @@ impl StudioAnimator {
             finished: false,
             default_sequence: None,
             hold: false,
+            playing: true,
             layers: Vec::new(),
             pose,
             dirty: true,
@@ -102,6 +108,7 @@ impl StudioAnimator {
         self.sequence = index;
         self.cycle = 0.0;
         self.finished = false;
+        self.playing = true;
         self.looping = self.sequence_flags(index) & seq_flags::LOOPING != 0;
         self.dirty = true;
     }
@@ -190,7 +197,7 @@ pub fn animate_models(
         // animation backwards).
         let backwards = anim.rate < 0.0;
         let at_end = !anim.looping && if backwards { anim.cycle <= 0.0 } else { anim.cycle >= 1.0 };
-        if anim.rate != 0.0 && duration > 0.0 && !at_end {
+        if anim.playing && anim.rate != 0.0 && duration > 0.0 && !at_end {
             let mut cycle = anim.cycle + dt * anim.rate / duration;
             if anim.looping {
                 cycle = cycle.rem_euclid(1.0);
@@ -217,12 +224,17 @@ pub fn animate_models(
                     }
                 }
             }
-            if anim.finished
-                && !anim.hold
-                && let Some(default) = anim.default_sequence
-                && default != anim.sequence
-            {
-                anim.set_sequence_index(default);
+            if anim.finished && !anim.hold {
+                match anim.default_sequence {
+                    // Starting the default sequence plays it forwards at
+                    // the normal rate, whatever the last one ran at.
+                    Some(default) if default != anim.sequence => {
+                        anim.set_sequence_index(default);
+                        anim.rate = 1.0;
+                    }
+                    Some(_) => {}
+                    None => anim.playing = false,
+                }
             }
         }
         // Autoplay sequences run on the clock, so they keep the pose moving.
