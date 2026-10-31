@@ -305,5 +305,8 @@ fn composite(in: FsIn) -> @location(0) vec4<f32> {
         }
     }
     let v = sum / max(total, 1e-4);
-    return vec4<f32>(v.rgb, v.a);
+    if any(v != v) {
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    }
+    return vec4<f32>(max(v.rgb, vec3<f32>(0.0)), saturate(v.a));
 }

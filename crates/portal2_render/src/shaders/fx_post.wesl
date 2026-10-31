@@ -30,8 +30,11 @@ fn luminance(c: vec3<f32>) -> f32 {
     return dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
 }
 
+// A sample with anything not finite (or negative) dropped, so one bad pixel
+// cannot spread through the bloom chain.
 fn tap(uv: vec2<f32>) -> vec3<f32> {
-    return textureSampleLevel(src, samp, uv, 0.0).rgb;
+    let c = textureSampleLevel(src, samp, uv, 0.0).rgb;
+    return select(max(c, vec3<f32>(0.0)), vec3<f32>(0.0), (c != c) | (abs(c) > vec3<f32>(65000.0)));
 }
 
 // Brightness above the threshold, with a quadratic knee below it.

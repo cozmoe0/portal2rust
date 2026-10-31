@@ -65,9 +65,16 @@ fn ao_raw(in: FsIn) -> @location(0) vec4<f32> {
     let r = world_at(p + vec2<i32>(1, 0));
     let u = world_at(p - vec2<i32>(0, 1));
     let b = world_at(p + vec2<i32>(0, 1));
-    let dx = select(c - l, r - c, distance(r, c) < distance(l, c));
-    let dy = select(c - u, b - c, distance(b, c) < distance(u, c));
-    var n = normalize(cross(dy, dx));
+    // The shorter non-zero difference on each axis (at the screen's edge
+    // the clamped neighbour is the pixel itself).
+    let dl = c - l;
+    let dr = r - c;
+    let du = c - u;
+    let db = b - c;
+    let dx = select(dl, dr, (length(dr) < length(dl) && length(dr) > 1e-4) || length(dl) <= 1e-4);
+    let dy = select(du, db, (length(db) < length(du) && length(db) > 1e-4) || length(du) <= 1e-4);
+    let cn = cross(dy, dx);
+    var n = select(normalize(view.world_position - c), normalize(cn), length(cn) > 1e-8);
     let to_eye = view.world_position - c;
     if dot(n, to_eye) < 0.0 {
         n = -n;
@@ -114,7 +121,8 @@ fn ao_raw(in: FsIn) -> @location(0) vec4<f32> {
         occlusion += select(0.0, 1.0, gap > 1.0) * range;
     }
     let visible = 1.0 - occlusion / f32(count) * fade;
-    return vec4<f32>(visible, 0.0, 0.0, 1.0);
+    // Never let a degenerate pixel poison the scene.
+    return vec4<f32>(select(1.0, saturate(visible), visible == visible), 0.0, 0.0, 1.0);
 }
 
 // 4x4 blur over the raw result, weighted toward the same surface, then
@@ -138,7 +146,10 @@ fn ao_apply(in: FsIn) -> @location(0) vec4<f32> {
             total += w;
         }
     }
-    let visible = sum / max(total, 1e-4);
-    let m = mix(1.0, visible, ao.params.y);
+    var visible = sum / max(total, 1e-4);
+    if !(visible == visible) {
+        visible = 1.0;
+    }
+    let m = mix(1.0, saturate(visible), ao.params.y);
     return vec4<f32>(m, m, m, 1.0);
 }

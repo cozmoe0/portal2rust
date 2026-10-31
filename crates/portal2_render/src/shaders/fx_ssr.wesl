@@ -74,9 +74,16 @@ fn reflection(in: FsIn) -> @location(0) vec4<f32> {
     let r = world_at(p + vec2<i32>(1, 0));
     let u = world_at(p - vec2<i32>(0, 1));
     let b = world_at(p + vec2<i32>(0, 1));
-    let dx = select(c - l, r - c, distance(r, c) < distance(l, c));
-    let dy = select(c - u, b - c, distance(b, c) < distance(u, c));
-    var n = normalize(cross(dy, dx));
+    // The shorter non-zero difference on each axis (at the screen's edge
+    // the clamped neighbour is the pixel itself).
+    let dl = c - l;
+    let dr = r - c;
+    let du = c - u;
+    let db = b - c;
+    let dx = select(dl, dr, (length(dr) < length(dl) && length(dr) > 1e-4) || length(dl) <= 1e-4);
+    let dy = select(du, db, (length(db) < length(du) && length(db) > 1e-4) || length(du) <= 1e-4);
+    let cn = cross(dy, dx);
+    var n = select(normalize(view.world_position - c), normalize(cn), length(cn) > 1e-8);
     let v = normalize(c - view.world_position);
     if dot(n, v) > 0.0 {
         n = -n;
@@ -140,6 +147,9 @@ fn reflection(in: FsIn) -> @location(0) vec4<f32> {
     let fade = smoothstep(0.0, 0.08, edge) * (1.0 - smoothstep(0.6, 1.0, hit_t / reach));
     let n_v = saturate(dot(n, -v));
     let fresnel = 0.02 + 0.98 * pow(1.0 - n_v, 5.0);
-    let seen = textureSampleLevel(color_tex, color_samp, hit_uv, 0.0).rgb;
+    var seen = textureSampleLevel(color_tex, color_samp, hit_uv, 0.0).rgb;
+    if any(seen != seen) {
+        seen = vec3<f32>(0.0);
+    }
     return vec4<f32>(seen * (fresnel * mirror * fade * ssr.params.z), 1.0);
 }

@@ -5,9 +5,9 @@
 //! camera per map draws its view into a distance texture, which the world
 //! and model shaders fill with the distance to the light. Every extra view
 //! costs the render thread a full pass over the scene, so a map is only
-//! redrawn when its light moves or takes the slot, and otherwise every few
-//! frames (staggered between maps) to follow moving props; ultra redraws
-//! every frame.
+//! redrawn when its light moves or takes the slot, and otherwise every
+//! twelfth frame (staggered between maps) to follow moving props; ultra
+//! redraws every frame.
 
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::{Exposure, Hdr, RenderTarget};
@@ -92,9 +92,10 @@ fn spawn_cameras(mut commands: Commands) {
     }
 }
 
-/// Frames between redraws of an unchanged shadow map.
+/// Frames between redraws of an unchanged shadow map (a moved light is
+/// redrawn at once); this only follows props moving in the light.
 fn refresh_interval(preset: FxPreset) -> u32 {
-    if preset == FxPreset::Ultra { 1 } else { 4 }
+    if preset == FxPreset::Ultra { 1 } else { 12 }
 }
 
 /// Gives the strongest shadow-casting lights a map, writes their matrices
