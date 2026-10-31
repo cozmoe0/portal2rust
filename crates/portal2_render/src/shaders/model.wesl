@@ -6,7 +6,7 @@ import bevy_pbr::render::forward_io::VertexOutput;
 import bevy_pbr::render::mesh_view_bindings::view;
 import bevy_pbr::render::mesh_view_bindings::fog;
 import portal2_render::shaders::projected::{is_shadow_view, projected_lighting};
-import portal2_render::shaders::fx::{FX_REFLECTIONS, FxSurface, fx_emissive_boost, fx_fresnel, fx_lighting, fx_on, fx_probe, fx_wetness};
+import portal2_render::shaders::fx::{FX_LEAF_TRANSMISSION, FX_REFLECTIONS, FxSurface, fx_emissive_boost, fx_fresnel, fx_haze, fx_is_foliage, fx_lighting, fx_on, fx_probe, fx_wetness};
 
 struct ModelLight {
     // xyz: position, w: kind (0 point, 1 spot, 2 directional)
@@ -275,8 +275,13 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
                 s.f0 = vec3<f32>(material.fx.y);
                 s.baked = diffuse;
                 s.fixtures = has(FLAG_BAKED);
+                s.foliage = fx_is_foliage(material.fx.w);
                 let lit = fx_lighting(s);
                 color = color + albedo * lit.diffuse + lit.specular;
+                if s.foliage {
+                    // Sunlight through the leaves from behind.
+                    color = color + albedo * projected_lighting(p, -s.geometric_n) * FX_LEAF_TRANSMISSION;
+                }
             }
         }
     }
@@ -362,6 +367,9 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     if has(FLAG_ADDITIVE) {
         // Premultiplied blending: added in full, fogging toward black.
         return vec4<f32>(fade_with_fog(color * view.exposure * alpha, in.world_position.xyz), 0.0);
+    }
+    @if(FX) {
+        color = fx_haze(color, in.world_position.xyz, view.world_position);
     }
     return vec4<f32>(apply_source_fog(color * view.exposure, in.world_position.xyz), alpha);
 }

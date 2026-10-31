@@ -89,6 +89,14 @@ const FXL_VOLUMETRIC: u32 = 4u;
 const FXL_FIXTURE: u32 = 8u;
 
 const FX_PI: f32 = 3.14159265;
+// Share of the light on a leaf's far side that comes through it.
+const FX_LEAF_TRANSMISSION: f32 = 0.35;
+// Profile flags (portal2_render/src/surfaces.rs).
+const FX_PROFILE_FOLIAGE: u32 = 1u;
+
+fn fx_is_foliage(profile_flags: f32) -> bool {
+    return fx_on(FX_FOLIAGE) && (u32(profile_flags) & FX_PROFILE_FOLIAGE) != 0u;
+}
 
 // What a surface tells the light loop.
 struct FxSurface {
@@ -107,6 +115,8 @@ struct FxSurface {
     baked: vec3<f32>,
     // Whether fixtures (already baked here) add highlights.
     fixtures: bool,
+    // Leaves and vines: wrapped light, and light through them from behind.
+    foliage: bool,
 }
 
 struct FxLit {
@@ -338,7 +348,11 @@ fn fx_lighting(s: FxSurface) -> FxLit {
             }
         }
         if (flags & FXL_DIFFUSE) != 0u {
-            out.diffuse += irradiance * saturate(n_l);
+            if s.foliage {
+                out.diffuse += irradiance * (saturate((n_l + 0.4) / 1.4) + saturate(-n_l) * FX_LEAF_TRANSMISSION);
+            } else {
+                out.diffuse += irradiance * saturate(n_l);
+            }
         }
         if (flags & FXL_SPECULAR) != 0u {
             let ds = max(distance(sp, s.pos), 1e-3);
@@ -432,4 +446,15 @@ fn fx_wetness(pos: vec3<f32>, n: vec3<f32>, eligibility: f32) -> FxWet {
     out.damp = smoothstep(t - 0.1, t, f) * w;
     out.puddle = smoothstep(t + 0.015, t + 0.07, f) * w;
     return out;
+}
+
+// A faint haze with distance, coloured like the map's ambient light, in
+// every view (portal views included) before the exposure scale.
+fn fx_haze(color: vec3<f32>, pos: vec3<f32>, eye: vec3<f32>) -> vec3<f32> {
+    if !fx_on(FX_FOG) {
+        return color;
+    }
+    let d = max(distance(pos, eye) - fx.haze2.x, 0.0);
+    let f = (1.0 - exp(-fx.haze.w * d)) * fx.haze2.y;
+    return mix(color, fx.haze.rgb, f);
 }

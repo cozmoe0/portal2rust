@@ -12,6 +12,7 @@
 //! `r_fx_save` writes the `r_fx_*` values to `fx.cfg` in our own data folder
 //! (next to the saves, never in the game's install), which runs at startup.
 
+pub mod atmosphere;
 pub mod lights;
 pub mod material;
 pub mod portal_light;
@@ -277,6 +278,7 @@ impl Plugin for VisualFxPlugin {
                 shadows::FxShadowsPlugin,
                 screen::FxScreenPlugin,
                 reflections::FxReflectionsPlugin,
+                atmosphere::FxAtmospherePlugin,
                 postfx::PostFxPlugin,
             ));
     }
