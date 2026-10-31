@@ -48,6 +48,11 @@ pub mod world_flags {
     /// A `vgui_movie_display` screen: the gamma-encoded video frame shown
     /// as it is (the game's Bink shader skips lighting and tone mapping).
     pub const MOVIE: u32 = 1 << 21;
+    /// Water seen through: the scene behind, shifted by the normal map and
+    /// tinted, fogged by how deep it lies (`selfillum_tint` holds the
+    /// refraction tint and amount, `water_fog` the fog start and end, and
+    /// `water_rect` where the depth map in `base` lies).
+    pub const WATER_REFRACT: u32 = 1 << 22;
 }
 
 pub mod model_flags {
@@ -172,12 +177,15 @@ pub struct WorldParams {
     pub envmap_saturation: f32,
     /// Blend of reflections toward the local lightmap brightness (`$envmaplightscale`).
     pub envmap_light_scale: f32,
-    pub _pad1: f32,
-    pub _pad2: f32,
+    /// Refracting water: fog start and end along the path under the surface.
+    pub water_fog: Vec2,
     /// The overhaul's surface profile: roughness, f0, wet, flags (see [`crate::surfaces`]).
     pub fx: Vec4,
     /// x: self-illumination boost share.
     pub fx2: Vec4,
+    /// Refracting water: the world rectangle (min x, min y, size x, size y)
+    /// its depth map (in `base`) covers; zero size without one.
+    pub water_rect: Vec4,
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
@@ -327,6 +335,12 @@ impl Material for WorldMaterial {
 
     fn alpha_mode(&self) -> AlphaMode {
         self.alpha_mode
+    }
+
+    /// Refracting water samples the scene drawn before it, which puts it in
+    /// the transmissive pass after a copy of the opaque one.
+    fn reads_view_transmission_texture(&self) -> bool {
+        self.params.flags & world_flags::WATER_REFRACT != 0
     }
 
     fn enable_prepass() -> bool {

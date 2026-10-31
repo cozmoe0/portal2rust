@@ -215,10 +215,11 @@ fn solid_energy_material(vmt: &Vmt, m: &mut WorldMaterial, ctx: &mut MaterialCon
 /// map's cube map times `$reflectamount` and `$reflecttint`.
 fn water_material(vmt: &Vmt, m: &mut WorldMaterial, ctx: &mut MaterialContext, cubemap: Option<Handle<Image>>) {
     let p = &mut m.params;
+    // `{r g b}` (0-255) and `[r g b]` (0-1) come back scaled to 0-1.
     let color255 = |key: &str, default: Vec3| {
-        let raw = vmt.get(key).unwrap_or("");
+        let raw = vmt.get(key).unwrap_or("").trim_start();
         let v = vmt.get_vec3(key).unwrap_or(default);
-        if raw.trim_start().starts_with('[') { v } else { v / 255.0 }
+        if raw.starts_with('[') || raw.starts_with('{') || vmt.get(key).is_none() { v } else { v / 255.0 }
     };
     let fog = color255("$fogcolor", Vec3::new(0.2, 0.25, 0.2));
     let fog = Color::srgb(fog.x, fog.y, fog.z).to_linear();
@@ -244,12 +245,38 @@ fn water_material(vmt: &Vmt, m: &mut WorldMaterial, ctx: &mut MaterialContext, c
             0.0,
         );
     }
+    // Water one sees into (`$refracttexture`, on PC): the scene behind,
+    // shifted along the flowing normal map, tinted and fogged by depth.
+    if vmt.get("$refracttexture").is_some() && p.flags & world_flags::WATER_BASE == 0 {
+        let tint = color255("$refracttint", Vec3::ONE);
+        let tint = Color::srgb(tint.x, tint.y, tint.z).to_linear();
+        p.flags |= world_flags::WATER_REFRACT;
+        p.selfillum_tint = Vec4::new(tint.red, tint.green, tint.blue, vmt.get_f32("$refractamount").unwrap_or(0.0));
+        p.water_fog = Vec2::new(vmt.get_f32("$fogstart").unwrap_or(0.0), vmt.get_f32("$fogend").unwrap_or(1.0));
+        if let Some(t) = ctx.tex(vmt, "$normalmap", false) {
+            m.bump = Some(t.handle);
+            p.flags |= world_flags::BUMP;
+            if let Some(flow) = ctx.tex(vmt, "$flowmap", false) {
+                m.base2 = Some(flow.handle);
+                p.flags |= world_flags::BASE2;
+            }
+        }
+        p.detail = Vec4::new(
+            vmt.get_f32("$flow_normaluvscale").filter(|v| *v > 0.0).unwrap_or(1.0),
+            vmt.get_f32("$flow_timeintervalinseconds").filter(|v| *v > 0.0).unwrap_or(0.4),
+            vmt.get_f32("$flow_uvscrolldistance").unwrap_or(0.2),
+            vmt.get_f32("$flow_bumpstrength").unwrap_or(1.0),
+        );
+        p.fx2.y = vmt.get_f32("$flow_worlduvscale").filter(|v| *v > 0.0).unwrap_or(1.0);
+    }
     p.flags &= !world_flags::VERTEX_BLEND;
     p.flags &= !world_flags::ENVMAP;
     if let Some(env) = cubemap
         && vmt.get("$reflecttexture").is_some()
     {
-        let amount = vmt.get_f32("$reflectamount").unwrap_or(0.0);
+        // `$reflectamount` is how far the reflection is shifted; water seen
+        // into uses the tint alone, over a Fresnel term.
+        let amount = if p.flags & world_flags::WATER_REFRACT != 0 { 1.0 } else { vmt.get_f32("$reflectamount").unwrap_or(0.0) };
         let tint = color255("$reflecttint", Vec3::ONE);
         let tint = Color::srgb(tint.x, tint.y, tint.z).to_linear();
         m.envmap = Some(env);

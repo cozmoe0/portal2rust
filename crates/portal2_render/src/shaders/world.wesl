@@ -6,6 +6,7 @@ import bevy_pbr::render::forward_io::VertexOutput;
 import bevy_pbr::render::mesh_view_bindings::view;
 import bevy_pbr::render::mesh_view_bindings::fog;
 import bevy_pbr::render::mesh_view_bindings::globals;
+import bevy_pbr::render::mesh_view_bindings as view_bindings;
 import portal2_render::shaders::projected::{is_shadow_view, projected_lighting};
 import portal2_render::shaders::fx::{FX_LEAF_TRANSMISSION, FX_REFLECTIONS, FX_SSR, FxSurface, fx_emissive_boost, fx_fresnel, fx_haze, fx_is_foliage, fx_lighting, fx_on, fx_probe, fx_wetness};
 
@@ -21,12 +22,14 @@ struct WorldParams {
     envmap_contrast: f32,
     envmap_saturation: f32,
     envmap_light_scale: f32,
-    _pad1: f32,
-    _pad2: f32,
+    // Refracting water: fog start and end along the path under the surface
+    water_fog: vec2<f32>,
     // The overhaul's surface profile: roughness, f0, wet, flags
     fx: vec4<f32>,
     // x: self-illumination boost share
     fx2: vec4<f32>,
+    // Refracting water: world rectangle of its depth map (in `base`)
+    water_rect: vec4<f32>,
 }
 
 const FLAG_BASE2: u32 = 1u;
@@ -51,6 +54,7 @@ const FLAG_WATER_BASE: u32 = 262144u;
 const FLAG_SOLID_ENERGY: u32 = 524288u;
 const FLAG_PAINT: u32 = 1048576u;
 const FLAG_MOVIE: u32 = 2097152u;
+const FLAG_WATER_REFRACT: u32 = 4194304u;
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> material: WorldParams;
 @group(constants::MATERIAL_BIND_GROUP) @binding(1) var base_tex: texture_2d<f32>;
@@ -124,6 +128,93 @@ fn apply_source_fog(color: vec3<f32>, world_position: vec3<f32>) -> vec3<f32> {
     return mix(color, fog.base_color.rgb, f);
 }
 
+// The opaque scene behind a refracting surface (Bevy's copy of the opaque
+// pass). Views without the copy (portal views) draw water the plain way.
+@if(VIEW_TRANSMISSION_TEXTURE)
+fn scene_behind(uv: vec2<f32>) -> vec3<f32> {
+    return textureSampleLevel(view_bindings::view_transmission_texture, view_bindings::view_transmission_sampler, uv, 0.0).rgb;
+}
+
+@if(!VIEW_TRANSMISSION_TEXTURE)
+fn scene_behind(uv: vec2<f32>) -> vec3<f32> {
+    return vec3<f32>(0.0);
+}
+
+@if(VIEW_TRANSMISSION_TEXTURE)
+fn has_scene_behind() -> bool {
+    return true;
+}
+
+@if(VIEW_TRANSMISSION_TEXTURE)
+fn scene_size() -> vec2<f32> {
+    return vec2<f32>(textureDimensions(view_bindings::view_transmission_texture));
+}
+
+@if(!VIEW_TRANSMISSION_TEXTURE)
+fn scene_size() -> vec2<f32> {
+    return view.viewport.zw;
+}
+
+@if(!VIEW_TRANSMISSION_TEXTURE)
+fn has_scene_behind() -> bool {
+    return false;
+}
+
+// Water one sees into: the scene behind shifted along the flowing normal
+// map (two phases half a cycle apart, as the goo's colour) and tinted, fogged
+// toward the lit fog colour by the length of the view's path under the
+// surface down to the bottom (from the map's water depth map), with the
+// reflection over it by a Fresnel term.
+fn refracting_water(in: VertexOutput, uv: vec2<f32>, n: vec3<f32>, light: vec3<f32>) -> vec3<f32> {
+    let p = in.world_position.xyz;
+    let v = normalize(view.world_position - p);
+    var nt = vec3<f32>(0.0, 0.0, 1.0);
+    if has(FLAG_BUMP) {
+        var flow = vec2<f32>(0.0);
+        if has(FLAG_BASE2) {
+            flow = textureSampleLevel(base2_tex, base2_samp, fract(uv * material.fx2.y), 0.0).rg * 2.0 - 1.0;
+        }
+        let t = globals.time / material.detail.y;
+        let p0 = fract(t);
+        let p1 = fract(t + 0.5);
+        let nuv = uv * material.detail.x;
+        let n0 = textureSample(bump_tex, bump_samp, nuv + flow * (p0 * material.detail.z)).xyz * 2.0 - 1.0;
+        let n1 = textureSample(bump_tex, bump_samp, nuv + flow * (p1 * material.detail.z) + vec2<f32>(0.5)).xyz * 2.0 - 1.0;
+        let nb = mix(n0, n1, abs(p0 * 2.0 - 1.0));
+        nt = normalize(vec3<f32>(nb.xy * material.detail.w, 1.0));
+    }
+    var tangent = vec3<f32>(1.0, 0.0, 0.0);
+    var sign = 1.0;
+    @if(VERTEX_TANGENTS) {
+        tangent = normalize(in.world_tangent.xyz);
+        sign = in.world_tangent.w;
+    }
+    let bitangent = cross(n, tangent) * sign;
+    let nw = normalize(nt.x * tangent + nt.y * bitangent + nt.z * n);
+    // The game shifts the projected position by the normal times the
+    // refraction amount before the divide, so the shift shrinks with depth.
+    let forward = -view.world_from_view[2].xyz;
+    let depth = max(dot(p - view.world_position, forward), 1.0);
+    let nv = (view.view_from_world * vec4<f32>(nw - n, 0.0)).xy;
+    let screen = in.position.xy / scene_size();
+    let offset = vec2<f32>(nv.x, -nv.y) * material.selfillum_tint.w / (2.0 * depth);
+    let refracted = scene_behind(screen + offset) * material.selfillum_tint.rgb;
+    var below = 0.0;
+    if material.water_rect.z > 0.0 {
+        let at = (p.xy - material.water_rect.xy) / material.water_rect.zw;
+        below = textureSampleLevel(base_tex, base_samp, at, 0.0).r;
+    }
+    let path = below / max(abs(v.z), 0.05);
+    let fog_amount = saturate((path - material.water_fog.x) / max(material.water_fog.y - material.water_fog.x, 1.0));
+    var color = mix(refracted, material.color.rgb * light * view.exposure, fog_amount);
+    if has(FLAG_ENVMAP) {
+        let fresnel = pow(1.0 - saturate(dot(nw, v)), 5.0);
+        let reflection = textureSample(envmap_tex, envmap_samp, reflect(-v, nw)).rgb * material.envmap_tint.rgb * view.exposure;
+        color = mix(color, reflection, fresnel);
+    }
+    return color;
+}
+
 // Water and goo (see `water_material` in render/materials.rs).
 fn water(in: VertexOutput, uv: vec2<f32>, n: vec3<f32>) -> vec4<f32> {
     var light = vec3<f32>(1.0);
@@ -133,6 +224,9 @@ fn water(in: VertexOutput, uv: vec2<f32>, n: vec3<f32>) -> vec4<f32> {
             lm_uv = in.uv_b;
         }
         light = textureSampleLevel(lightmap_tex, lightmap_samp, lm_uv, 0.0).rgb * material.lightmap_scale;
+    }
+    if has(FLAG_WATER_REFRACT) && has_scene_behind() {
+        return vec4<f32>(apply_source_fog(refracting_water(in, uv, n, light), in.world_position.xyz), 1.0);
     }
     var color = material.color.rgb * light;
     if has(FLAG_WATER_BASE) {

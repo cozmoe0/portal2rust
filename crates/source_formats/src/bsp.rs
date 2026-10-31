@@ -852,10 +852,10 @@ impl Bsp {
     /// a ray from `start` to `end` enters, walking the BSP tree; `None` when
     /// it meets none. Brushes the ray starts inside are passed through.
     pub fn first_surface_along(&self, start: Vec3, end: Vec3, mask: u32) -> Option<u32> {
-        self.ray_walk(0, 0.0, 1.0, start, end - start, mask)
+        self.ray_walk(0, 0.0, 1.0, start, end - start, mask).map(|(_, flags)| flags)
     }
 
-    fn ray_walk(&self, node: i32, t1: f32, t2: f32, start: Vec3, delta: Vec3, mask: u32) -> Option<u32> {
+    fn ray_walk(&self, node: i32, t1: f32, t2: f32, start: Vec3, delta: Vec3, mask: u32) -> Option<(f32, u32)> {
         if node < 0 {
             let leaf = self.leafs.get((-1 - node) as usize)?;
             if leaf.contents & mask == 0 {
@@ -895,7 +895,7 @@ impl Bsp {
                     best = Some((enter, flags));
                 }
             }
-            return best.map(|(_, flags)| flags);
+            return best;
         }
         let n = self.nodes.get(node as usize)?;
         let p = &self.planes[n.plane as usize];

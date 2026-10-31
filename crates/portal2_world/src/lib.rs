@@ -8,6 +8,7 @@ pub mod lightstyles;
 pub mod paint_map;
 pub mod ropes;
 pub mod sky;
+mod water_depth;
 
 use portal2_core::layers::SKYBOX_LAYER;
 use std::sync::Arc;
@@ -216,12 +217,32 @@ fn load_map_system(
         None => commands.remove_resource::<paint_map::PaintMap>(),
     }
 
+    // Water one sees into fogs by its depth over the ground below it.
+    let water_names: std::collections::HashSet<String> = bsp
+        .faces
+        .iter()
+        .filter(|f| bsp.texinfo.get(f.texinfo.max(0) as usize).is_some_and(|t| t.flags & source_formats::bsp::surf::WARP != 0))
+        .filter_map(|f| bsp.texinfo_material(f.texinfo as usize).map(str::to_ascii_lowercase))
+        .collect();
+    let water_depth = geometry
+        .models
+        .first()
+        .and_then(|m| water_depth::build(&bsp, &m.batches, &|name| water_names.contains(&name.to_ascii_lowercase())))
+        .map(|d| (images.add(d.image), d.rect));
     let mut ctx = MaterialContext { fs: &fs, textures: &mut textures, images: &mut images };
     let mut model_meshes = Vec::with_capacity(geometry.models.len());
     for model in geometry.models {
         let mut list = Vec::new();
         for batch in model.batches {
             let info = material_cache.world(&batch.texdata_name, &mut ctx, &mut world_materials);
+            if let Some((depth, rect)) = &water_depth
+                && let Some(mut m) = world_materials.get_mut(&info.handle)
+                && m.params.flags & world_flags::WATER_REFRACT != 0
+                && m.base.is_none()
+            {
+                m.base = Some(depth.clone());
+                m.params.water_rect = *rect;
+            }
             if (args.fullbright || args.strip_flags != 0)
                 && let Some(mut m) = world_materials.get_mut(&info.handle)
             {

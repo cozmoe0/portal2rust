@@ -32,6 +32,7 @@ mod cmd {
     pub mod lightscale;
     pub mod lmscale;
     pub mod locfind;
+    pub mod luxelat;
     pub mod m8survey;
     pub mod matfaces;
     pub mod mdlattach;
@@ -113,6 +114,7 @@ const COMMANDS: &[(&str, &str, fn())] = &[
         cmd::lightscale::main,
     ),
     ("lmscale", "Compares floor lightmap luxels with the +Z ambient cube face just above them.", cmd::lmscale::main),
+    ("luxelat", "Prints a face's lightmap luxel nearest a world point.", cmd::luxelat::main),
     ("locfind", "Searches the English localization files for tokens whose key or text contains a substring", cmd::locfind::main),
     ("m8survey", "Counts the entities and surfaces visual-parity work cares about, per singleplayer map", cmd::m8survey::main),
     ("matfaces", "Lists the faces whose material name contains a substring, with centre, normal and size", cmd::matfaces::main),

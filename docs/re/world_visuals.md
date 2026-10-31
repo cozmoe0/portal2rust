@@ -127,7 +127,21 @@ descriptions are our own; the code in `crates/portal2` is written from them.
   lightmap; `$reflecttexture` with `$reflectamount` and `$reflecttint` adds
   a reflection. We draw the fog colour, the flowing base texture (its alpha
   marks the floating scum) and the map's cube map as the reflection; the
-  real-time reflection and refraction are not drawn.
+  real-time reflection is not drawn.
+- `{r g b}` colours are 0-255 and `[r g b]` 0-1 (the fog, refraction and
+  reflection tints); scaling the former twice made every water's fog black.
+- Water one sees into (`$refracttexture`; consoles get `$pseudotranslucent`
+  instead): the scene behind, shifted by the flowing `$normalmap` by
+  `$refractamount` before the perspective divide and times `$refracttint`,
+  goes to `$fogcolor` (lit by the lightmap with `$lightmapwaterfog`) with
+  the length of the view's path under the surface between `$fogstart` and
+  `$fogend`; the reflection (`$reflecttint`) goes over it by a Fresnel term
+  (`$reflectamount` is how far the reflection is shifted, not its
+  strength). The game reads the depth behind from its refraction texture;
+  we bake the depth of the ground under each water surface at map load. In
+  `sp_a1_wakeup` the chamber's puddles are one water plane at z 396 over
+  displacement ground whose lightmap under the water is almost black, so
+  the puddles show the lit fog colour, brown, as in the game.
 
 ## Emancipation fields (`SolidEnergy` with `$flowmap`)
 
