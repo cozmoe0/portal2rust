@@ -8,6 +8,7 @@ pub mod fx;
 pub mod movies;
 pub mod progress_sign;
 pub mod projected;
+pub mod shadow_casters;
 pub mod spotlights;
 pub mod sprites;
 pub mod tonemap;

@@ -19,10 +19,13 @@
 //! has and four shadow maps. A shadowed light gets a camera that draws its
 //! view into one of the shadow maps; world and model shaders recognise those
 //! views by their exponential fog and write the distance to the light
-//! instead of shading.
+//! instead of shading. A map is only redrawn when it would come out
+//! differently (see `visuals/shadow_casters.rs`): when its light moves,
+//! takes the slot or changes its frustum, or when a caster within that
+//! frustum changes. A still scene costs no shadow passes.
 
 use bevy::asset::RenderAssetUsages;
-use bevy::camera::visibility::RenderLayers;
+use bevy::camera::visibility::{RenderLayers, VisibilitySystems};
 use bevy::camera::{CameraProjection, Exposure, Hdr, RenderTarget};
 use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
 use bevy::pbr::{DistanceFog, FogFalloff};
@@ -37,6 +40,7 @@ use source_formats::vtf::Vtf;
 
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{InputCall, InputHandlers};
+use crate::visuals::shadow_casters::{ShadowCasters, ShadowCastersPlugin, ShadowCastersSet};
 use portal2_core::coords::camera_rotation;
 use portal2_core::entity::{EntityRegistry, MapEntity};
 use portal2_core::vfs::GameFs;
@@ -103,6 +107,29 @@ pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
 #[derive(Component)]
 pub struct ShadowCamera(pub usize);
 
+/// What a shadow map shows: its light's place and frustum.
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct ShadowView {
+    transform: Transform,
+    fov: f32,
+    near: f32,
+    far: f32,
+}
+
+impl ShadowView {
+    fn projection(&self) -> PerspectiveProjection {
+        PerspectiveProjection { fov: self.fov, aspect_ratio: 1.0, near: self.near, far: self.far, ..default() }
+    }
+}
+
+/// The views the shadow maps are to show this frame and the ones they were
+/// last drawn with.
+#[derive(Resource, Default)]
+struct ShadowViews {
+    wanted: [Option<ShadowView>; MAX_SHADOWS],
+    drawn: [Option<ShadowView>; MAX_SHADOWS],
+}
+
 pub struct ProjectedPlugin;
 
 impl Plugin for ProjectedPlugin {
@@ -124,9 +151,19 @@ impl Plugin for ProjectedPlugin {
             cookies: gpu.cookies.clone(),
             shadows: gpu.shadows.clone(),
         });
-        app.insert_resource(gpu)
-            .add_systems(Startup, (spawn_shadow_cameras, load_shader_module))
-            .add_systems(PostUpdate, update_lights.after(TransformSystems::Propagate).after(portal2_world::camera::sync_camera_transform));
+        if !app.is_plugin_added::<ShadowCastersPlugin>() {
+            app.add_plugins(ShadowCastersPlugin);
+        }
+        // Woken cameras are aimed before their frusta and visible meshes are
+        // worked out for the frame.
+        app.insert_resource(gpu).init_resource::<ShadowViews>().add_systems(Startup, (spawn_shadow_cameras, load_shader_module)).add_systems(
+            PostUpdate,
+            (
+                update_lights.after(TransformSystems::Propagate).after(portal2_world::camera::sync_camera_transform),
+                aim_shadow_cameras.after(ShadowCastersSet).before(VisibilitySystems::UpdateFrusta),
+            )
+                .chain(),
+        );
         let world = app.world_mut();
         world.resource_mut::<SpawnHandlers>().register("env_projectedtexture", spawn_projected);
         world.resource_mut::<InputHandlers>().register("env_projectedtexture", projected_input);
@@ -341,8 +378,9 @@ struct ActiveLight {
     distance: f32,
 }
 
-/// Collects the lights that are on, fills the storage buffer and points the
-/// shadow cameras.
+/// Collects the lights that are on, fills the storage buffer and picks the
+/// shadow maps' views.
+#[allow(clippy::too_many_arguments)]
 fn update_lights(
     time: Res<Time>,
     gpu: Res<ProjectedGpu>,
@@ -351,7 +389,7 @@ fn update_lights(
     mut lights: Query<(&GlobalTransform, &mut ProjectedTexture)>,
     transforms: Query<&GlobalTransform>,
     main: Query<&GlobalTransform, With<MainCamera>>,
-    mut cameras: Query<(&ShadowCamera, &mut Camera, &mut Transform, &mut Projection), Without<ProjectedTexture>>,
+    mut views: ResMut<ShadowViews>,
     mut last_count: Local<usize>,
     console: Option<Res<portal2_core::console::Console>>,
 ) {
@@ -401,14 +439,14 @@ fn update_lights(
 
     let mut data = vec![0f32; 4 + MAX_LIGHTS * LIGHT_FLOATS];
     data[0] = active.len() as f32;
-    let mut shadow_slots: Vec<(usize, Transform, PerspectiveProjection)> = Vec::new();
+    let mut shadow_slots: Vec<ShadowView> = Vec::new();
     for (i, a) in active.iter().enumerate() {
         let fov = a.light.fov.to_radians();
         let projection = PerspectiveProjection { fov, aspect_ratio: 1.0, near: a.light.near, far: a.light.far, ..default() };
         let transform = Transform { translation: a.position, rotation: camera_rotation(a.rotation), ..default() };
         let clip_from_world = projection.get_clip_from_view() * transform.to_matrix().inverse();
         let slot = (a.light.shadows && shadow_slots.len() < MAX_SHADOWS).then(|| {
-            shadow_slots.push((i, transform, projection.clone()));
+            shadow_slots.push(ShadowView { transform, fov, near: a.light.near, far: a.light.far });
             shadow_slots.len() - 1
         });
         let o = 4 + i * LIGHT_FLOATS;
@@ -422,14 +460,124 @@ fn update_lights(
     if let Some(mut buffer) = buffers.get_mut(&gpu.lights) {
         *buffer = ShaderBuffer::new(data, RenderAssetUsages::default());
     }
-    for (cam, mut camera, mut t, mut p) in &mut cameras {
-        match shadow_slots.get(cam.0) {
-            Some((_, transform, projection)) => {
-                camera.is_active = true;
-                *t = *transform;
-                *p = Projection::Perspective(projection.clone());
+    views.wanted = std::array::from_fn(|slot| shadow_slots.get(slot).copied());
+}
+
+/// Points the shadow cameras, waking each only on frames its map would come
+/// out differently: its light moved, took the slot or changed its frustum,
+/// or a caster within that frustum changed.
+fn aim_shadow_cameras(
+    mut views: ResMut<ShadowViews>,
+    casters: Res<ShadowCasters>,
+    mut cameras: Query<(&ShadowCamera, &mut Camera, &mut Transform, &mut GlobalTransform, &mut Projection)>,
+) {
+    let views = &mut *views;
+    for (cam, mut camera, mut transform, mut global, mut projection) in &mut cameras {
+        let slot = cam.0;
+        let Some(view) = views.wanted[slot] else {
+            views.drawn[slot] = None;
+            if camera.is_active {
+                camera.is_active = false;
             }
-            None => camera.is_active = false,
+            continue;
+        };
+        let p = view.projection();
+        let moved = views.drawn[slot] != Some(view);
+        let frustum = p.compute_frustum(&GlobalTransform::from(view.transform));
+        let touched = casters.stale(|c| c.in_frustum(&frustum));
+        if !moved && !touched {
+            if camera.is_active {
+                camera.is_active = false;
+            }
+            continue;
         }
+        if moved {
+            // Propagation and the cameras' own update have run this frame:
+            // set what they would have made of the view too.
+            *transform = view.transform;
+            *global = GlobalTransform::from(view.transform);
+            camera.computed.clip_from_view = p.get_clip_from_view();
+            *projection = Projection::Perspective(p);
+        }
+        camera.is_active = true;
+        views.drawn[slot] = Some(view);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::visuals::shadow_casters::tests::{app, spawn_caster};
+
+    fn active(app: &mut App) -> bool {
+        app.world_mut().query::<&Camera>().single(app.world()).unwrap().is_active
+    }
+
+    fn view(at: Vec3) -> ShadowView {
+        ShadowView { transform: Transform { translation: at, rotation: camera_rotation(Quat::IDENTITY), ..default() }, fov: 1.5, near: 4.0, far: 750.0 }
+    }
+
+    /// A shadow map is drawn when its light takes the slot, and after that
+    /// only when its light moves or a caster within its frustum changes.
+    #[test]
+    fn shadow_maps_redraw_on_change() {
+        let mut app = app();
+        app.init_resource::<ShadowViews>().add_systems(Update, aim_shadow_cameras.after(ShadowCastersSet));
+        app.world_mut().spawn((
+            ShadowCamera(0),
+            Camera { is_active: false, ..default() },
+            Transform::default(),
+            GlobalTransform::default(),
+            Projection::Perspective(default()),
+        ));
+        let cube = Vec3::splat(8.0);
+        let ahead = spawn_caster(&mut app, Vec3::new(100.0, 0.0, 0.0), cube);
+        let behind = spawn_caster(&mut app, Vec3::new(-300.0, 0.0, 0.0), cube);
+        let far = spawn_caster(&mut app, Vec3::new(1000.0, 0.0, 0.0), cube);
+        // A wide panel just behind the light: its bounding sphere reaches in
+        // front, but its box is culled.
+        let panel = spawn_caster(&mut app, Vec3::new(-20.0, 0.0, 0.0), Vec3::new(2.0, 200.0, 200.0));
+        let place = |app: &mut App, e: Entity, at: Vec3| {
+            *app.world_mut().get_mut::<GlobalTransform>(e).unwrap() = GlobalTransform::from_translation(at);
+        };
+
+        app.update();
+        assert!(!active(&mut app), "no light");
+        app.world_mut().resource_mut::<ShadowViews>().wanted[0] = Some(view(Vec3::ZERO));
+        app.update();
+        assert!(active(&mut app), "the light took the slot");
+        app.update();
+        assert!(!active(&mut app), "nothing changed");
+
+        place(&mut app, ahead, Vec3::new(120.0, 0.0, 0.0));
+        app.update();
+        assert!(active(&mut app), "a caster in view moved");
+        place(&mut app, behind, Vec3::new(-310.0, 0.0, 0.0));
+        app.update();
+        assert!(!active(&mut app), "a caster behind the light moved");
+        place(&mut app, far, Vec3::new(1010.0, 0.0, 0.0));
+        app.update();
+        assert!(active(&mut app), "past the far plane, but drawn");
+        place(&mut app, panel, Vec3::new(-30.0, 0.0, 0.0));
+        app.update();
+        assert!(!active(&mut app), "a panel behind the light moved");
+        place(&mut app, panel, Vec3::new(10.0, 0.0, 0.0));
+        app.update();
+        assert!(active(&mut app), "it moved in front");
+
+        app.world_mut().resource_mut::<ShadowViews>().wanted[0] = Some(view(Vec3::new(0.0, 0.0, 10.0)));
+        app.update();
+        assert!(active(&mut app), "the light moved");
+        let global = *app.world_mut().query_filtered::<&GlobalTransform, With<ShadowCamera>>().single(app.world()).unwrap();
+        assert_eq!(global.translation(), Vec3::new(0.0, 0.0, 10.0), "aimed this frame");
+        app.update();
+        assert!(!active(&mut app));
+
+        app.world_mut().resource_mut::<ShadowViews>().wanted[0] = None;
+        app.update();
+        assert!(!active(&mut app), "the light went out");
+        app.world_mut().resource_mut::<ShadowViews>().wanted[0] = Some(view(Vec3::new(0.0, 0.0, 10.0)));
+        app.update();
+        assert!(active(&mut app), "the slot was given up and taken again");
     }
 }
