@@ -101,7 +101,8 @@ fn spawn_door(world: &mut World, e: Entity) {
     let Some(me) = world.get::<MapEntity>(e).cloned() else { return };
     let closed = world.get::<Transform>(e).copied().unwrap_or_default();
     let speed = me.get_f32("speed").filter(|s| *s > 0.0).unwrap_or(100.0);
-    let wait = me.get_f32("wait").unwrap_or(4.0);
+    // Toggle doors (spawnflag 32) never close by themselves, whatever their wait.
+    let wait = if me.has_flag(32) { -1.0 } else { me.get_f32("wait").unwrap_or(4.0) };
     let rotating = me.classname == "func_door_rotating";
     let (open, travel) = if rotating {
         let distance = me.get_f32("distance").unwrap_or(90.0);
@@ -383,6 +384,11 @@ impl portal2_core::save::Restore for Mover {
     fn keep(&mut self, live: Self) {
         self.closed = live.closed;
         self.open = live.open;
+        // Map data that no input changes; older saves hold a wrong one.
+        self.wait = live.wait;
+        if self.wait < 0.0 {
+            self.close_at = None;
+        }
     }
 }
 
