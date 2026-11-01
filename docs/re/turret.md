@@ -75,4 +75,25 @@ tipped, disabled, collide, pickup, shot at, dissolved, flung, burned.
   pose parameters toward the goal angles, at most `MaxYawSpeed` (360) ×
   0.05° per think, applied at two thirds.
 - The client draws the laser sight as a beam with `effects/redlaser1.vmt`,
-  colour (255, 32, 32) at full brightness, from the turret along its aim.
+  colour (255, 32, 32) at full brightness, from the turret along its aim
+  (client.dll `sub_10271940`): 0.75 units wide, with the server's halo
+  `sprites/redlaserglow.vmt` at scale 4 where it ends.
+
+## Model
+
+- The server sets the model itself from `ModelIndex` (`sub_10324810`),
+  whatever the map says: 0 `models/npcs/turret/turret.mdl`, 2
+  `turret_boxed.mdl`, 3 `turret_backwards.mdl`, 4 `turret_skeleton.mdl`
+  (all under `models/npcs/turret/`); 1 is unused. The entity definition's
+  `models/props/turret_01.mdl` is a leftover whose material is self-lit.
+
+## Player damage tint
+
+- Bullets (`DMG_BULLET`) only play `Flesh.BulletImpact` from the player's
+  damage effects (server.dll `sub_101E7EC0`; crush and drowning get red
+  and blue screen fades). The red the screen turns when hurt is a screen
+  fade the post-processing shader takes as `$fadeColor`. Measured with
+  `hurtme 30` (screenshots 0.25, 0.75 and 1.05 s later): it blends the
+  displayed image toward about (45, 0, 0) at 0.39, 0.35 and 0.32, already
+  fading before health starts coming back, so it follows the damage and
+  time, not the health.

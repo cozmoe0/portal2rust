@@ -65,6 +65,7 @@ fn apply_damage(
     mut players: Query<(&mut Player, &mut Health)>,
     names: Query<&Name>,
     mut deaths: MessageWriter<PlayerDied>,
+    mut fade: Option<ResMut<crate::screen::DamageFade>>,
 ) {
     let now = clock.curtime;
     let Ok((mut p, mut h)) = players.single_mut() else { return };
@@ -77,6 +78,9 @@ fn apply_damage(
             continue;
         }
         h.current -= d.amount;
+        if let Some(f) = fade.as_mut() {
+            f.hurt(d.amount);
+        }
         h.last_damage = now;
         p.state.velocity += d.push;
         if h.current <= 0.0 {

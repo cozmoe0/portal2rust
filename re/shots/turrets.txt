@@ -1,0 +1,5 @@
+# Floor turrets: their shading, laser sights and the damage effects when
+# they shoot the player. name map x y z pitch yaw roll [console commands]
+turret_front sp_a2_turret_intro 700 -250 0 5 194 0 notarget
+turret_side sp_a2_turret_intro 600 -180 0 8 245 0 notarget
+turret_shooting sp_a2_turret_intro 700 -250 0 5 194 0 cl_drawhud 1

@@ -10,19 +10,24 @@ use avian3d::prelude::RigidBody;
 use bevy::prelude::*;
 use source_formats::bsp::contents;
 
+use bevy::camera::visibility::NoFrustumCulling;
+
 use super::EffectMaterial;
-use super::laser::LaserHitTurret;
+use super::laser::{self, LaserBeamMaterial, LaserHitTurret};
 use crate::entities::SpawnHandlers;
 use crate::entities::io::{FireOutput, InputCall, InputHandlers};
 use crate::entities::props::PhysicsProp;
 use crate::entities::spawner::{ModelOptions, attach_studio_model};
 use crate::player::Player;
 use crate::player::health::DamagePlayer;
+use crate::visuals::sprites::{SpriteMaterial, SpriteParams, load_sprite_source, sprite_quad};
 use portal2_audio::SoundRequest;
 use portal2_core::clock::GameClock;
 use portal2_core::entity::MapEntity;
 use portal2_core::sets::ThinkSet;
+use portal2_core::vfs::GameFs;
 use portal2_render::models::StudioAnimator;
+use portal2_render::textures::TextureCache;
 use portal2_world::MapObject;
 use portal2_world::collision::{Physics, mask};
 
@@ -57,6 +62,24 @@ const TIPPED_TIME: f64 = 2.0;
 const UPRIGHT_COS: f32 = 0.5;
 /// Walls, glass, props and light bridges block a turret's view.
 const SIGHT_MASK: u32 = mask::SOLID_ALL | contents::BLOCKLOS;
+/// The server sets the model from `ModelIndex` whatever the map says (the
+/// entity definition's `models/props/turret_01.mdl` is a self-lit leftover);
+/// 1 is unused and keeps the normal model.
+const MODELS: [&str; 5] = [
+    "models/npcs/turret/turret.mdl",
+    "models/npcs/turret/turret.mdl",
+    "models/npcs/turret/turret_boxed.mdl",
+    "models/npcs/turret/turret_backwards.mdl",
+    "models/npcs/turret/turret_skeleton.mdl",
+];
+/// The laser sight (client.dll `sub_10271940`): a beam of `effects/redlaser1`
+/// 0.75 units wide, coloured (255, 32, 32) at full brightness, with
+/// `sprites/redlaserglow` (the server's halo, scale 4) where it ends.
+const SIGHT_MATERIAL: &str = "effects/redlaser1";
+const SIGHT_WIDTH: f32 = 0.75;
+const SIGHT_COLOR: [f32; 3] = [255.0, 32.0, 32.0];
+const SIGHT_HALO: &str = "sprites/redlaserglow";
+const SIGHT_HALO_SCALE: f32 = 4.0;
 
 pub struct TurretPlugin;
 
@@ -160,7 +183,13 @@ pub struct Turret {
 }
 
 fn spawn_turret(world: &mut World, e: Entity) {
-    let Some(me) = world.get::<MapEntity>(e).cloned() else { return };
+    let Some(me) = world.get_mut::<MapEntity>(e).map(|mut me| {
+        let index = me.get_i32("modelindex").unwrap_or(0).clamp(0, MODELS.len() as i32 - 1) as usize;
+        me.set("model", MODELS[index]);
+        me.clone()
+    }) else {
+        return;
+    };
     let opts = ModelOptions { skin: me.get_i32("skinnumber").unwrap_or(0).max(0) as usize, ..default() };
     let model = me.studio_model().and_then(|p| attach_studio_model(world, e, &p, opts));
     // Eye from the `eyes` attachment in the rest pose, else above the centre.
@@ -504,46 +533,102 @@ pub fn show_aim(mut turrets: Query<(&Turret, &mut StudioAnimator)>) {
     }
 }
 
-/// The red laser sight (`effects/redlaser1`, colour 255 32 32) from the
-/// eye along the head's aim to whatever it meets.
+/// A turret's laser sight: its beam and the glow where it ends.
 #[derive(Component)]
-struct LaserSight(Entity);
+struct LaserSight {
+    beam: Entity,
+    halo: Entity,
+}
 
+struct SightAssets {
+    beam_mesh: Handle<Mesh>,
+    beam: Handle<LaserBeamMaterial>,
+    halo_mesh: Handle<Mesh>,
+    halo: Handle<SpriteMaterial>,
+}
+
+/// Draws each turret's laser sight from the eye along the head's aim to
+/// whatever it meets.
+#[allow(clippy::too_many_arguments)]
 fn draw_lasers(
     physics: Physics,
     mut commands: Commands,
     turrets: Query<(Entity, &Turret, &GlobalTransform, Option<&LaserSight>)>,
-    mut beams: Query<(&mut Transform, &mut Visibility), Without<Turret>>,
+    mut placed: Query<(&mut Transform, &mut Visibility), Without<Turret>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<EffectMaterial>>,
-    mut shared: Local<Option<(Handle<Mesh>, Handle<EffectMaterial>)>>,
+    mut beams: ResMut<Assets<LaserBeamMaterial>>,
+    mut sprites: ResMut<Assets<SpriteMaterial>>,
+    mut images: ResMut<Assets<Image>>,
+    mut textures: ResMut<TextureCache>,
+    fs: Res<GameFs>,
+    mut shared: Local<Option<SightAssets>>,
 ) {
     for (e, t, gt, sight) in &turrets {
         let on = t.enabled && !matches!(t.state, TurretState::Dead);
         let tr = gt.compute_transform();
         let eye = tr.transform_point(t.eye);
         let dir = tr.rotation * t.aim_dir();
-        let hit = physics.trace(eye + dir * 2.0, eye + dir * 8192.0, Vec3::ZERO, Vec3::ZERO, mask::SOLID_ALL, &[e]).end;
-        let place = super::segment_transform(eye + dir * 2.0, hit, 0.35, 0.35);
-        match sight.and_then(|s| beams.get_mut(s.0).ok()) {
-            Some((mut bt, mut vis)) => {
-                *bt = place;
-                let want = if on { Visibility::Visible } else { Visibility::Hidden };
-                if *vis != want {
-                    *vis = want;
+        let start = eye + dir * 2.0;
+        let hit = physics.trace(start, eye + dir * 8192.0, Vec3::ZERO, Vec3::ZERO, mask::SOLID_ALL, &[e]).end;
+        let beam_place = laser::beam_transform(start, hit);
+        // Pulled back a little so the wall it lies on does not cut it.
+        let halo_place = Transform::from_translation(hit - dir);
+        let want = if on { Visibility::Visible } else { Visibility::Hidden };
+        if let Some(s) = sight {
+            for (entity, place) in [(s.beam, beam_place), (s.halo, halo_place)] {
+                if let Ok((mut t, mut vis)) = placed.get_mut(entity) {
+                    *t = place;
+                    if *vis != want {
+                        *vis = want;
+                    }
                 }
             }
-            None if on => {
-                let (mesh, material) = shared
-                    .get_or_insert_with(|| {
-                        (meshes.add(super::tube_mesh(4)), materials.add(EffectMaterial::glow(Vec3::new(1.0, 0.125, 0.125) * 2.0, 0.0, 0.0)))
-                    })
-                    .clone();
-                let beam = commands.spawn((MapObject, Mesh3d(mesh), MeshMaterial3d(material), place, Visibility::Visible)).id();
-                commands.entity(e).insert(LaserSight(beam));
-            }
-            None => {}
+            continue;
         }
+        if !on {
+            continue;
+        }
+        let assets = shared.get_or_insert_with(|| {
+            let color = Vec3::from_array(SIGHT_COLOR.map(|c| laser::srgb_to_linear(c / 255.0)));
+            let halo = load_sprite_source(&fs, &mut textures, &mut images, SIGHT_HALO);
+            SightAssets {
+                beam_mesh: meshes.add(laser::beam_quad()),
+                beam: beams.add(laser::beam_material(&fs, &mut textures, &mut images, SIGHT_MATERIAL, SIGHT_WIDTH, color)),
+                halo_mesh: meshes.add(sprite_quad()),
+                halo: sprites.add(SpriteMaterial {
+                    params: SpriteParams {
+                        color: color.extend(1.0),
+                        shape: Vec4::new(SIGHT_HALO_SCALE * 0.5, SIGHT_HALO_SCALE * 0.5, halo.orientation, 5.0),
+                        state: Vec4::new(1.0, 1.0, 0.0, 0.0),
+                    },
+                    base: halo.base,
+                    alpha_mode: AlphaMode::Add,
+                    no_depth_test: false,
+                }),
+            }
+        });
+        // Both are placed in their shaders; their mesh bounds say nothing.
+        let beam = commands
+            .spawn((
+                MapObject,
+                Mesh3d(assets.beam_mesh.clone()),
+                MeshMaterial3d(assets.beam.clone()),
+                beam_place,
+                Visibility::Visible,
+                NoFrustumCulling,
+            ))
+            .id();
+        let halo = commands
+            .spawn((
+                MapObject,
+                Mesh3d(assets.halo_mesh.clone()),
+                MeshMaterial3d(assets.halo.clone()),
+                halo_place,
+                Visibility::Visible,
+                NoFrustumCulling,
+            ))
+            .id();
+        commands.entity(e).insert(LaserSight { beam, halo });
     }
 }
 

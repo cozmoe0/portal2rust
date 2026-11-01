@@ -26,6 +26,7 @@ fn register(c: &mut Console) {
     c.register_command("p2r_stuck", stuck);
     c.register_command("noclip", noclip);
     c.register_command("god", god);
+    c.register_command("hurtme", hurtme);
     c.register_command("kill", kill);
     c.register_command("explode", kill);
     c.register_command("ent_fire", ent_fire);
@@ -171,6 +172,17 @@ fn god(world: &mut World, args: &CommandArgs) {
     h.god = !h.god;
     let on = h.god;
     print(world, format!("godmode {}", if on { "ON" } else { "OFF" }));
+}
+
+/// `hurtme <amount>`: damages the player (cheat).
+fn hurtme(world: &mut World, args: &CommandArgs) {
+    if !cheats(world, args) {
+        return;
+    }
+    let amount = args.arg(1).parse::<f32>().unwrap_or(0.0);
+    if amount > 0.0 {
+        world.write_message(crate::player::health::DamagePlayer { amount, push: Vec3::ZERO, source: None });
+    }
 }
 
 /// `ent_fire <target> <input> [parameter] [delay]`

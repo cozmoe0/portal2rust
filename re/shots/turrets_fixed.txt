@@ -1,0 +1,3 @@
+# The turret view with the tone map scale held at 1, to compare lighting
+# without the exposure. name map x y z pitch yaw roll [console commands]
+turret_front_scale1 sp_a2_turret_intro 700 -250 0 5 194 0 notarget; mat_force_tonemap_scale 1

@@ -1,7 +1,8 @@
 //! Screen effects driven by map entities: fades (`env_fade`) and on-screen
-//! messages (`game_text`), plus the game's localized strings.
+//! messages (`game_text`), plus the red the screen turns while the player is
+//! hurt and the game's localized strings.
 //!
-//! Both are drawn with the interface painter: the fade in the view layer,
+//! All are drawn with the interface painter: the fades in the view layer,
 //! messages in the HUD with the scheme fonts of their channel.
 
 use std::collections::HashMap;
@@ -20,9 +21,11 @@ pub struct ScreenPlugin;
 impl Plugin for ScreenPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ScreenFade>()
+            .init_resource::<DamageFade>()
             .init_resource::<Messages>()
             .add_systems(Startup, load_localization)
             .add_systems(PreUpdate, clear_fade_on_map_load.after(portal2_core::sets::LoadMapSet).before(portal2_core::sets::EntitySpawnSet))
+            .add_systems(Update, fade_damage)
             .add_systems(PostUpdate, (draw_fade, draw_messages).in_set(VguiPaint));
         let world = app.world_mut();
         {
@@ -117,9 +120,40 @@ impl ScreenFade {
 /// starts again at zero: one left over from the last map (its exit fade,
 /// which stays black) would wait for that time to come round and then
 /// black the screen out for good.
-fn clear_fade_on_map_load(mut loaded: MessageReader<portal2_world::MapLoaded>, mut fade: ResMut<ScreenFade>) {
+fn clear_fade_on_map_load(mut loaded: MessageReader<portal2_world::MapLoaded>, mut fade: ResMut<ScreenFade>, mut hurt: ResMut<DamageFade>) {
     if loaded.read().last().is_some() {
         *fade = ScreenFade::default();
+        *hurt = DamageFade::default();
+    }
+}
+
+/// The red the screen turns while the player is hurt, as measured in the
+/// game (`hurtme 30`, screenshots 0.25, 0.75 and 1.05 s later): a fade
+/// toward (45, 0, 0) on the displayed image whose opacity rises by 0.0137
+/// for each point of damage (0.41 for 30) and falls by 0.09 a second,
+/// whatever the health does.
+#[derive(Resource, Default)]
+pub struct DamageFade {
+    pub alpha: f32,
+}
+
+const DAMAGE_FADE_PER_POINT: f32 = 0.0137;
+const DAMAGE_FADE_DECAY: f32 = 0.09;
+/// The painter blends in linear light, the game on the displayed (gamma)
+/// image: the same look needs the opacity raised to `1 - (1 - a)^2.2` and a
+/// colour that lands mid-tones where the game's (45, 0, 0) does.
+const DAMAGE_FADE_GAMMA: f32 = 2.2;
+const DAMAGE_FADE_PAINT_COLOR: [u8; 3] = [56, 0, 0];
+
+impl DamageFade {
+    pub fn hurt(&mut self, amount: f32) {
+        self.alpha = (self.alpha + amount.max(0.0) * DAMAGE_FADE_PER_POINT).min(1.0);
+    }
+}
+
+fn fade_damage(clock: Res<GameClock>, mut fade: ResMut<DamageFade>) {
+    if fade.alpha > 0.0 {
+        fade.alpha = (fade.alpha - DAMAGE_FADE_DECAY * clock.frametime()).max(0.0);
     }
 }
 
@@ -160,15 +194,21 @@ fn fade_input(world: &mut World, call: &InputCall) -> bool {
 
 /// The fade is part of the 3D view, under the HUD: a full-screen colour,
 /// or with `modulate` a multiply of the scene towards the colour.
-fn draw_fade(fade: Res<ScreenFade>, clock: Res<GameClock>, mut surface: ResMut<Surface>) {
+fn draw_fade(fade: Res<ScreenFade>, hurt: Res<DamageFade>, clock: Res<GameClock>, mut surface: ResMut<Surface>) {
+    let byte = |v: f32| (v.clamp(0.0, 1.0) * 255.0) as u8;
+    let (w, h) = (surface.wide, surface.tall);
+    if hurt.alpha > 0.0 {
+        surface.set_layer(layer::VIEW);
+        let [r, g, b] = DAMAGE_FADE_PAINT_COLOR;
+        let a = 1.0 - (1.0 - hurt.alpha).powf(DAMAGE_FADE_GAMMA);
+        surface.fill(0, 0, w, h, [r, g, b, byte(a)]);
+    }
     let a = fade.alpha(clock.curtime);
     if a <= 0.0 {
         return;
     }
     let c = fade.color;
-    let byte = |v: f32| (v.clamp(0.0, 1.0) * 255.0) as u8;
     surface.set_layer(layer::VIEW);
-    let (w, h) = (surface.wide, surface.tall);
     if fade.modulate {
         let m = |v: f32| byte(1.0 + (v - 1.0) * a);
         surface.modulate(0, 0, w, h, [m(c.x), m(c.y), m(c.z), 255]);

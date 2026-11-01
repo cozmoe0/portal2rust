@@ -314,14 +314,15 @@ impl Material for LaserBeamMaterial {
     }
 }
 
-fn srgb_to_linear(c: f32) -> f32 {
+pub(crate) fn srgb_to_linear(c: f32) -> f32 {
     if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
 }
 
 /// The beam material for a laser beam VMT: its base texture and, for
 /// UnlitTwoTexture, the second texture with its transform and the
-/// LinearRamp and UniformNoise proxies.
-fn beam_material(
+/// LinearRamp or TextureScroll and UniformNoise or Sine proxies (a Sine
+/// this fast flickers like the noise).
+pub(crate) fn beam_material(
     fs: &GameFs,
     textures: &mut TextureCache,
     images: &mut Assets<Image>,
@@ -335,10 +336,15 @@ fn beam_material(
     let base = texture("$basetexture");
     let base2 = texture("$texture2");
     let proxy = |name: &str| vmt.as_ref().and_then(|v| v.proxies.iter().find(|p| p.key.eq_ignore_ascii_case(name)));
-    let noise = proxy("uniformnoise").map(|p| (p.get_f32("minval").unwrap_or(0.0), p.get_f32("maxval").unwrap_or(1.0)));
+    let noise = proxy("uniformnoise")
+        .map(|p| (p.get_f32("minval").unwrap_or(0.0), p.get_f32("maxval").unwrap_or(1.0)))
+        .or_else(|| proxy("sine").map(|p| (p.get_f32("sinemin").unwrap_or(0.0), p.get_f32("sinemax").unwrap_or(1.0))));
     let scale = vmt.as_ref().and_then(|v| v.get_f32("$t2scale")).unwrap_or(1.0);
     let rotation = vmt.as_ref().and_then(|v| v.get_f32("$t2rot")).unwrap_or(0.0).to_radians();
-    let rate = proxy("linearramp").and_then(|p| p.get_f32("rate")).unwrap_or(0.0);
+    let rate = proxy("linearramp")
+        .and_then(|p| p.get_f32("rate"))
+        .or_else(|| proxy("texturescroll").and_then(|p| p.get_f32("texturescrollrate")))
+        .unwrap_or(0.0);
     let (lo, hi) = noise.unwrap_or((1.0, 1.0));
     LaserBeamMaterial {
         params: LaserParams {
@@ -352,7 +358,7 @@ fn beam_material(
 }
 
 /// Strip from (0, -1) to (1, 1): x along the beam, y across it.
-fn beam_quad() -> Mesh {
+pub(crate) fn beam_quad() -> Mesh {
     Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD)
         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0, -1.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0], [1.0, -1.0, 0.0]])
         .with_inserted_indices(Indices::U16(vec![0, 1, 2, 0, 2, 3]))
@@ -360,7 +366,7 @@ fn beam_quad() -> Mesh {
 
 /// A beam stretch's placement: at its start, local X along it and scaled
 /// to its length (the shader turns it to face the view).
-fn beam_transform(start: Vec3, end: Vec3) -> Transform {
+pub(crate) fn beam_transform(start: Vec3, end: Vec3) -> Transform {
     let d = end - start;
     let len = d.length().max(0.01);
     Transform { translation: start, rotation: Quat::from_rotation_arc(Vec3::X, d / len), scale: Vec3::new(len, 1.0, 1.0) }

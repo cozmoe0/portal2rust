@@ -1,0 +1,3 @@
+# Player damage effects just after being hurt (capture with --settle 0.2).
+# name map x y z pitch yaw roll [console commands]
+hurt_now sp_a2_turret_intro 700 -250 0 5 194 0 notarget; cl_drawhud 1; hurtme 30
