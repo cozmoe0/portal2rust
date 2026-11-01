@@ -310,6 +310,11 @@ fn attach_follower_bodies(
     }
 }
 
+/// The air drag physics props fly with (faith plates take it off for a
+/// launch, see `devices::catapult`).
+pub const PROP_LINEAR_DAMPING: f32 = 0.05;
+pub const PROP_ANGULAR_DAMPING: f32 = 0.2;
+
 /// Simulates `e` as a free physics prop from now on.
 pub fn make_dynamic(commands: &mut Commands, e: Entity, collider: Collider, mass: f32) {
     commands.entity(e).insert((
@@ -318,8 +323,8 @@ pub fn make_dynamic(commands: &mut Commands, e: Entity, collider: Collider, mass
         Mass(mass),
         Friction::new(0.8),
         Restitution::new(0.05),
-        LinearDamping(0.05),
-        AngularDamping(0.2),
+        LinearDamping(PROP_LINEAR_DAMPING),
+        AngularDamping(PROP_ANGULAR_DAMPING),
         SweptCcd::default(),
         // Drawn eased between physics ticks, like the player's view; a
         // carried prop would otherwise judder against it at high frame rates.
@@ -398,10 +403,15 @@ fn sync_portal_slabs(
 /// Drops world contacts inside a linked portal's opening for props that are
 /// passing through it, so they can enter the wall the portal is on: the
 /// static map's, and those of brush entities (a floor panel) the opening
-/// cuts through, as traces treat them.
+/// cuts through, as traces treat them. A prop counts as passing through
+/// over the whole tick's move: speculative contacts are made a tick ahead,
+/// and one kept for a fast prop (a cube a faith plate flings at a portal)
+/// would take its speed into the wall before it reached the opening.
 #[derive(SystemParam)]
 pub struct PortalContactHooks<'w, 's> {
     holes: Res<'w, PortalHoles>,
+    time: Res<'w, Time<Fixed>>,
+    velocities: Query<'w, 's, &'static LinearVelocity>,
     statics: Query<'w, 's, (), With<StaticWorld>>,
     props: Query<'w, 's, (), With<PhysicsProp>>,
     shapes: Query<'w, 's, (&'static TraceCollider, &'static Position, &'static Rotation)>,
@@ -430,6 +440,8 @@ impl CollisionHooks for PortalContactHooks<'_, '_> {
         }
         let Ok((col, pos, rot)) = self.shapes.get(prop) else { return true };
         let (mins, maxs) = world_bounds(&col.shape, pos.0, rot.0);
+        let step = self.velocities.get(prop).map_or(Vec3::ZERO, |v| v.0 * self.time.timestep().as_secs_f32());
+        let (mins, maxs) = (mins.min(mins + step), maxs.max(maxs + step));
         let center = (mins + maxs) * 0.5;
         let half = (maxs - mins) * 0.5;
         for hole in &self.holes.holes {
@@ -438,11 +450,15 @@ impl CollisionHooks for PortalContactHooks<'_, '_> {
             }
             // Everything behind the opening's rectangle is ignored (the hole
             // the frame slabs line); the slabs keep the prop inside the
-            // tunnel.
+            // tunnel. A contact's point is midway across any gap, so a
+            // speculative one is judged by where it lies on the wall.
             let f = &hole.frame;
+            let toward_other = if other == contacts.collider2 { 0.5 } else { -0.5 };
             for m in &mut contacts.manifolds {
+                let normal = m.normal;
                 m.points.retain(|p| {
-                    let l = f.to_local(p.point);
+                    let on_other = p.point + normal * (-p.penetration).max(0.0) * toward_other;
+                    let l = f.to_local(on_other);
                     !(l.x < 2.0 && l.y.abs() < HALF_WIDTH + 2.0 && l.z.abs() < HALF_HEIGHT + 2.0)
                 });
             }

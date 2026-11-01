@@ -14,8 +14,12 @@
 //! target, heading within `EntryAngleTolerance` of it) are launched, and
 //! `onlyVelocityCheck` then just fires `OnCatapulted`. Launched players lose
 //! air control for `AirCtrlSupressionTime` (0.25 s when not positive).
+//! Launched objects fly without drag (the game sets their drag and damping
+//! to zero, server.dll `sub_103F54A0` / `sub_103F5730`), so they land where
+//! they are aimed and chains of plates carry them on; here the drag comes
+//! back when they next hit something.
 
-use avian3d::prelude::{AngularVelocity, LinearVelocity, RigidBody};
+use avian3d::prelude::{AngularDamping, AngularVelocity, CollisionStart, LinearDamping, LinearVelocity, RigidBody};
 use bevy::prelude::*;
 
 use crate::entities::SpawnHandlers;
@@ -32,7 +36,7 @@ pub struct CatapultPlugin;
 
 impl Plugin for CatapultPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<AirControl>().add_systems(FixedUpdate, run_catapults.after(PlayerMoveSet));
+        app.init_resource::<AirControl>().add_systems(FixedUpdate, (run_catapults.after(PlayerMoveSet), land_flung));
         let world = app.world_mut();
         world.resource_mut::<SpawnHandlers>().register("trigger_catapult", spawn_catapult);
         world.resource_mut::<InputHandlers>().register("trigger_catapult", catapult_input);
@@ -52,6 +56,15 @@ const DEFAULT_AIR_SUPPRESS: f32 = 0.25;
 const PLAYER_TARGET_DROP: f32 = 32.0;
 /// After a rejected entry the same object is ignored this long.
 const REFIRE: f64 = 0.1;
+/// A launched object's contacts this soon after the launch (the plate it
+/// leaves) do not end its flight.
+const FLIGHT_GRACE: f64 = 0.1;
+
+/// An object a plate launched, flying without drag since `since`.
+#[derive(Component)]
+pub struct Flung {
+    since: f64,
+}
 
 #[derive(Component, serde::Serialize, serde::Deserialize)]
 pub struct Catapult {
@@ -269,6 +282,7 @@ fn run_catapults(
     mut props: Query<(Entity, &TraceCollider, &GlobalTransform, &RigidBody, &mut LinearVelocity, &mut AngularVelocity), With<PhysicsProp>>,
     mut air: ResMut<AirControl>,
     mut out: MessageWriter<FireOutput>,
+    mut commands: Commands,
 ) {
     let now = time.elapsed_secs_f64();
     let player = players.single_mut().ok();
@@ -337,6 +351,7 @@ fn run_catapults(
             match c.entry(t.translation, lin.0, target_pos, false) {
                 Entry::Launch(v) => {
                     lin.0 = v;
+                    commands.entity(prop).insert((LinearDamping(0.0), AngularDamping(0.0), Flung { since: now }));
                     let seed = prop.to_bits() as u32 ^ (now * 1000.0) as u32;
                     ang.0 = match target_pos {
                         Some(_) if c.angular_impulse => random_spin(150.0, seed),
@@ -353,6 +368,33 @@ fn run_catapults(
             }
         }
         c.touching = now_touching;
+    }
+}
+
+/// A launched object that hits something (or is picked up) flies with drag
+/// again.
+fn land_flung(
+    time: Res<Time>,
+    mut hits: MessageReader<CollisionStart>,
+    flung: Query<&Flung>,
+    holding: Res<crate::physics::carry::Holding>,
+    mut commands: Commands,
+) {
+    let now = time.elapsed_secs_f64();
+    let mut land = |e: Entity| {
+        if flung.get(e).is_ok_and(|f| now - f.since > FLIGHT_GRACE) {
+            commands.entity(e).remove::<Flung>().insert((
+                LinearDamping(crate::physics::PROP_LINEAR_DAMPING),
+                AngularDamping(crate::physics::PROP_ANGULAR_DAMPING),
+            ));
+        }
+    };
+    for hit in hits.read() {
+        land(hit.body1.unwrap_or(hit.collider1));
+        land(hit.body2.unwrap_or(hit.collider2));
+    }
+    if let Some(held) = holding.entity {
+        land(held);
     }
 }
 

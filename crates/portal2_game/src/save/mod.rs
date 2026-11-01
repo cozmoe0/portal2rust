@@ -567,6 +567,15 @@ fn save_info(world: &mut World) {
             if let Some(p) = &f.player {
                 println!("  player at {:?}, angles {:?}", p.state.origin, p.angles);
             }
+            if let Some((_, bytes)) = f.resources.iter().find(|(n, _)| n == "portals")
+                && let Ok(registry::PendingPortals(frames)) = decode(bytes)
+            {
+                for (slot, frame) in frames.iter().enumerate() {
+                    if let Some(frame) = frame {
+                        println!("  portal {slot} at {:?}, facing {:?}", frame.center, frame.forward);
+                    }
+                }
+            }
         }
         Err(e) => println!("{name}: {e}"),
     }

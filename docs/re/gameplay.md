@@ -38,6 +38,12 @@ the code in `crates/portal2` is written from them.
   control for `AirCtrlSupressionTime` seconds, 0.25 when that is not
   positive; launches along a direction only do so with
   `DirectionSuppressAirControl`.
+- Launched objects fly without drag, so they reach the target and chains of
+  plates hand them on. In sp_a2_trust_fling a cube from the dropper rides
+  three plates into a portal on the first wall pad, comes out of one on the
+  second pad, which relaunches it, and two more plates land it at
+  `exit_landing_target`, where it slides off onto the lower floor (real
+  game: rest at (-1761, 803, -366); ours: (-1669, 723, -366)).
 - Defaults (entity definitions): speeds 450, `lowerThreshold` 0.15,
   `upperThreshold` 0.30, `EntryAngleTolerance` 0, `applyAngularImpulse` 1.
 
