@@ -326,6 +326,8 @@ pub fn make_dynamic(commands: &mut Commands, e: Entity, collider: Collider, mass
         TransformInterpolation,
         layers_for(layers::PROP, layers::WORLD | layers::PROP | layers::PLAYER | layers::MOVER | layers::FOLLOWER | layers::HELD),
         ActiveCollisionHooks::MODIFY_CONTACTS,
+        // For impact sounds (`sound::impacts`).
+        CollisionEventsEnabled,
         portal_travel::PortalTraveler::default(),
     ));
 }

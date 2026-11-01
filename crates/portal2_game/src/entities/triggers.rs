@@ -369,14 +369,17 @@ fn press_floor_buttons(
     players: Query<&Player>,
     mut buttons: Query<(Entity, &mut FloorButton, &GlobalTransform, Option<&mut StudioAnimator>, &MapEntity)>,
     props: Query<
-        (&MapEntity, &portal2_world::collision::Collider, &GlobalTransform),
+        (Entity, &MapEntity, &portal2_world::collision::Collider, &GlobalTransform),
         (With<crate::entities::props::PhysicsProp>, Without<FloorButton>),
     >,
+    mut cubes: Query<(Entity, &mut crate::entities::cubes::WeightedCube)>,
     mut out: MessageWriter<FireOutput>,
 ) {
     let Ok(player) = players.single() else { return };
     let (pmins, pmaxs) = player.state.hull();
     let now = clock.curtime;
+    // Cubes on a button that takes them show their activated skin.
+    let mut on_buttons = Vec::new();
     for (e, mut b, gt, anim, me) in &mut buttons {
         // Cube buttons take cubes only, ball buttons spheres only; the player
         // presses the ordinary kinds.
@@ -413,14 +416,18 @@ fn press_floor_buttons(
                 && p.z - half.z < hi.z
         };
         let player_on = !cube_only && !ball_only && boxes_overlap(player.state.origin + (pmins + pmaxs) * 0.5, (pmaxs - pmins) * 0.5);
-        let prop_on = props.iter().any(|(pm, col, pgt)| {
+        let mut prop_on = false;
+        for (pe, pm, col, pgt) in &props {
             if !accepts(pm) {
-                return false;
+                continue;
             }
             let t = pgt.compute_transform();
             let (mins, maxs) = crate::physics::world_bounds(&col.shape, t.translation, t.rotation);
-            boxes_overlap((mins + maxs) * 0.5, (maxs - mins) * 0.5)
-        });
+            if boxes_overlap((mins + maxs) * 0.5, (maxs - mins) * 0.5) {
+                prop_on = true;
+                on_buttons.push(pe);
+            }
+        }
         let overlap = player_on || prop_on;
         if overlap {
             b.last_contact = now;
@@ -432,6 +439,12 @@ fn press_floor_buttons(
                 a.set_sequence(if pressed { "down" } else { "up" });
             }
             out.write(FireOutput::new(e, if pressed { "OnPressed" } else { "OnUnPressed" }));
+        }
+    }
+    for (e, mut cube) in &mut cubes {
+        let activated = on_buttons.contains(&e);
+        if cube.activated != activated {
+            cube.activated = activated;
         }
     }
 }

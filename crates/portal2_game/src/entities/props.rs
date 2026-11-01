@@ -44,7 +44,8 @@ pub fn register(app: &mut App) {
         for class in ["prop_floor_button", "prop_floor_cube_button", "prop_floor_ball_button", "prop_under_floor_button"] {
             s.register(class, spawn_floor_button);
         }
-        for class in ["prop_weighted_cube", "prop_physics", "prop_physics_override", "prop_physics_multiplayer"] {
+        // Weighted cubes spawn through `cubes`, which picks their model first.
+        for class in ["prop_physics", "prop_physics_override", "prop_physics_multiplayer"] {
             s.register(class, spawn_physics_prop);
         }
     }
@@ -588,6 +589,14 @@ pub struct PhysicsProp;
 pub(crate) fn spawn_physics_prop(world: &mut World, e: Entity) {
     attach_entity_model(world, e, false);
     world.entity_mut(e).insert(PhysicsProp);
+}
+
+/// Redraws a physics prop with another skin (its collision stays).
+pub(crate) fn set_physics_prop_skin(world: &mut World, e: Entity, skin: i32) {
+    let Some(mut me) = world.get_mut::<MapEntity>(e) else { return };
+    me.set("skin", &skin.to_string());
+    clear_render_children(world, e);
+    attach_entity_model(world, e, false);
 }
 
 // ------------------------------------------------------------- static props

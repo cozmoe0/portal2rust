@@ -3,6 +3,7 @@
 
 pub mod areaportal;
 pub mod buttons;
+pub mod cubes;
 pub mod detectors;
 pub mod hints;
 pub mod io;
@@ -64,6 +65,7 @@ impl Plugin for EntitiesPlugin {
         trains::register(app);
         transition::register(app);
         props::register(app);
+        cubes::register(app);
         triggers::register(app);
         areaportal::register(app);
         lights::register(app);

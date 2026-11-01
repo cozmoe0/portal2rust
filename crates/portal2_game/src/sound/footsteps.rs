@@ -27,6 +27,12 @@ pub struct SurfaceSounds {
     pub step_right: Option<String>,
     pub impact_hard: Option<String>,
     pub impact_soft: Option<String>,
+    /// `audiohardnessfactor`: how hard the surface is to things hitting it.
+    pub hardness: f32,
+    /// `impactHardThreshold`: hitting anything softer plays the soft impact.
+    pub hard_threshold: f32,
+    /// `audioHardMinVelocity`: slower hits play the soft impact (0 = none).
+    pub hard_min_velocity: f32,
 }
 
 #[derive(Default)]
@@ -61,19 +67,29 @@ impl SurfaceProps {
         if depth > 8 {
             return None;
         }
-        props.get("base").and_then(|b| self.lookup(&b.to_ascii_lowercase(), key, depth + 1))
+        // Without a base a surface starts as a copy of `default`.
+        match props.get("base") {
+            Some(b) => self.lookup(&b.to_ascii_lowercase(), key, depth + 1),
+            None if name != "default" => self.lookup("default", key, depth + 1),
+            None => None,
+        }
     }
 
     pub fn sounds(&mut self, name: &str) -> SurfaceSounds {
-        let name = if self.raw.contains_key(name) { name.to_owned() } else { "default".to_owned() };
+        let name = name.to_ascii_lowercase();
+        let name = if self.raw.contains_key(&name) { name } else { "default".to_owned() };
         if let Some(s) = self.resolved.get(&name) {
             return s.clone();
         }
+        let number = |key: &str, default: f32| self.lookup(&name, key, 0).and_then(|v| v.trim().parse().ok()).unwrap_or(default);
         let s = SurfaceSounds {
             step_left: self.lookup(&name, "stepleft", 0),
             step_right: self.lookup(&name, "stepright", 0),
             impact_hard: self.lookup(&name, "impacthard", 0),
             impact_soft: self.lookup(&name, "impactsoft", 0),
+            hardness: number("audiohardnessfactor", 1.0),
+            hard_threshold: number("impacthardthreshold", 0.5),
+            hard_min_velocity: number("audiohardminvelocity", 0.0),
         };
         self.resolved.insert(name, s.clone());
         s

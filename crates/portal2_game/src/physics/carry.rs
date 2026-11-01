@@ -242,7 +242,9 @@ fn grab(
     me: &portal2_core::entity::MapEntity,
 ) {
     holding.entity = Some(target);
-    holding.yaw_offset = yaw_offset;
+    // Reflection cubes ask to be carried facing the view (their preferred
+    // carry angles are zero), so the beam leaves where the player looks.
+    holding.yaw_offset = if is_reflective(me) { 0.0 } else { yaw_offset };
     holding.radius = prop_radius(col);
     holding.cube = me.classname == "prop_weighted_cube";
     holding.core = me.classname == "npc_personality_core";
@@ -257,12 +259,17 @@ fn grab(
     out.write(FireOutput::new(target, "OnPhysGunPickup").with_activator(Some(pe)));
 }
 
+fn is_reflective(me: &portal2_core::entity::MapEntity) -> bool {
+    me.classname == "prop_weighted_cube" && me.get_i32("cubetype") == Some(crate::entities::cubes::REFLECTIVE)
+}
+
 /// Puts a prop back in the player's hands (a restored saved game): no
 /// gravity, held collision and the hold sound.
 pub fn resume_hold(world: &mut World, prop: Entity) {
     // Saves from before view model holding was kept do not say; the choice
     // is the pickup rule's either way.
     let classname = world.get::<portal2_core::entity::MapEntity>(prop).map(|me| me.classname.clone()).unwrap_or_default();
+    let reflective = world.get::<portal2_core::entity::MapEntity>(prop).is_some_and(is_reflective);
     let view_model =
         held_as_view_model(world.resource::<portal2_core::console::Console>(), world.resource::<Holding>().forced_controller, &classname);
     if let Ok(mut e) = world.get_entity_mut(prop) {
@@ -278,6 +285,9 @@ pub fn resume_hold(world: &mut World, prop: Entity) {
     }
     holding.cube = cube;
     holding.core = classname == "npc_personality_core";
+    if reflective {
+        holding.yaw_offset = 0.0;
+    }
     if let Some(p) = world.resource::<portal2_core::entity::EntityRegistry>().player {
         world.write_message(portal2_audio::SoundRequest::on("Weapon_Portalgun.HoldSound", p));
     }

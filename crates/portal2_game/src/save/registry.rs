@@ -28,6 +28,7 @@ pub fn register_all(r: &mut SaveRegistry) {
     r.component::<movers::Rotating>("rotating");
     r.component::<movers::Toggleable>("toggleable");
     props::register_save(r);
+    r.component::<crate::entities::cubes::WeightedCube>("weighted_cube");
     crate::entities::areaportal::register_save(r);
     crate::entities::lights::register_save(r);
     buttons::register_save(r);

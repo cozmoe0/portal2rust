@@ -150,6 +150,8 @@ pub struct Emit {
     pub entity: Option<Entity>,
     pub origin: Option<Vec3>,
     pub volume: Option<f32>,
+    /// Multiplies the volume (physics impacts scale theirs with speed).
+    pub volume_scale: Option<f32>,
     /// Percent, 100 = normal.
     pub pitch: Option<f32>,
     pub soundlevel: Option<f32>,
@@ -449,7 +451,7 @@ impl Sounds {
         if path.eq_ignore_ascii_case("sound/common/null.wav") && entry.is_some_and(|e| e.operator_stacks.is_none()) {
             return None;
         }
-        let volume = params.volume.unwrap_or(volume);
+        let volume = params.volume.unwrap_or(volume) * params.volume_scale.unwrap_or(1.0);
         let pitch = params.pitch.unwrap_or(pitch);
         let level = params.soundlevel.unwrap_or(level);
         let slot = params.slot.unwrap_or(slot);

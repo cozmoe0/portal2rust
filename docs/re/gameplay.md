@@ -181,6 +181,32 @@ and horizontally slower than 64 u/s:
   `scenes/npc/sp_proto_sphere/sphere_plug_attach.vcd` / `sphere_plug_lock.vcd`.
   Triggers that admit NPCs (spawnflag 2) take them.
 
+## Weighted cubes (`CPropWeightedCube`)
+
+From server.dll (`sub_103EEEE0` sets the model, `sub_103EE8E0` the skin,
+`sub_103EE870` reads old skins, `sub_103ECB40` the carry angles).
+
+- The server sets the model itself, whatever the map says, from the cube
+  type: 0 standard and 1 companion `models/props/metal_box.mdl`,
+  2 reflective `models/props/reflection_cube.mdl`, 3 sphere
+  `models/props_gameplay/mp_ball.mdl`, 4 antique
+  `models/props_underground/underground_weighted_cube.mdl`.
+- Without `NewSkins` the type comes from the old `skin` keyvalue: skins
+  above 1 are one more than the type (so 3 is reflective).
+- The skin follows the type, `SkinType` (rusted), the paint power (0
+  bounce, 2 speed) and whether the cube is activated:
+  - standard: rusted 3 (5 activated); bounce 6 (10); speed 7 (11);
+    otherwise 0 (2);
+  - companion: bounce 8, speed 9, otherwise 1 (4 activated);
+  - reflective: bounce 2, speed 3, otherwise 1 rusted, 0 clean;
+  - sphere: bounce 2, speed 3, otherwise 0 (1 activated);
+  - antique: bounce 1, speed 2, otherwise 0.
+- A floor button's touch sets a cube it takes activated as it starts
+  touching and clears it as it stops (`sub_103DE610` / `sub_103DE670`).
+- Reflective cubes have preferred carry angles of zero relative to the
+  player, so they are held facing the view; a laser that hits one goes on
+  from its centre plus 22 units along its facing, along its facing.
+
 ## Portal placement checks (server)
 
 The placement check runs in this order and stops at the first failure:
