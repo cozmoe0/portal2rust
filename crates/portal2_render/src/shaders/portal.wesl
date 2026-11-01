@@ -74,7 +74,10 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let cover = min(alpha, 1.0);
 
     if inside > 0.5 && portal.state.x > 0.5 {
-        let screen = in.position.xy / view.viewport.zw;
+        // The view texture is the window's size; a view drawing only part
+        // of it (a cropped portal view showing an inner portal) has a
+        // smaller viewport at the same place.
+        let screen = in.position.xy / vec2<f32>(textureDimensions(view_tex));
         let through = textureSampleLevel(view_tex, view_samp, screen, 0.0).rgb;
         return vec4<f32>(mix(through, fire, cover), 1.0);
     }

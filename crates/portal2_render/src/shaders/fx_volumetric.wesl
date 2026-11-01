@@ -110,8 +110,10 @@ fn depth_at(p: vec2<i32>) -> f32 {
     return textureLoad(depth_tex, clamp(p, vec2<i32>(0), full_size() - 1), 0);
 }
 
+// A pixel's point at a depth, through the view's viewport (part of the
+// texture for a portal view cropped to its portal).
 fn world_from(p: vec2<f32>, depth: f32) -> vec3<f32> {
-    let uv = p / vec2<f32>(full_size());
+    let uv = (p - view.viewport.xy) / view.viewport.zw;
     let ndc = vec2<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
     let w = view.world_from_clip * vec4<f32>(ndc, depth, 1.0);
     return w.xyz / w.w;

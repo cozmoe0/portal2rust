@@ -7,3 +7,8 @@ portals_behind sp_a1_intro2 -319.8 60.0 -8.0 12.0 90.0 0 ent_fire portal_red_1 S
 lasers_fizzler sp_a2_fizzler_intro 440.0 -870.0 0.0 13.5 -25.8 0
 paint_blobs sp_a3_jump_intro -864 1250 950 20 270 0 ent_fire paint_sprayer_jump_2 start
 vista_a3_01 sp_a3_01 2000.0 4000.0 3000.0 0.0 0.0 0
+# Two portals across sp_a1_intro6's first room, each seen in the other, and
+# a pair facing each other (two levels of recursion).
+portals_room sp_a1_intro6 100 -350 150 5 118 0 portal_place 0 0 288 250 192 0 270 0; portal_place 0 1 -505 -160 192 0 0 0
+portals_room_near sp_a1_intro6 260 60 150 0 90 0
+portals_tunnel sp_a1_intro6 -200 -150 310 0 90 0 portal_place 0 0 -200 250 380 0 270 0; portal_place 0 1 -200 -378 380 0 90 0

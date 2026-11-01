@@ -47,4 +47,15 @@ impl Plugin for RenderSetupPlugin {
         .insert_resource(GlobalAmbientLight { brightness: 0.0, ..default() })
         .insert_resource(ClearColor(Color::BLACK));
     }
+
+    fn finish(&self, app: &mut App) {
+        // Nothing is lit by Bevy's clustered lights, decals or probes (the
+        // game's light comes from lightmaps, ambient cubes and its own
+        // buffers), so every view's clustering is wasted: GPU clustering runs
+        // several passes and a readback per view each frame (the portals'
+        // views included), the CPU fallback does nothing without objects.
+        if let Some(mut settings) = app.world_mut().get_resource_mut::<bevy::light::cluster::GlobalClusterSettings>() {
+            settings.gpu_clustering = None;
+        }
+    }
 }

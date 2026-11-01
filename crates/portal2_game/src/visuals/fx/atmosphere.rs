@@ -28,7 +28,7 @@ use bevy::render::render_resource::*;
 use bevy::render::renderer::{RenderContext, RenderDevice, RenderQueue, ViewQuery};
 use bevy::render::storage::GpuShaderBuffer;
 use bevy::render::texture::{GpuImage, TextureCache};
-use bevy::render::view::{ViewDepthStencilTexture, ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms};
+use bevy::render::view::{ExtractedView, ViewDepthStencilTexture, ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms};
 use bevy::render::{Render, RenderApp, RenderStartup, RenderSystems};
 use bevy::shader::ShaderDefVal;
 use portal2_render::fx::FX;
@@ -278,7 +278,7 @@ fn prepare(
 
 fn volumetrics(
     view: ViewQuery<
-        (&ViewTarget, &ViewDepthStencilTexture, &ViewUniformOffset, &Msaa, Option<&VolumeTexture>),
+        (&ViewTarget, &ViewDepthStencilTexture, &ViewUniformOffset, &Msaa, &ExtractedView, Option<&VolumeTexture>),
         Or<(With<FxMainView>, With<FxPortalView>)>,
     >,
     settings: Option<Res<FxSettings>>,
@@ -297,7 +297,7 @@ fn volumetrics(
     if !settings.has(features::VOLUMETRICS) {
         return;
     }
-    let (target, depth, offset, msaa, volume) = view.into_inner();
+    let (target, depth, offset, msaa, extracted, volume) = view.into_inner();
     let Some(volume) = volume else { return };
     let variant = match msaa.samples() {
         MAIN_SAMPLES => &pipelines.main,
@@ -347,6 +347,14 @@ fn volumetrics(
         &cache.get_bind_group_layout(&variant.composite_layout),
         &BindGroupEntries::with_indices(((0, &depth_view), (1, views), (15, &volume.0))),
     );
+    // A portal view cropped to its portal marches and blends only there
+    // (and the half-resolution texels around it the upsampling reads).
+    let size = target.main_texture().size();
+    let vp = extracted.viewport;
+    let cropped = vp.x != 0 || vp.y != 0 || vp.z != size.width || vp.w != size.height;
+    let half = UVec2::new(size.width.div_ceil(2), size.height.div_ceil(2));
+    let half_min = (UVec2::new(vp.x, vp.y) / 2).saturating_sub(UVec2::ONE);
+    let half_max = (UVec2::new((vp.x + vp.z).div_ceil(2), (vp.y + vp.w).div_ceil(2)) + UVec2::ONE).min(half);
     let encoder = ctx.command_encoder();
     {
         let mut pass = encoder.begin_render_pass(&RenderPassDescriptor {
@@ -362,6 +370,10 @@ fn volumetrics(
             occlusion_query_set: None,
             multiview_mask: None,
         });
+        if cropped {
+            let extent = half_max.saturating_sub(half_min).as_vec2();
+            pass.set_viewport(half_min.x as f32, half_min.y as f32, extent.x, extent.y, 0.0, 1.0);
+        }
         pass.set_pipeline(march);
         pass.set_bind_group(0, &march_group, &[offset.offset]);
         pass.draw(0..3, 0..1);
@@ -374,6 +386,9 @@ fn volumetrics(
         occlusion_query_set: None,
         multiview_mask: None,
     });
+    if cropped {
+        pass.set_viewport(vp.x as f32, vp.y as f32, vp.z as f32, vp.w as f32, 0.0, 1.0);
+    }
     pass.set_pipeline(composite);
     pass.set_bind_group(0, &composite_group, &[offset.offset]);
     pass.draw(0..3, 0..1);

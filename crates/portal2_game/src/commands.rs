@@ -34,6 +34,29 @@ fn register(c: &mut Console) {
     c.register_command("give_portalgun", give_portalgun);
     c.register_command("upgrade_portalgun", upgrade_portalgun);
     c.register_command("upgrade_potatogun", upgrade_portalgun);
+    c.register_command("portal_place", portal_place);
+}
+
+/// `portal_place <linkage> <portal> <x y z> <pitch yaw roll>`: opens a
+/// portal of the player's pair (linkage 0) there, settled onto the surface
+/// up to 16 units behind it.
+fn portal_place(world: &mut World, args: &CommandArgs) {
+    if !cheats(world, args) {
+        return;
+    }
+    let v: Vec<f32> = (1..9).filter_map(|i| args.arg_f32(i)).collect();
+    if v.len() < 8 {
+        print(world, "Usage: portal_place <linkage id> <0|1> <x y z> <pitch yaw roll>");
+        return;
+    }
+    if v[0] != 0.0 {
+        return;
+    }
+    let q = portal2_core::coords::angles_to_quat(Vec3::new(v[5], v[6], v[7]));
+    let frame =
+        portal2_world::collision::portal::PortalFrame { center: Vec3::new(v[2], v[3], v[4]), forward: q * Vec3::X, up: q * Vec3::Z };
+    let slot = (v[1] as usize).min(1);
+    world.write_message(crate::portals::PlacePortal { slot, frame, settle: true });
 }
 
 /// `script <code>`: runs Squirrel code in the VM's root table.

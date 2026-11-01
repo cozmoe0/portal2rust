@@ -184,6 +184,14 @@ in our own words.
   inside another portal's view shows its own view. Ours draws the second
   level with a second camera per portal and ends it there with the portal
   full of static.
+- The game draws each view only into its portal's pixels (stencil),
+  culls with the frustum through the portal (`r_portal_use_complex_frustums`,
+  `r_PortalTestEnts`) and skips portals outside the PVS
+  (`r_portal_use_pvs_optimization`). Ours crops each view's camera to the
+  rectangle its portal covers on screen (an inner view to where its portal
+  shows inside the outer one), culls with that rectangle's frustum and the
+  exit portal's plane, and turns a camera off while its portal is off
+  screen, faces away or lies in no cluster the eye's PVS holds.
 - The player's body (`models/player/chell/player.mdl`) is drawn in the
   views through portals, never in the first-person view; walking through
   `sp_a1_intro1`'s pair you see yourself running in the glass room.

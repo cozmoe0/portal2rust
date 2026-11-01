@@ -7,7 +7,7 @@ pub mod placement;
 pub mod projection;
 
 use bevy::asset::RenderAssetUsages;
-use bevy::camera::{CameraProjection, Exposure, Hdr, RenderTarget, visibility::RenderLayers};
+use bevy::camera::{CameraProjection, Exposure, Hdr, RenderTarget, Viewport, visibility::RenderLayers};
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use bevy::render::render_resource::{AsBindGroup, Extent3d, ShaderType, TextureDimension, TextureFormat, TextureUsages};
@@ -23,7 +23,7 @@ use portal2_core::sets::PlayerMoveSet;
 use portal2_core::view::MainCamera;
 use portal2_world::collision::CollisionWorld;
 use portal2_world::collision::portal::{HALF_HEIGHT, HALF_WIDTH, PortalFrame, PortalHole, PortalHoles, transfer};
-use portal2_world::{MapLoaded, MapObject};
+use portal2_world::{CurrentMap, MapLoaded, MapObject};
 use projection::PortalProjection;
 
 pub const PORTAL_SHADER: &str = "embedded://portal2_render/shaders/portal.wesl";
@@ -41,7 +41,10 @@ impl Plugin for PortalsPlugin {
             .add_message::<PlacePortal>()
             .add_message::<FizzlePortals>()
             .add_message::<PortalFx>()
-            .add_systems(Update, (apply_placements, test_resting_surfaces, fizzle_portals, clear_on_map_load, animate_portals, update_holes).chain())
+            .add_systems(
+                Update,
+                (apply_placements, test_resting_surfaces, fizzle_portals, clear_on_map_load, animate_portals, update_holes).chain(),
+            )
             .add_systems(FixedUpdate, (teleport_player, portal_sounds).chain().after(PlayerMoveSet))
             .add_systems(
                 PostUpdate,
@@ -539,31 +542,75 @@ fn resize_portal_views(
 /// looking out of the linked portal, clipped at that portal's surface, and
 /// its inner camera one more trip through (the portal seen again inside
 /// its own view, looking out of the same exit).
+///
+/// A view is only ever seen on its portal, so like the game (which stencils
+/// each portal's view into the pixels of its opening and skips portals
+/// outside the PVS) each camera draws only the rectangle its portal covers
+/// on screen, and not at all while that is empty: the portal is off screen,
+/// faces away, or lies in no cluster the eye can see. An inner view draws
+/// where its portal shows inside the outer view's rectangle.
 fn update_portal_cameras(
     portals: Res<Portals>,
     query: Query<&Portal>,
     main: Query<(&Transform, &Projection, &Exposure), (With<MainCamera>, Without<Portal>)>,
     mut cameras: Query<(&mut Camera, &mut Transform, &mut Projection, &mut Exposure), (Without<MainCamera>, Without<Portal>)>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    map: Option<Res<CurrentMap>>,
+    mut pvs: Local<PvsCache>,
 ) {
     let Some(frames) = linked_frames(&portals, &query) else { return };
     let Ok((main_t, main_proj, main_exposure)) = main.single() else { return };
     let Projection::Perspective(base) = main_proj else { return };
-    // The portals' views are only ever seen on the portals themselves (the
-    // inner views inside the outer ones), so while neither portal is on
-    // screen their four cameras need not draw the world again.
-    let clip_from_world = base.get_clip_from_view() * main_t.compute_affine().inverse();
-    let on_screen = frames.iter().any(|f| might_be_visible(f, clip_from_world));
+    let Ok(window) = windows.single() else { return };
+    let screen = UVec2::new(window.physical_width(), window.physical_height()).max(UVec2::ONE);
+    let eye = main_t.compute_affine();
+    let full_clip_from_view = base.get_clip_from_view();
+    let main_clip_from_world = full_clip_from_view * eye.inverse();
+    let bsp = map.as_ref().map(|m| &*m.bsp);
+    pvs.track(bsp);
+    let eye_clusters = bsp.map(|b| vec![cluster_at(b, main_t.translation)]).unwrap_or_default();
+    let portal_clusters: [Vec<i32>; 2] = frames.map(|f| bsp.map(|b| clusters_in_front(b, &f)).unwrap_or_default());
     for slot in 0..2 {
         let Some(p) = portals.entities[slot].and_then(|e| query.get(e).ok()) else { continue };
         let (from, to) = (frames[slot], frames[1 - slot]);
         let m = transfer(&from, &to);
-        let outer = m * main_t.compute_affine();
-        for (camera, virt) in [(p.camera, outer), (p.inner_camera, m * outer)] {
+        let outer = m * eye;
+        // Where the portal shows in the main view: its quad while it faces
+        // the eye, and the near-plane fix while that is drawn.
+        let mut seen = Vec::new();
+        if from.to_local(main_t.translation).x > QUAD_OFFSET {
+            seen.extend(clip_to_front(&quad_corners(&from), main_clip_from_world));
+        }
+        let fix = near_plane_behind(&from, main_t, base);
+        seen.extend(fix.iter().map(|l| main_clip_from_world * from.to_world(*l).extend(1.0)));
+        // The eye passing through may be past the wall the portal is on.
+        let visible = !fix.is_empty() || bsp.is_none_or(|b| pvs.sees(b, &eye_clusters, &portal_clusters[slot]));
+        let outer_rect = visible.then(|| pixel_rect(&seen, screen)).flatten();
+        // The portal again inside its own view, in front of the exit's clip
+        // plane, seen from where the exit looks out.
+        let inner_rect = outer_rect.and_then(|outer_rect| {
+            if from.to_local(outer.translation.into()).x <= QUAD_OFFSET {
+                return None;
+            }
+            let corners = quad_corners(&from);
+            if corners.iter().all(|c| to.to_local(*c).x < -CLIP_BEHIND) {
+                return None;
+            }
+            if !bsp.is_none_or(|b| pvs.sees(b, &portal_clusters[1 - slot], &portal_clusters[slot])) {
+                return None;
+            }
+            let points = clip_to_front(&corners, full_clip_from_view * outer.inverse());
+            pixel_rect(&points, screen).map(|r| r.intersect(outer_rect)).filter(|r| !r.is_empty())
+        });
+        for (camera, virt, rect) in [(p.camera, outer, outer_rect), (p.inner_camera, m * outer, inner_rect)] {
             let Ok((mut cam, mut t, mut proj, mut exposure)) = cameras.get_mut(camera) else { continue };
-            if !on_screen {
+            let Some(rect) = rect else {
                 cam.is_active = false;
                 continue;
-            }
+            };
+            cam.is_active = true;
+            let full = rect.min == UVec2::ZERO && rect.max == screen;
+            cam.viewport = (!full).then(|| Viewport { physical_position: rect.min, physical_size: rect.size(), ..default() });
             *t = Transform::from_matrix(virt.into());
             *exposure = *main_exposure;
             // Exit plane in view space, keeping what lies in front of it. An
@@ -579,8 +626,113 @@ fn update_portal_cameras(
             {
                 pp.base = base.clone();
                 pp.clip_plane = Some(plane_view);
+                pp.cull_plane = Some(plane_world);
+                pp.crop = (!full).then(|| {
+                    let ndc = |p: UVec2| Vec2::new(p.x as f32 / screen.x as f32 * 2.0 - 1.0, 1.0 - p.y as f32 / screen.y as f32 * 2.0);
+                    Rect::from_corners(ndc(rect.min), ndc(rect.max))
+                });
             }
         }
+    }
+}
+
+/// Pixels kept around a portal's rectangle on screen, as a fraction of the
+/// window's larger side: refraction, the volumetric light's upsampling and
+/// filtering read a little around each pixel they draw.
+const RECT_MARGIN: f32 = 0.03;
+
+/// The corners of a portal's quad.
+fn quad_corners(frame: &PortalFrame) -> [Vec3; 4] {
+    [(1.0, 1.0), (-1.0, 1.0), (-1.0, -1.0), (1.0, -1.0)]
+        .map(|(y, z)| frame.to_world(Vec3::new(QUAD_OFFSET, y * HALF_WIDTH, z * HALF_HEIGHT)))
+}
+
+/// A convex polygon in clip space, cut where it passes behind the eye.
+fn clip_to_front(polygon: &[Vec3], clip_from_world: Mat4) -> Vec<Vec4> {
+    const MIN_W: f32 = 1e-3;
+    let clip: Vec<Vec4> = polygon.iter().map(|p| clip_from_world * p.extend(1.0)).collect();
+    let mut out = Vec::with_capacity(clip.len() + 1);
+    for (i, &a) in clip.iter().enumerate() {
+        let b = clip[(i + 1) % clip.len()];
+        if a.w >= MIN_W {
+            out.push(a);
+        }
+        if (a.w >= MIN_W) != (b.w >= MIN_W) {
+            out.push(a + (b - a) * ((MIN_W - a.w) / (b.w - a.w)));
+        }
+    }
+    out
+}
+
+/// The window's pixels covering points in clip space (all in front of the
+/// eye), with the margin; None when that is off screen.
+fn pixel_rect(points: &[Vec4], screen: UVec2) -> Option<URect> {
+    if points.is_empty() {
+        return None;
+    }
+    let (mut lo, mut hi) = (Vec2::MAX, Vec2::MIN);
+    for p in points {
+        let ndc = p.truncate().truncate() / p.w;
+        lo = lo.min(ndc);
+        hi = hi.max(ndc);
+    }
+    if hi.x < -1.0 || hi.y < -1.0 || lo.x > 1.0 || lo.y > 1.0 {
+        return None;
+    }
+    let size = screen.as_vec2();
+    let margin = RECT_MARGIN * size.max_element();
+    // Pixels run down from the top.
+    let min = ((Vec2::new(lo.x, -hi.y) * 0.5 + 0.5) * size - margin).floor().clamp(Vec2::ZERO, size);
+    let max = ((Vec2::new(hi.x, -lo.y) * 0.5 + 0.5) * size + margin).ceil().clamp(Vec2::ZERO, size);
+    let rect = URect::from_corners(min.as_uvec2(), max.as_uvec2());
+    (!rect.is_empty()).then_some(rect)
+}
+
+/// The cluster of the leaf at a point (-1 in solid or outside the map).
+fn cluster_at(bsp: &source_formats::bsp::Bsp, point: Vec3) -> i32 {
+    bsp.leafs.get(bsp.find_leaf(point)).map_or(-1, |l| l.cluster as i32)
+}
+
+/// The clusters a portal's opening looks into: those just in front of its
+/// centre and corners.
+fn clusters_in_front(bsp: &source_formats::bsp::Bsp, frame: &PortalFrame) -> Vec<i32> {
+    let mut clusters: Vec<i32> = [(0.0, 0.0), (1.0, 1.0), (-1.0, 1.0), (-1.0, -1.0), (1.0, -1.0)]
+        .iter()
+        .map(|(y, z)| cluster_at(bsp, frame.to_world(Vec3::new(2.0, y * (HALF_WIDTH - 2.0), z * (HALF_HEIGHT - 2.0)))))
+        .collect();
+    clusters.sort_unstable();
+    clusters.dedup();
+    clusters
+}
+
+/// Decompressed PVS rows of the current map, by cluster.
+#[derive(Default)]
+struct PvsCache {
+    map: usize,
+    rows: std::collections::HashMap<i32, Vec<u8>>,
+}
+
+impl PvsCache {
+    fn track(&mut self, bsp: Option<&source_formats::bsp::Bsp>) {
+        let id = bsp.map_or(0, |b| b as *const _ as usize);
+        if id != self.map {
+            self.map = id;
+            self.rows.clear();
+        }
+    }
+
+    /// Whether any of the `to` clusters is potentially visible from any of
+    /// the `from` clusters (always, for a point in solid or a map without
+    /// visibility data).
+    fn sees(&mut self, bsp: &source_formats::bsp::Bsp, from: &[i32], to: &[i32]) -> bool {
+        let Some(vis) = &bsp.visibility else { return true };
+        if from.iter().chain(to).any(|&c| c < 0) {
+            return true;
+        }
+        from.iter().any(|&f| {
+            let row = self.rows.entry(f).or_insert_with(|| vis.pvs(f as usize));
+            row.is_empty() || to.iter().any(|&t| row.get((t / 8) as usize).is_some_and(|b| b & (1 << (t % 8)) != 0))
+        })
     }
 }
 
@@ -675,16 +827,6 @@ fn fix_mesh_from(polygon: &[Vec3]) -> Mesh {
         .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[1.0, 0.0, 0.0]; points.len()])
         .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
         .with_inserted_indices(Indices::U32(indices))
-}
-
-/// Whether any of a portal's opening (with a margin for its rim) might be
-/// in front of the camera and inside its view; false only when every
-/// corner is past the same side of the view or behind the camera.
-fn might_be_visible(frame: &PortalFrame, clip_from_world: Mat4) -> bool {
-    let (w, h) = (HALF_WIDTH + 8.0, HALF_HEIGHT + 8.0);
-    let corners = [(w, h), (-w, h), (-w, -h), (w, -h)].map(|(y, z)| clip_from_world * frame.to_world(Vec3::new(0.4, y, z)).extend(1.0));
-    let all = |f: &dyn Fn(Vec4) -> bool| corners.iter().all(|c| f(*c));
-    !(all(&|c| c.w <= 0.0) || all(&|c| c.x < -c.w) || all(&|c| c.x > c.w) || all(&|c| c.y < -c.w) || all(&|c| c.y > c.w))
 }
 
 /// Ticks after a teleport during which the player cannot teleport again,
@@ -927,6 +1069,27 @@ pub fn portals_enabled(args: &Args) -> bool {
 mod tests {
     use super::*;
 
+    /// A portal ahead covers its own rectangle (with the margin), one behind
+    /// the eye none, and one passing beside the eye the window's side.
+    #[test]
+    fn portal_rectangles_on_screen() {
+        let screen = UVec2::new(1600, 900);
+        let proj = PerspectiveProjection { fov: 1.2, aspect_ratio: 16.0 / 9.0, near: 4.0, ..default() };
+        // Looking down -Z from the origin.
+        let clip_from_world = proj.get_clip_from_view();
+        let ahead = PortalFrame { center: Vec3::new(0.0, 0.0, -400.0), forward: Vec3::Z, up: Vec3::Y };
+        let rect = pixel_rect(&clip_to_front(&quad_corners(&ahead), clip_from_world), screen).unwrap();
+        let margin = (RECT_MARGIN * 1600.0) as u32;
+        assert!(rect.min.x > 650 && rect.max.x < 950 && rect.min.y > 300 && rect.max.y < 600, "{rect:?}");
+        assert!(rect.width() > 2 * margin && rect.height() > 2 * margin);
+        let behind = PortalFrame { center: Vec3::new(0.0, 0.0, 400.0), forward: Vec3::NEG_Z, up: Vec3::Y };
+        assert_eq!(pixel_rect(&clip_to_front(&quad_corners(&behind), clip_from_world), screen), None);
+        // A wall portal running from beside the eye to ahead of it.
+        let beside = PortalFrame { center: Vec3::new(20.0, 0.0, -10.0), forward: Vec3::NEG_X, up: Vec3::Y };
+        let rect = pixel_rect(&clip_to_front(&quad_corners(&beside), clip_from_world), screen).unwrap();
+        assert_eq!(rect.max.x, 1600);
+    }
+
     #[test]
     fn floor_portal_pushes_the_player_out_at_300() {
         let floor = PortalFrame { center: Vec3::ZERO, forward: Vec3::Z, up: Vec3::X };
@@ -952,7 +1115,10 @@ mod tests {
             .init_resource::<Portals>()
             .add_systems(Update, test_resting_surfaces);
         let panel = ConvexVolume::from_box(Vec3::new(0.0, -100.0, -100.0), Vec3::new(8.0, 100.0, 100.0), contents::SOLID, 0);
-        let brush = app.world_mut().spawn((Collider::new(std::sync::Arc::new(Shape::new(vec![panel])), true, true), GlobalTransform::IDENTITY)).id();
+        let brush = app
+            .world_mut()
+            .spawn((Collider::new(std::sync::Arc::new(Shape::new(vec![panel])), true, true), GlobalTransform::IDENTITY))
+            .id();
         let portal = app
             .world_mut()
             .spawn(Portal {
