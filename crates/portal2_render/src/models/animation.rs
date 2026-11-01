@@ -124,6 +124,32 @@ impl StudioAnimator {
         }
     }
 
+    /// Each bone's placement relative to its parent for the current
+    /// sequences, cycles and pose parameters; `now` drives autoplay
+    /// sequences.
+    pub fn local_pose(&self, now: f32) -> Vec<(Vec3, Quat)> {
+        let studio = &self.model.studio;
+        let mut pose = studio.bind_pose();
+        studio.accumulate_sequence(&mut pose, self.sequence, self.cycle, 1.0, &self.pose);
+        for layer in &self.layers {
+            studio.accumulate_sequence(&mut pose, layer.sequence, layer.cycle, layer.weight, &self.pose);
+        }
+        for &(seq, cps) in &studio.autoplay {
+            studio.accumulate_sequence(&mut pose, seq, (now * cps).fract(), 1.0, &self.pose);
+        }
+        pose
+    }
+
+    /// Whether the joints still wait for the current pose.
+    pub fn pose_pending(&self) -> bool {
+        self.dirty
+    }
+
+    /// Marks the joints as showing the current pose.
+    pub fn pose_applied(&mut self) {
+        self.dirty = false;
+    }
+
     pub fn set_default_sequence(&mut self, name: &str) -> bool {
         match self.model.studio.find_sequence(name) {
             Some(i) => {
@@ -246,15 +272,7 @@ pub fn animate_models(
             continue;
         }
         anim.dirty = false;
-        let studio = &anim.model.studio;
-        let mut pose = studio.bind_pose();
-        studio.accumulate_sequence(&mut pose, anim.sequence, anim.cycle, 1.0, &anim.pose);
-        for layer in &anim.layers {
-            studio.accumulate_sequence(&mut pose, layer.sequence, layer.cycle, layer.weight, &anim.pose);
-        }
-        for &(seq, cps) in &studio.autoplay {
-            studio.accumulate_sequence(&mut pose, seq, (now * cps).fract(), 1.0, &anim.pose);
-        }
+        let pose = anim.local_pose(now);
         for (i, &joint) in anim.joints.iter().enumerate() {
             if let (Some(&(p, q)), Ok(mut t)) = (pose.get(i), transforms.get_mut(joint)) {
                 // Bones that did not move keep their change ticks, so their

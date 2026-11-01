@@ -13,7 +13,7 @@ use portal2_core::sets::ThinkSet;
 use portal2_world::{CurrentMap, MapLoadType};
 
 pub fn register(app: &mut App) {
-    app.init_resource::<GlobalStates>().add_systems(FixedUpdate, tick_timers.in_set(ThinkSet));
+    app.init_resource::<GlobalStates>().add_systems(FixedUpdate, (fire_relay_spawn_outputs, tick_timers.in_set(ThinkSet)));
     let world = app.world_mut();
     {
         let mut spawn = world.resource_mut::<SpawnHandlers>();
@@ -223,9 +223,34 @@ pub struct LogicRelay {
     pub enabled: bool,
 }
 
+/// A relay that has yet to fire `OnSpawn`. Not saved: a restored relay fires
+/// whatever `OnSpawn` connections it still has (one-shot ones that already
+/// went out are gone from its outputs).
+#[derive(Component)]
+struct PendingSpawnOutput;
+
 fn spawn_relay(world: &mut World, e: Entity) {
     let enabled = !world.get::<MapEntity>(e).is_some_and(|m| m.get_bool("startdisabled"));
-    world.entity_mut(e).insert(LogicRelay { enabled });
+    world.entity_mut(e).insert((LogicRelay { enabled }, PendingSpawnOutput));
+}
+
+/// `OnSpawn` goes out once the map (or the restored game) has spawned, as the
+/// original's relay fires it from a think just after activating; a relay set
+/// to fire only once then removes itself. Maps use it to set up animated
+/// props, such as hanging wall panels on the arms that move them.
+fn fire_relay_spawn_outputs(world: &mut World, mut pending: Local<QueryState<Entity, With<PendingSpawnOutput>>>) {
+    let relays: Vec<Entity> = pending.iter(world).collect();
+    for e in relays {
+        world.entity_mut(e).remove::<PendingSpawnOutput>();
+        let fires = world.get::<super::io::Outputs>(e).is_some_and(|o| o.connections.iter().any(|c| c.output == "onspawn"));
+        if !fires {
+            continue;
+        }
+        fire_output(world, e, "OnSpawn", None, None);
+        if world.get::<MapEntity>(e).is_some_and(|m| m.has_flag(1)) {
+            despawn_entity(world, e);
+        }
+    }
 }
 
 fn relay_input(world: &mut World, call: &InputCall) -> bool {

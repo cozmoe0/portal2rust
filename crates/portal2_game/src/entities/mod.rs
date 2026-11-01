@@ -329,6 +329,12 @@ pub fn attachment_world(world: &World, e: Entity, name: &str) -> Option<Transfor
 /// it, or keeping its current placement (`keep_offset`).
 pub fn set_parent_attachment(world: &mut World, child: Entity, attachment: &str, keep_offset: bool) -> bool {
     let Some(parent) = map_parent(world, child) else { return false };
+    // The offset is measured against the parent's current pose, as the
+    // game sets up the bones when asked for an attachment; a model only
+    // just spawned or given a sequence still has its joints in the bind
+    // pose until the animation pass runs (the wall panels of
+    // `sp_a2_dual_lasers` hang on arms that start in their idle pose).
+    pose_joints_now(world, parent);
     let Some(anim) = world.get::<portal2_render::models::StudioAnimator>(parent) else { return false };
     let mdl = &anim.model.studio.mdl;
     let Some(a) = mdl.find_attachment(attachment).map(|i| mdl.attachments[i].clone()) else { return false };
@@ -344,6 +350,25 @@ pub fn set_parent_attachment(world: &mut World, child: Entity, attachment: &str,
     movers::rebase(world, child, old_parent, joint_world.affine());
     crate::physics::on_parented(world, child);
     true
+}
+
+/// Puts a model's joints in its current pose if the animation pass has yet
+/// to.
+fn pose_joints_now(world: &mut World, e: Entity) {
+    let now = world.resource::<Time>().elapsed_secs();
+    let Some(mut anim) = world.get_mut::<portal2_render::models::StudioAnimator>(e) else { return };
+    if !anim.pose_pending() {
+        return;
+    }
+    anim.pose_applied();
+    let pose = anim.local_pose(now);
+    let joints = anim.joints.clone();
+    for (&joint, (p, q)) in joints.iter().zip(pose) {
+        if let Some(mut t) = world.get_mut::<Transform>(joint) {
+            t.translation = p;
+            t.rotation = q;
+        }
+    }
 }
 
 /// Spawns entities at runtime from map-style keyvalue pairs (templates).
