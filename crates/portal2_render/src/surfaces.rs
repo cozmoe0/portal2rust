@@ -120,10 +120,16 @@ fn game_materials(fs: &GameFs) -> &'static HashMap<String, String> {
     })
 }
 
+/// The game material letter of surface property `surface_prop` (unknown
+/// names are `default`, as in the game).
+pub fn game_material(fs: &GameFs, surface_prop: &str) -> Option<&'static str> {
+    let table = game_materials(fs);
+    table.get(&surface_prop.to_ascii_lowercase()).or_else(|| table.get("default")).map(String::as_str)
+}
+
 /// The profile of the material at `path` with surface property `surface_prop`.
 pub fn profile(fs: &GameFs, path: &str, surface_prop: &str) -> SurfaceProfile {
-    let game_material = game_materials(fs).get(surface_prop).or_else(|| game_materials(fs).get("default")).cloned();
-    profile_with(path, surface_prop, game_material.as_deref())
+    profile_with(path, surface_prop, game_material(fs, surface_prop))
 }
 
 fn profile_with(path: &str, surface_prop: &str, game_material: Option<&str>) -> SurfaceProfile {

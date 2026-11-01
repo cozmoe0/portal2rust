@@ -9,6 +9,9 @@ use portal2_world::collision::Physics;
 use portal2_world::collision::portal::{HALF_HEIGHT, HALF_WIDTH, PortalFrame};
 
 pub const MAX_SHOT_DISTANCE: f32 = 32768.0;
+/// How far inside the opening's rectangle its corners are checked for a
+/// surface behind them.
+pub const CORNER_INSET: f32 = 2.2;
 /// Shots pass through grates and player clips but stop at glass.
 pub const SHOT_MASK: u32 = contents::SOLID | contents::MOVEABLE | contents::WINDOW | contents::MONSTER;
 
@@ -43,8 +46,8 @@ pub fn shot_ignores(classname: &str) -> bool {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlacementFail {
     NoSurface,
-    /// Hit a moving or model entity.
-    OnEntity,
+    /// Hit a moving entity.
+    Moving,
     /// Hit geometry without a portal-capable material (props, terrain).
     NoMaterial,
     /// The surface material does not accept portals.
@@ -67,6 +70,11 @@ pub struct PlacementContext<'a, 'w, 's> {
     /// Whether a surface accepts portals: texinfo index from a trace,
     /// the hit point and normal (portal gel makes any surface take them).
     pub portalable: &'a dyn Fn(i32, Vec3, Vec3) -> bool,
+    /// Whether an entity the shot lands on is moving (its own mover or one
+    /// it rides is running).
+    pub moving: &'a dyn Fn(Entity) -> bool,
+    /// Entities whose surfaces never take portals (`func_door`).
+    pub refused: &'a [Entity],
     pub noportal_volumes: &'a [Entity],
     pub bumpers: &'a [Entity],
     pub cleansers: &'a [Entity],
@@ -79,7 +87,7 @@ impl PlacementContext<'_, '_, '_> {
     fn surface_ok(&self, p: Vec3, frame: &PortalFrame) -> bool {
         let n = frame.forward;
         let tr = self.physics.trace(p + n * 4.0, p - n * 4.0, Vec3::ZERO, Vec3::ZERO, SHOT_MASK, self.ignore);
-        if tr.start_solid || tr.fraction >= 1.0 || tr.entity.is_some() {
+        if tr.start_solid || tr.fraction >= 1.0 || tr.entity.is_some_and(|e| self.refused.contains(&e)) {
             return false;
         }
         if tr.normal.dot(n) < 0.99 || (n.dot(tr.end) - frame.plane_dist()).abs() > 0.5 {
@@ -93,24 +101,31 @@ impl PlacementContext<'_, '_, '_> {
         list.iter().any(|&e| self.physics.touches(e, p, -r, r))
     }
 
-    /// Opening sample offsets (left, up) that fail, for the bump direction.
+    /// Opening sample offsets (left, up) that fail, for the bump direction:
+    /// a grid over the oval opening plus the corners of its rectangle 2.2
+    /// units in, which the game requires on the surface too (its final
+    /// check, and the resting surface check that closes a portal later).
     fn failures(&self, frame: &PortalFrame) -> Vec<Vec2> {
-        let mut out = Vec::new();
+        let mut samples = Vec::new();
         for iy in -2..=2 {
             for iz in -3..=3 {
                 let s = Vec2::new(iy as f32 / 2.0 * (HALF_WIDTH - 1.0), iz as f32 / 3.0 * (HALF_HEIGHT - 1.0));
-                // Corners of the rectangle fall outside the oval opening.
-                if (s.x / HALF_WIDTH).powi(2) + (s.y / HALF_HEIGHT).powi(2) > 1.05 {
-                    continue;
-                }
-                let p = frame.to_world(Vec3::new(0.0, s.x, s.y));
-                let front = p + frame.forward * 1.0;
-                if !self.surface_ok(p, frame) || self.in_any(self.noportal_volumes, front) || self.in_any(self.bumpers, front) {
-                    out.push(s);
+                if (s.x / HALF_WIDTH).powi(2) + (s.y / HALF_HEIGHT).powi(2) <= 1.05 {
+                    samples.push(s);
                 }
             }
         }
-        out
+        for (left, up) in [(1.0, 1.0), (-1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)] {
+            samples.push(Vec2::new(left * (HALF_WIDTH - CORNER_INSET), up * (HALF_HEIGHT - CORNER_INSET)));
+        }
+        samples
+            .into_iter()
+            .filter(|&s| {
+                let p = frame.to_world(Vec3::new(0.0, s.x, s.y));
+                let front = p + frame.forward * 1.0;
+                !self.surface_ok(p, frame) || self.in_any(self.noportal_volumes, front) || self.in_any(self.bumpers, front)
+            })
+            .collect()
     }
 
     /// Offset (left, up) pushing this frame off the other portal, if they overlap.
@@ -168,8 +183,10 @@ impl PlacementContext<'_, '_, '_> {
         if self.crosses_cleanser(start, tr.end) {
             return Err(PlacementFail::Fizzler);
         }
-        if tr.entity.is_some() {
-            return Err(PlacementFail::OnEntity);
+        // Brush entities take portals like the world while they stand
+        // still; models have no material to take them (`surface` < 0).
+        if tr.entity.is_some_and(|e| (self.moving)(e)) {
+            return Err(PlacementFail::Moving);
         }
         if tr.surface < 0 {
             return Err(PlacementFail::NoMaterial);

@@ -188,6 +188,19 @@ The placement check runs in this order and stops at the first failure:
 1. A trace through the portal centre along its normal must hit a surface
    behind it; moving surfaces are refused; a no-portal material refuses
    the shot, a pass-through material lets it go on.
+   - Moving (`sub_10379A50`): the entity hit has a velocity (its physics
+     object's, when it has a moveable one, above 0.1 squared), or it or
+     anything up its parent chain has an angular velocity. Entities moved
+     by movers count; a brush carried by an animation (a panel on an arm's
+     attachment) does not. Brush entities standing still take portals like
+     the world (`sp_a2_intro`'s arm panels).
+   - No-portal (`sub_10354E00`): the surface flag `SURF_NOPORTAL` (0x20,
+     set by `%noportal` materials), a surface property of game material
+     `Y` (glass), or a model's surface (`**studio**`). Nothing else is
+     refused: tool faces take portals (`sp_a2_intro`'s panel wall is a
+     solid detail brush faced with `tools/toolsplayerclip`, flags 0x480,
+     while `tools/toolsnodraw` carries 0x20).
+   - Pass-through: sky faces (`SURF_SKY`) and `lights/light_orange001`.
 2. Unless `sv_portal_placement_never_bump`, the portal is fitted onto the
    surface with its half width and height reduced by 2: traces from the
    centre toward each corner, just off the surface, find obstructions and
@@ -200,7 +213,26 @@ The placement check runs in this order and stops at the first failure:
    height - 0.1, drops so its bottom edge rests on that floor (traces are
    against brushes only).
 4. It must not overlap the other portal, and the remaining checks (fizzler
-   and no-portal volumes, all corners on surface) must pass.
+   and no-portal volumes, all corners on surface) must pass. The corner
+   check (`sub_10356BA0`) traces at the four corners of the opening's
+   rectangle, 2.2 units in, and at the centre: each needs a surface behind
+   it that is not a `func_door`, a no-portal or a pass-through material.
+
+Ours fits the portal by sampling a grid over the oval opening and those
+four corners and pushing it away from failing samples, which lands near
+the game's fit but not on it (`sp_a2_intro`, a wall whose top corner
+overhangs: the game moves the portal 5.4 units sideways, ours 3.4 sideways
+and 7 down).
+
+### Resting surface check (`CPortal_Base2D::TestRestingSurfaceThink`)
+
+0.1 s after a portal is placed or activated it traces from each corner of
+its rectangle (2.2 units in) to 1 unit behind its plane (mask
+`SOLID | WINDOW | GRATE | MOVEABLE`, ignoring portals). A corner with
+nothing behind it ("Surface removed from behind portal") closes the
+portal. The check repeats every 0.1 s while any corner rests on something
+other than the world (a brush entity that may move away, be disabled or
+be killed) and stops once all four rest on the world.
 
 ## Screen shake (`env_shake`)
 

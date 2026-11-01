@@ -17,6 +17,7 @@ use source_formats::vmt::material_path;
 use super::placement::{Helper, PlacementContext};
 use super::{FizzlePortals, PlacePortal};
 use crate::entities::SpawnHandlers;
+use crate::entities::movers::MoverState;
 use crate::entities::io::InputCall;
 use crate::entities::io::InputHandlers;
 use crate::player::{Player, PlayerInput};
@@ -190,23 +191,59 @@ pub fn enable_portals(world: &mut World, slots: [bool; 2]) {
     }
 }
 
-/// Whether portals may be placed on a surface (texinfo index from a trace):
-/// not tool or sky faces, not flagged no-portal, and not a `%noportal` material.
 /// Portal gel is looked for this close around each placement sample.
 const PORTAL_PAINT_RADIUS: f32 = 2.0;
 
+/// Materials portal shots pass through, so no portal lands on them (the
+/// game's list, beside sky faces).
+const PASS_THROUGH_MATERIALS: [&str; 1] = ["lights/light_orange001"];
+
+/// Whether portals may be placed on a surface (texinfo index from a trace),
+/// as the game decides: not a model, not flagged no-portal (`%noportal`
+/// materials), not glass (surface property of game material `Y`) and not
+/// a surface shots pass through (sky). Tool faces are not refused as such:
+/// `sp_a2_intro`'s panel wall is a solid player clip brush.
 fn surface_portalable(map: &CurrentMap, fs: &GameFs, surface: i32) -> bool {
     if surface < 0 {
         return false;
     }
     let Some(ti) = map.bsp.texinfo.get(surface as usize) else { return false };
-    if ti.flags & (surf::NOPORTAL | surf::SKY | surf::NODRAW | surf::TRIGGER) != 0 {
+    if ti.flags & (surf::NOPORTAL | surf::SKY) != 0 {
         return false;
     }
-    map.bsp
-        .texinfo_material(surface as usize)
-        .and_then(|name| load_vmt(fs, &material_path(name)))
-        .is_none_or(|vmt| !vmt.get_bool("%noportal"))
+    let Some(name) = map.bsp.texinfo_material(surface as usize) else { return true };
+    if PASS_THROUGH_MATERIALS.iter().any(|m| name.replace('\\', "/").eq_ignore_ascii_case(m)) {
+        return false;
+    }
+    let Some(vmt) = load_vmt(fs, &material_path(name)) else { return true };
+    let glass = portal2_render::surfaces::game_material(fs, vmt.get("$surfaceprop").unwrap_or("default")) == Some("Y");
+    !vmt.get_bool("%noportal") && !glass
+}
+
+/// What makes a surface move: the movers of an entity and of what it rides.
+type SurfaceMotion = (
+    Option<&'static crate::entities::movers::Mover>,
+    Option<&'static crate::entities::movers::Rotating>,
+    Option<&'static crate::entities::trains::Train>,
+    Option<&'static ChildOf>,
+);
+
+/// Whether `e` or anything it is parented to is being moved by a mover
+/// (the game's check is the entity's velocity and the angular velocity
+/// along its parent chain; a panel an animation carries counts as still).
+fn surface_moving(motion: &Query<SurfaceMotion>, e: Entity) -> bool {
+    let mut cur = Some(e);
+    while let Some(c) = cur {
+        let Ok((mover, rotating, train, parent)) = motion.get(c) else { return false };
+        let moving = mover.is_some_and(|m| matches!(m.state, MoverState::Opening | MoverState::Closing))
+            || rotating.is_some_and(|r| r.speed != 0.0)
+            || train.is_some_and(|t| t.moving && t.speed != 0.0);
+        if moving {
+            return true;
+        }
+        cur = parent.map(|p| p.parent());
+    }
+    false
 }
 
 fn fire_gun(
@@ -229,10 +266,11 @@ fn fire_gun(
     ),
     mut animators: Query<&mut StudioAnimator>,
     mut auto: ResMut<crate::player::autopilot::AutoFire>,
-    (paint, console, mut events): (
+    (paint, console, mut events, motion): (
         Option<Res<portal2_world::paint_map::PaintMap>>,
         Res<portal2_core::console::Console>,
         MessageWriter<GameEvent>,
+        Query<SurfaceMotion>,
     ),
 ) {
     let slot = if let Some(slot) = auto.0.take() {
@@ -264,12 +302,14 @@ fn fire_gun(
     let mut bumpers = Vec::new();
     let mut cleansers = Vec::new();
     let mut helpers = Vec::new();
+    let mut refused = Vec::new();
     let mut ignore = vec![pe];
     for (e, me, gt) in &entities {
         if super::placement::shot_ignores(&me.classname) {
             ignore.push(e);
         }
         match me.classname.as_str() {
+            "func_door" => refused.push(e),
             "func_noportal_volume" if me.get_i32("startactive").unwrap_or(1) != 0 => noportal.push(e),
             "func_portal_bumper" => bumpers.push(e),
             "trigger_portal_cleanser" if !me.get_bool("startdisabled") => cleansers.push(e),
@@ -309,6 +349,8 @@ fn fire_gun(
         physics: &physics,
         ignore: &ignore,
         portalable: &portalable,
+        moving: &|e| surface_moving(&motion, e),
+        refused: &refused,
         noportal_volumes: &noportal,
         bumpers: &bumpers,
         cleansers: &cleansers,

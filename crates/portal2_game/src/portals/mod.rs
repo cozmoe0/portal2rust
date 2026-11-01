@@ -37,10 +37,11 @@ impl Plugin for PortalsPlugin {
             .init_resource::<PortalHoles>()
             .init_resource::<PortalColors>()
             .init_resource::<PortalEnvironment>()
+            .init_resource::<RestingTests>()
             .add_message::<PlacePortal>()
             .add_message::<FizzlePortals>()
             .add_message::<PortalFx>()
-            .add_systems(Update, (apply_placements, fizzle_portals, clear_on_map_load, animate_portals, update_holes).chain())
+            .add_systems(Update, (apply_placements, test_resting_surfaces, fizzle_portals, clear_on_map_load, animate_portals, update_holes).chain())
             .add_systems(FixedUpdate, (teleport_player, portal_sounds).chain().after(PlayerMoveSet))
             .add_systems(
                 PostUpdate,
@@ -147,6 +148,16 @@ pub struct Portals {
     pub entities: [Option<Entity>; 2],
 }
 
+/// When each portal next checks that the surface behind it is still there
+/// (the game's `TestRestingSurfaceThink`), by slot.
+#[derive(Resource, Default)]
+pub struct RestingTests {
+    next: [Option<f64>; 2],
+}
+
+/// Seconds between resting surface checks.
+const RESTING_TEST_INTERVAL: f64 = 0.1;
+
 /// Request to (re)place a portal.
 #[derive(Message, Clone, Copy, Debug)]
 pub struct PlacePortal {
@@ -233,15 +244,17 @@ fn apply_placements(
     mut materials: ResMut<Assets<PortalMaterial>>,
     mut sounds: MessageWriter<portal2_audio::SoundRequest>,
     mut fx: MessageWriter<PortalFx>,
-    (fs, mut textures, physics, entities): (
+    (fs, mut textures, physics, entities, mut resting): (
         Res<portal2_core::vfs::GameFs>,
         ResMut<portal2_render::textures::TextureCache>,
         portal2_world::collision::Physics,
         Query<(Entity, &portal2_core::entity::MapEntity)>,
+        ResMut<RestingTests>,
     ),
 ) {
     for req in requests.read() {
         let mut req = *req;
+        resting.next[req.slot] = Some(time.elapsed_secs_f64() + RESTING_TEST_INTERVAL);
         if req.settle {
             let ignore: Vec<Entity> = entities.iter().filter(|(_, me)| placement::shot_ignores(&me.classname)).map(|(e, _)| e).collect();
             settle_on_surface(&physics, &ignore, &mut req.frame);
@@ -357,6 +370,53 @@ fn apply_placements(
             .id();
         portals.entities[req.slot] = Some(e);
         sounds.write(portal2_audio::SoundRequest::on("Portal.ambient_loop", e));
+    }
+}
+
+/// A portal whose surface is gone from behind any corner of its opening
+/// closes. Traces run from `CORNER_INSET` inside each corner to 1 unit behind
+/// the plane; the check repeats while a corner rests on an entity (which
+/// may move away or be removed), and stops once all rest on the world.
+fn test_resting_surfaces(
+    time: Res<Time>,
+    portals: Res<Portals>,
+    query: Query<&Portal>,
+    physics: portal2_world::collision::Physics,
+    mut tests: ResMut<RestingTests>,
+    mut fizzle: MessageWriter<FizzlePortals>,
+) {
+    use source_formats::bsp::contents;
+    let now = time.elapsed_secs_f64();
+    let mask = contents::SOLID | contents::WINDOW | contents::GRATE | contents::MOVEABLE;
+    for slot in 0..2 {
+        let Some(at) = tests.next[slot] else { continue };
+        if now < at {
+            continue;
+        }
+        let Some(p) = portals.entities[slot].and_then(|e| query.get(e).ok()) else {
+            tests.next[slot] = None;
+            continue;
+        };
+        let f = p.frame;
+        let mut on_entity = false;
+        let mut removed = false;
+        for (left, up) in [(1.0, 1.0), (-1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)] {
+            let inset = placement::CORNER_INSET;
+            let corner = f.to_world(Vec3::new(0.0, left * (HALF_WIDTH - inset), up * (HALF_HEIGHT - inset)));
+            let tr = physics.trace(corner, corner - f.forward, Vec3::ZERO, Vec3::ZERO, mask, &[]);
+            if tr.fraction >= 1.0 && !tr.start_solid {
+                removed = true;
+                break;
+            }
+            on_entity |= tr.entity.is_some();
+        }
+        if removed {
+            info!("portal {slot}: surface removed from behind it");
+            fizzle.write(FizzlePortals { slot: Some(slot) });
+            tests.next[slot] = None;
+        } else {
+            tests.next[slot] = on_entity.then_some(now + RESTING_TEST_INTERVAL);
+        }
     }
 }
 
@@ -873,5 +933,56 @@ mod tests {
         assert_eq!(min_exit_speed(&floor, Vec3::new(0.0, 0.0, 20.0), 36.0, 600.0), 300.0);
         let wall = PortalFrame { center: Vec3::ZERO, forward: Vec3::X, up: Vec3::Z };
         assert_eq!(min_exit_speed(&wall, Vec3::new(20.0, 0.0, 0.0), 36.0, 600.0), f32::MIN);
+    }
+
+    /// A portal on a brush entity is checked again while the brush is
+    /// there, and closes once the brush stops colliding (disabled, moved
+    /// away or removed).
+    #[test]
+    fn portal_closes_when_its_brush_goes() {
+        use portal2_world::collision::volume::ConvexVolume;
+        use portal2_world::collision::{Collider, Shape};
+        use source_formats::bsp::contents;
+
+        let mut app = App::new();
+        app.add_message::<FizzlePortals>()
+            .init_resource::<Time>()
+            .init_resource::<CollisionWorld>()
+            .init_resource::<RestingTests>()
+            .init_resource::<Portals>()
+            .add_systems(Update, test_resting_surfaces);
+        let panel = ConvexVolume::from_box(Vec3::new(0.0, -100.0, -100.0), Vec3::new(8.0, 100.0, 100.0), contents::SOLID, 0);
+        let brush = app.world_mut().spawn((Collider::new(std::sync::Arc::new(Shape::new(vec![panel])), true, true), GlobalTransform::IDENTITY)).id();
+        let portal = app
+            .world_mut()
+            .spawn(Portal {
+                slot: 0,
+                frame: PortalFrame { center: Vec3::new(-1.0 / 32.0, 0.0, 0.0), forward: Vec3::NEG_X, up: Vec3::Z },
+                surface: Entity::PLACEHOLDER,
+                camera: Entity::PLACEHOLDER,
+                material: Handle::default(),
+                texture: Handle::default(),
+                opened_at: 0.0,
+                inner_camera: Entity::PLACEHOLDER,
+                inner_material: Handle::default(),
+                inner_texture: Handle::default(),
+                end_material: Handle::default(),
+                fix: Entity::PLACEHOLDER,
+                fix_mesh: Handle::default(),
+            })
+            .id();
+        app.world_mut().resource_mut::<Portals>().entities[0] = Some(portal);
+        let closed = |app: &mut App| app.world_mut().resource_mut::<Messages<FizzlePortals>>().drain().count();
+
+        app.world_mut().resource_mut::<RestingTests>().next[0] = Some(0.0);
+        app.update();
+        assert_eq!(closed(&mut app), 0);
+        assert_eq!(app.world().resource::<RestingTests>().next[0], Some(RESTING_TEST_INTERVAL), "resting on an entity: checked again");
+
+        app.world_mut().get_mut::<Collider>(brush).unwrap().enabled = false;
+        app.world_mut().resource_mut::<RestingTests>().next[0] = Some(0.0);
+        app.update();
+        assert_eq!(closed(&mut app), 1);
+        assert_eq!(app.world().resource::<RestingTests>().next[0], None);
     }
 }
