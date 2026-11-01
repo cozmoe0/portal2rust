@@ -430,15 +430,36 @@ fn restore(world: &mut World, file: &SaveFile) -> Result<(), String> {
     }
 
     // Placement and parents, then component state.
-    for s in &file.entities {
-        let Some(&e) = by_id.get(&s.id) else { continue };
-        let parent = s.parent.and_then(|(pid, bone)| {
+    let saved_parent = |world: &World, s: &SavedEntity| {
+        s.parent.and_then(|(pid, bone)| {
             let p = *by_id.get(&pid)?;
             match bone {
                 None => Some(p),
                 Some(b) => world.get::<StudioAnimator>(p).and_then(|a| a.joints.get(b).copied()),
             }
-        });
+        })
+    };
+    // Doors and other movers keep their end positions in their parent's
+    // space. Restoring spawns them without parents, so those positions are
+    // in world space: re-express them against where the saved parent
+    // spawned, as parenting at map load does (otherwise a parented door
+    // that moves after the load is placed twice over).
+    let movers: Vec<(Entity, bevy::math::Affine3A)> = file
+        .entities
+        .iter()
+        .filter_map(|s| {
+            let e = *by_id.get(&s.id)?;
+            let p = saved_parent(world, s)?;
+            world.get::<crate::entities::movers::Mover>(e)?;
+            Some((e, crate::entities::world_transform(world, p).affine()))
+        })
+        .collect();
+    for (e, parent) in movers {
+        crate::entities::movers::rebase(world, e, bevy::math::Affine3A::IDENTITY, parent);
+    }
+    for s in &file.entities {
+        let Some(&e) = by_id.get(&s.id) else { continue };
+        let parent = saved_parent(world, s);
         let mut em = world.entity_mut(e);
         match parent {
             Some(p) => {

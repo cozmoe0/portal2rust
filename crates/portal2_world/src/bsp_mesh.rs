@@ -28,6 +28,9 @@ pub struct MeshBatch {
     pub lightmapped: bool,
     pub bumped: bool,
     pub has_blend: bool,
+    /// The overlay this batch holds alone: one an `info_overlay_accessor`
+    /// names, whose texture frame the map can change.
+    pub overlay_id: Option<i32>,
 }
 
 struct VertexIn {
@@ -283,7 +286,14 @@ fn build_overlays(
     atlas_size: Vec2,
     in_skybox: &dyn Fn(usize) -> bool,
 ) -> (Vec<MeshBatch>, Vec<MeshBatch>) {
-    let mut batches: Vec<(u16, i32, bool, MeshBatch)> = Vec::new();
+    // Overlays an accessor names keep batches of their own.
+    let named: std::collections::HashSet<i32> = bsp
+        .entities
+        .iter()
+        .filter(|e| e.classname().eq_ignore_ascii_case("info_overlay_accessor"))
+        .filter_map(|e| e.get("overlayid").and_then(|v| v.trim().parse().ok()))
+        .collect();
+    let mut batches: Vec<(u16, i32, bool, Option<i32>, MeshBatch)> = Vec::new();
     for ov in &bsp.overlays {
         let Some(ti) = bsp.texinfo.get(ov.texinfo.max(0) as usize) else { continue };
         let Some(td) = bsp.texdata.get(ti.texdata as usize) else { continue };
@@ -297,23 +307,24 @@ fn build_overlays(
         let tex: [Vec2; 4] =
             [Vec2::new(ov.u[0], ov.v[0]), Vec2::new(ov.u[0], ov.v[1]), Vec2::new(ov.u[1], ov.v[1]), Vec2::new(ov.u[1], ov.v[0])];
         let sky = ov.faces.first().is_some_and(|&f| in_skybox(f.max(0) as usize));
-        let key = (ov.render_order, ti.texdata, sky);
-        let pos = match batches.iter().position(|(o, t, s, _)| (*o, *t, *s) == key) {
+        let alone = named.contains(&ov.id).then_some(ov.id);
+        let key = (ov.render_order, ti.texdata, sky, alone);
+        let pos = match batches.iter().position(|(o, t, s, a, _)| (*o, *t, *s, *a) == key) {
             Some(i) => i,
             None => {
                 let name = bsp.texdata_strings.get(td.name_index as usize).cloned().unwrap_or_default();
-                batches.push((key.0, key.1, key.2, MeshBatch { texdata_name: name, ..Default::default() }));
+                batches.push((key.0, key.1, key.2, key.3, MeshBatch { texdata_name: name, overlay_id: alone, ..Default::default() }));
                 batches.len() - 1
             }
         };
-        let before = batches[pos].3.indices.len();
+        let before = batches[pos].4.indices.len();
         for &fi in &ov.faces {
             let Some(face) = bsp.faces.get(fi.max(0) as usize) else { continue };
             if face.dispinfo >= 0 {
                 let m = face_mapping(bsp, fi as usize, rects, atlas_size);
                 let Some(g) = disp_grid(bsp, face, face.dispinfo as usize, &m) else { continue };
                 let to2d = |p: Vec3| Vec2::new((p - ov.origin).dot(u), (p - ov.origin).dot(v));
-                let batch = &mut batches[pos].3;
+                let batch = &mut batches[pos].4;
                 batch.lightmapped |= m.rect.is_some();
                 batch.bumped |= m.rect.is_some_and(|r| r.bumped);
                 for t in &g.triangles {
@@ -373,7 +384,7 @@ fn build_overlays(
                 let w = if plane.normal.cross(t).dot(v) >= 0.0 { 1.0 } else { -1.0 };
                 [t.x, t.y, t.z, w]
             };
-            let batch = &mut batches[pos].3;
+            let batch = &mut batches[pos].4;
             batch.lightmapped |= m.rect.is_some();
             batch.bumped |= m.rect.is_some_and(|r| r.bumped);
             let base = batch.positions.len() as u32;
@@ -400,18 +411,19 @@ fn build_overlays(
         bevy::log::trace!(
             "overlay {} {}: {} faces, {} triangles, origin {:?} normal {:?} u {:?} quad {:?}",
             ov.id,
-            batches[pos].3.texdata_name,
+            batches[pos].4.texdata_name,
             ov.faces.len(),
-            (batches[pos].3.indices.len() - before) / 3,
+            (batches[pos].4.indices.len() - before) / 3,
             ov.origin,
             n,
             u,
             quad
         );
     }
-    batches.sort_by_key(|(order, _, _, _)| *order);
-    let (sky, world): (Vec<_>, Vec<_>) = batches.into_iter().filter(|(_, _, _, b)| !b.indices.is_empty()).partition(|(_, _, sky, _)| *sky);
-    (world.into_iter().map(|(_, _, _, b)| b).collect(), sky.into_iter().map(|(_, _, _, b)| b).collect())
+    batches.sort_by_key(|(order, _, _, _, _)| *order);
+    let (sky, world): (Vec<_>, Vec<_>) =
+        batches.into_iter().filter(|(_, _, _, _, b)| !b.indices.is_empty()).partition(|(_, _, sky, _, _)| *sky);
+    (world.into_iter().map(|(_, _, _, _, b)| b).collect(), sky.into_iter().map(|(_, _, _, _, b)| b).collect())
 }
 
 /// The BSP area of every face: from the leaves that list it, or for faces

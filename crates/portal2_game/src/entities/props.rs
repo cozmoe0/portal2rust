@@ -402,12 +402,14 @@ fn chamber_door_input(world: &mut World, call: &InputCall) -> bool {
     let (open, locked) = (door.open, door.locked);
     match call.input.as_str() {
         "open" if !open && !locked => {
-            set_door(world, e, true);
             fire_output(world, e, "OnOpen", call.activator, None);
+            world.write_message(portal2_audio::SoundRequest::on("prop_portal_door.open", e));
+            set_door(world, e, true);
         }
         "close" if open && !locked => {
-            set_door(world, e, false);
             fire_output(world, e, "OnClose", call.activator, None);
+            world.write_message(portal2_audio::SoundRequest::on("prop_portal_door.close", e));
+            set_door(world, e, false);
         }
         "open" | "close" => {}
         "lock" | "unlock" => {

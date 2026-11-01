@@ -128,6 +128,8 @@ fn spawn_trigger(world: &mut World, e: Entity) {
 fn trigger_input(world: &mut World, call: &InputCall) -> bool {
     let e = call.target;
     let Some(mut t) = world.get_mut::<Trigger>(e) else { return false };
+    let was = t.enabled;
+    let cleanser = matches!(t.kind, TriggerKind::Cleanser);
     match call.input.as_str() {
         "enable" => t.enabled = true,
         "disable" => {
@@ -141,6 +143,12 @@ fn trigger_input(world: &mut World, call: &InputCall) -> bool {
         }
         "starttouch" | "endtouch" => {}
         _ => return false,
+    }
+    // A fizzler switching on or off (server.dll `sub_10395DC0` / `sub_10395E50`).
+    let now = world.get::<Trigger>(e).is_some_and(|t| t.enabled);
+    if cleanser && now != was {
+        let name = if now { "VFX.FizzlerStart" } else { "VFX.FizzlerDestroy" };
+        world.write_message(portal2_audio::SoundRequest::on(name, e));
     }
     true
 }

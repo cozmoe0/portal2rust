@@ -6,6 +6,13 @@
 //! facing the view, `sprites/purplelaser1` 32 units wide (a narrow hot core
 //! in a wide red glow), or for lethal lasers `sprites/laserbeam` 2 units
 //! wide, tinted (100, 255, 100).
+//!
+//! Each laser (the emitter's, and each one a reflection cube sends on) hums
+//! `Laser.BeamLoop` (`LaserGreen.BeamLoop` for lethal ones) from the point
+//! of its beam nearest the player. A catcher that powers up plays
+//! `prop_laser_catcher.poweron` and loops `prop_laser_catcher.powerloop`,
+//! showing its lit skin; powering down plays `prop_laser_catcher.poweroff`
+//! (server.dll `sub_103C61F0` / `sub_103C62C0`).
 
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, MeshVertexBufferLayoutRef, PrimitiveTopology};
@@ -21,6 +28,7 @@ use crate::entities::spawner::{ModelOptions, attach_studio_model};
 use crate::player::Player;
 use crate::player::health::DamagePlayer;
 use crate::portals::{Portal, Portals};
+use portal2_audio::SoundRequest;
 use portal2_core::entity::MapEntity;
 use portal2_core::sets::PlayerMoveSet;
 use portal2_core::vfs::GameFs;
@@ -52,7 +60,7 @@ impl Plugin for LaserPlugin {
         app.add_plugins(MaterialPlugin::<LaserBeamMaterial>::default())
             .add_message::<LaserHitTurret>()
             .add_systems(FixedUpdate, update_lasers.after(PlayerMoveSet))
-            .add_systems(Update, draw_beams);
+            .add_systems(Update, (draw_beams, hum_beams));
         let world = app.world_mut();
         {
             let mut s = world.resource_mut::<SpawnHandlers>();
@@ -76,6 +84,9 @@ pub struct LaserEmitter {
     pub segments: Vec<BeamSegment>,
     #[serde(skip)]
     beams: Vec<Entity>,
+    /// Where each laser of the chain hums from.
+    #[serde(skip)]
+    hums: Vec<Entity>,
 }
 
 /// Catchers, relays and invisible laser targets.
@@ -85,6 +96,10 @@ pub struct LaserReceiver {
     hit: bool,
     /// Ticks since the beam last touched it (smooths flicker).
     unhit_ticks: u32,
+    /// The state its skin and power loop show (none yet after a spawn or
+    /// a restore).
+    #[serde(skip)]
+    shown: Option<bool>,
 }
 
 /// A laser touched a turret this tick.
@@ -115,9 +130,25 @@ fn spawn_emitter(world: &mut World, e: Entity) {
     world.entity_mut(e).insert(LaserEmitter { on, muzzle, muzzle_dir, lethal: me.get_bool("lethaldamage"), ..default() });
 }
 
+/// A catcher's unlit and lit skins: clean 0 and 1, rusted (`SkinType`) 2
+/// and 3. Relays have one skin.
+fn catcher_skins(me: &MapEntity) -> Option<(i32, i32)> {
+    (me.classname == "prop_laser_catcher").then(|| if me.get_bool("skintype") { (2, 3) } else { (0, 1) })
+}
+
 fn spawn_receiver(world: &mut World, e: Entity) {
-    if let Some(path) = world.get::<MapEntity>(e).and_then(|m| m.studio_model()) {
-        attach_studio_model(world, e, &path, ModelOptions::default());
+    // A catcher starts unlit; its state turns the lit skin on.
+    let Some(me) = world.get_mut::<MapEntity>(e).map(|mut me| {
+        if let Some((off, _)) = catcher_skins(&me) {
+            me.set("skin", &off.to_string());
+        }
+        me.clone()
+    }) else {
+        return;
+    };
+    if let Some(path) = me.studio_model() {
+        let skin = me.get_i32("skin").unwrap_or(0).max(0) as usize;
+        attach_studio_model(world, e, &path, ModelOptions { skin, ..default() });
     }
     world.entity_mut(e).insert(LaserReceiver::default());
 }
@@ -153,6 +184,7 @@ fn update_lasers(
     mut damage: MessageWriter<DamagePlayer>,
     mut turret_hits: MessageWriter<LaserHitTurret>,
     mut out: MessageWriter<FireOutput>,
+    (mut sounds, mut queue): (MessageWriter<SoundRequest>, ResMut<crate::entities::io::EventQueue>),
 ) {
     let frames = linked_frames(&portals, &portal_query);
     let dt = time.delta_secs();
@@ -251,11 +283,33 @@ fn update_lasers(
         if powered != r.powered {
             r.powered = powered;
             out.write(FireOutput::new(re, if powered { "OnPowered" } else { "OnUnpowered" }));
-            if let Some(mut a) = anim
-                && me.classname != "point_laser_target"
-            {
-                a.set_sequence(if powered { "spin" } else { "idle" });
+            if me.classname != "point_laser_target" {
+                if let Some(mut a) = anim {
+                    a.set_sequence(if powered { "spin" } else { "idle" });
+                }
+                if powered {
+                    sounds.write(SoundRequest::on("prop_laser_catcher.poweron", re));
+                    sounds.write(SoundRequest::stop("prop_laser_catcher.poweroff", re));
+                } else {
+                    sounds.write(SoundRequest::on("prop_laser_catcher.poweroff", re));
+                }
             }
+        }
+        // The power loop and lit skin follow the state, also for a catcher
+        // a restored game left powered.
+        if me.classname != "point_laser_target" && r.shown != Some(r.powered) {
+            if r.powered {
+                sounds.write(SoundRequest::on("prop_laser_catcher.powerloop", re));
+            } else if r.shown.is_some() {
+                sounds.write(SoundRequest::stop("prop_laser_catcher.powerloop", re));
+            }
+            if let Some((off, on)) = catcher_skins(me) {
+                let skin = if r.powered { on } else { off };
+                if me.get_i32("skin") != Some(skin) {
+                    queue.push(0.0, crate::entities::io::EventTarget::Entity(re), "skin", &skin.to_string(), None, None);
+                }
+            }
+            r.shown = Some(r.powered);
         }
     }
 }
@@ -426,10 +480,72 @@ fn draw_beams(
     }
 }
 
+/// The stretches of a laser chain that belong to one laser: a reflection
+/// cube (or relay) the beam runs into starts the next.
+fn lasers_of(segments: &[BeamSegment]) -> Vec<&[BeamSegment]> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    for (i, s) in segments.iter().enumerate() {
+        if s.hit_entity.is_some() && i + 1 < segments.len() {
+            out.push(&segments[start..=i]);
+            start = i + 1;
+        }
+    }
+    if start < segments.len() {
+        out.push(&segments[start..]);
+    }
+    out
+}
+
+/// Keeps one humming source per laser at the point of its beam nearest the
+/// player.
+fn hum_beams(
+    mut commands: Commands,
+    mut emitters: Query<&mut LaserEmitter>,
+    mut transforms: Query<&mut Transform, Without<Player>>,
+    players: Query<&Player>,
+    mut sounds: MessageWriter<SoundRequest>,
+) {
+    let Ok(player) = players.single() else { return };
+    let ear = player.state.origin + Vec3::Z * player.state.eye_offset();
+    for mut laser in &mut emitters {
+        let name = if laser.lethal { "LaserGreen.BeamLoop" } else { "Laser.BeamLoop" };
+        let points: Vec<Vec3> = if laser.on {
+            lasers_of(&laser.segments)
+                .into_iter()
+                .filter_map(|l| l.iter().map(|s| segment_point_distance(s, ear)).min_by(|a, b| a.0.total_cmp(&b.0)).map(|(_, p)| p))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        while laser.hums.len() > points.len() {
+            if let Some(h) = laser.hums.pop() {
+                sounds.write(SoundRequest::stop(name, h));
+                commands.entity(h).despawn();
+            }
+        }
+        for (i, p) in points.into_iter().enumerate() {
+            match laser.hums.get(i) {
+                Some(&h) => {
+                    if let Ok(mut t) = transforms.get_mut(h) {
+                        t.translation = p;
+                    }
+                }
+                None => {
+                    let h = commands.spawn((Name::new("laser hum"), Transform::from_translation(p), MapObject)).id();
+                    sounds.write(SoundRequest::on(name, h));
+                    laser.hums.push(h);
+                }
+            }
+        }
+    }
+}
+
 impl portal2_core::save::Restore for LaserEmitter {
     fn keep(&mut self, live: Self) {
         self.segments = live.segments;
         self.beams = live.beams;
+        self.hums = live.hums;
     }
 }
 

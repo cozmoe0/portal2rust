@@ -345,6 +345,30 @@ be killed) and stops once all four rest on the world.
   open (as it plays `prop_portal_door.open`) to 10000 and 10000, or with
   `UseAreaPortalFade` to its `AreaPortalFadeStart` / `AreaPortalFadeEnd`;
   once a closing animation finishes, back to 0 and 0.
+- Opening plays `prop_portal_door.open` and closing `prop_portal_door.close`
+  on the door (server.dll `sub_103EB260` / `sub_103EA9F0`), after the
+  `OnOpen` / `OnClose` output.
+
+## Device sounds
+
+From server.dll.
+
+- Lasers: each laser (the emitter's and each one a reflection cube sends
+  on) loops `Laser.BeamLoop` (`LaserGreen.BeamLoop` for the green kind)
+  from a sound entity the laser keeps for the player, on the beam
+  (`sub_103B19A0`).
+- Laser catchers and relays powering up play `prop_laser_catcher.poweron`,
+  loop `prop_laser_catcher.powerloop`, start `laser_relay_powered` at their
+  `particle_emitter` attachment and take their lit skin; powering down
+  plays `prop_laser_catcher.poweroff` and stops the loop
+  (`sub_103C61F0` / `sub_103C62C0`). Catcher skins: clean 0 / 1, rusted
+  (`SkinType`) 2 / 3.
+- Fizzlers: `VFX.FizzlerStart` when one comes on, `VFX.FizzlerDestroy` when
+  it goes off; all of them share one `VFX.FizzlerLp` through a
+  `fizzler_multiorigin_sound_player` (`sub_103970D0`).
+- Tractor beams loop `VFX.TbeamEmitterSpinLp` at the emitter and
+  `VFX.TBeamPosPolarity` / `VFX.TBeamNegPolarity` by their direction
+  (`sub_103EC0E0`); light bridges loop `VFX.BridgeGlow` (`sub_103F0BE0`).
 
 ## Switchable lights (`light`, `light_spot`)
 

@@ -56,6 +56,14 @@ pub struct CurrentMap {
 #[derive(Component)]
 pub struct MapObject;
 
+/// The mesh of an overlay an `info_overlay_accessor` names, with its
+/// material's base texture (the map can show other frames of it).
+#[derive(Component, Clone, Debug)]
+pub struct OverlayMesh {
+    pub id: i32,
+    pub base_texture: Option<String>,
+}
+
 /// Where the player starts (Source coordinates, eye at origin + 64 by default).
 #[derive(Resource, Clone, Copy, Debug)]
 pub struct PlayerStart {
@@ -288,6 +296,7 @@ fn load_map_system(
     // Overlays draw over the faces they lie on, pulled forward in depth.
     for (batch, in_skybox) in overlay_batches {
         let info = material_cache.world(&batch.texdata_name, &mut ctx, &mut world_materials);
+        let accessed = batch.overlay_id.map(|id| OverlayMesh { id, base_texture: info.surface.vmt.as_ref().and_then(|v| v.texture_path("$basetexture")) });
         let material = match world_materials.get(&info.handle).cloned() {
             Some(mut m) if m.depth_bias == 0 => {
                 m.depth_bias = portal2_render::source_material::DECAL_DEPTH_BIAS;
@@ -302,6 +311,9 @@ fn load_map_system(
             commands.spawn((Name::new("overlay"), Mesh3d(mesh), MeshMaterial3d(material), Transform::IDENTITY, sky::SkyChecked));
         if in_skybox {
             overlay.insert(bevy::camera::visibility::RenderLayers::layer(SKYBOX_LAYER));
+        }
+        if let Some(a) = accessed {
+            overlay.insert(a);
         }
         let id = overlay.id();
         commands.entity(world).add_child(id);
