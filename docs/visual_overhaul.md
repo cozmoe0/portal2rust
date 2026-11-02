@@ -17,6 +17,7 @@ matches captures taken before the overhaul (see [Verification](#verification)).
 | `r_fx_preset 0..3` | off, medium, high, ultra (default) |
 | `--fx off\|medium\|high\|ultra` | the same on the command line (applied after `fx.cfg`) |
 | `r_fx_<feature> -1\|0\|1` | follow the preset, force off, force on |
+| `r_fx_eyelights <scale>` | brightness of Wheatley's and GLaDOS's eye lights (1 default, 0 off; needs `lights`) |
 | `r_fx_save` | writes the `r_fx_*` values to `fx.cfg` beside the saves (`%LOCALAPPDATA%\portal2rust`), which runs at startup |
 
 Features: `lights`, `shadows`, `ao`, `ssr`, `wetness`, `fog` (haze), `volumetrics`, `bloom`,
@@ -45,6 +46,7 @@ model material binds, with the shaders reading it.
 | Settings | `fx/mod.rs` | `FxSettings` from the cvars, extracted to the render world; `fx.cfg`; `--fx` |
 | Material variant | `fx/material.rs`, `portal2_render/src/fx.rs`, `source_material.rs` | the shared buffer (switches, lights, probes) and the `FX` shader variant, swapped in and out with the preset |
 | Lights | `fx/lights.rs`, `fx/portal_light.rs`, `shaders/fx.wesl` | portals as one-sided elliptical area lights, lasers as tube lights plus emitter and impact, the world-light lump's fixtures as highlights only; scored, budgeted, shaded with representative points and GGX |
+| Eye lights | `fx/eye_lights.rs` | Wheatley's (every core's) and GLaDOS's eyes as soft shadowed spot lights from the lens, following the eye's bones; a core's brightness follows its lids, iris and voice |
 | Shadows | `fx/shadows.rs` | wide distance maps from the portals, drawn like the projected textures' ones, redrawn on demand |
 | Occlusion | `fx/screen.rs`, `shaders/fx_ao.wesl` | depth-based hemisphere occlusion on the main view after the opaque pass |
 | Surfaces | `portal2_render/src/surfaces.rs`, `fx_surfaces.txt` | data-driven profiles: roughness, reflectance, wet eligibility, foliage, emissive share |
@@ -79,6 +81,16 @@ Design decisions worth knowing:
   lights within a few metres of the eye (an elevator's lamp overhead) light the view, not the air
   in it; and temporary `r_flashlightbrightness` boosts (the first map's container ride raises it
   twelvefold) brighten surfaces as in the game but not the volumetrics.
+- **Eyes light the room.** Any animated model with a core's eye rig (`eyes` attachment,
+  `eyelid_upper_main` / `eyelid_lower_main`: Wheatley on his rail, in the player's hands, in
+  GLaDOS's body, and the other cores) or GLaDOS's (`headbits_eye_leftright`) gets a spot light
+  just in front of its lens, aimed along the eye and coloured like the lens (each core skin's own
+  colour; GLaDOS takes her eye glow's amber). A core's light follows the angle between its lids
+  (about 35° relaxed, 50° wide open: out in a blink, brighter in a stare), its iris aperture and,
+  slightly, its voice (the game's `LightedMouth` proxy curve over the speech level the engine
+  measures for lip sync). GLaDOS's switches with a glow sprite on her model, so her eye in
+  `sp_a1_wakeup` flickers on as she wakes. A core held as a view model shines from where the
+  view reaches, never from inside the wall in front of the player.
 - **No temporal filter.** Noise in the occlusion and volumetrics uses a fixed per-pixel pattern
   and spatial filtering; the 4× MSAA stays, and highlights get specular antialiasing. Nothing can
   ghost behind moving objects or portal crossings.

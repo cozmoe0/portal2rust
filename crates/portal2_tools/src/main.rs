@@ -38,6 +38,8 @@ mod cmd {
     pub mod mdlattach;
     pub mod mdlevents;
     pub mod mdlinfo;
+    pub mod mdlmesh;
+    pub mod mdlpose;
     pub mod mdlscan;
     pub mod mdlseq;
     pub mod mdluv;
@@ -122,6 +124,8 @@ const COMMANDS: &[(&str, &str, fn())] = &[
     ("mdlattach", "Lists a model's attachments with their bones", cmd::mdlattach::main),
     ("mdlevents", "Lists the events of a model's sequences", cmd::mdlevents::main),
     ("mdlinfo", "Loads studio models and prints structural stats (no content dump).", cmd::mdlinfo::main),
+    ("mdlmesh", "Prints where a model's meshes of one material sit (centroid, normal, main bone)", cmd::mdlmesh::main),
+    ("mdlpose", "Prints chosen bones of a model across one sequence's cycle (position, axes, local rotation)", cmd::mdlpose::main),
     ("mdlscan", "Histogram of MDL / VVD / VTX header versions across the install.", cmd::mdlscan::main),
     (
         "mdlseq",

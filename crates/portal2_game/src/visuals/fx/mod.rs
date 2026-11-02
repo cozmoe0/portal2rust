@@ -13,6 +13,7 @@
 //! (next to the saves, never in the game's install), which runs at startup.
 
 pub mod atmosphere;
+pub mod eye_lights;
 pub mod lights;
 pub mod material;
 pub mod portal_light;
@@ -276,6 +277,7 @@ impl Plugin for VisualFxPlugin {
                 material::FxMaterialPlugin,
                 lights::FxLightsPlugin,
                 portal_light::PortalLightingPlugin,
+                eye_lights::EyeLightsPlugin,
                 shadows::FxShadowsPlugin,
                 screen::FxScreenPlugin,
                 reflections::FxReflectionsPlugin,
@@ -315,6 +317,7 @@ fn save_settings(world: &mut World, _args: &CommandArgs) {
         for (name, _) in FEATURE_CVARS {
             text.push_str(&format!("{name} {}\n", console.str(name)));
         }
+        text.push_str(&format!("r_fx_eyelights {}\n", console.str("r_fx_eyelights")));
     }
     let result = settings_path().ok_or_else(|| "no data folder".to_owned()).and_then(|path| {
         if let Some(dir) = path.parent() {

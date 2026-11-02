@@ -33,7 +33,9 @@ use portal2_core::view::MainCamera;
 
 /// `CHAN_AUTO`, `CHAN_STATIC`: channels that never replace each other.
 const CHAN_AUTO: i32 = 0;
+const CHAN_VOICE: i32 = 2;
 const CHAN_STATIC: i32 = 6;
+const CHAN_VOICE2: i32 = 7;
 
 /// Library stack used for entries without stacks of their own.
 const DEFAULT_UPDATE: &str = "update_default";
@@ -180,6 +182,9 @@ struct Channel {
     looping: bool,
     started: f64,
     sound_start: f64,
+    /// Seconds into the wave it starts from (a line resumed part-way).
+    skip: f32,
+    pcm: Arc<Pcm>,
     stop_at: Option<f64>,
     update: Option<(Arc<Stack>, Instance)>,
     stop: Option<(Arc<Stack>, Instance)>,
@@ -227,6 +232,43 @@ impl Sounds {
 
     pub fn now(&self) -> f64 {
         self.now
+    }
+
+    /// How far open a speaking entity's mouth is, measured as the engine
+    /// measures it for lip sync and lit eyes (`SND_MoveMouth16`): the mean
+    /// magnitude of ten 8-bit samples taken about 80-111 frames apart from
+    /// where each of its voice channels is playing. 0 (silent) to 128.
+    pub fn mouth_open(&self, entity: Entity) -> f32 {
+        let mut open = 0.0f32;
+        for c in &self.channels {
+            if c.entity != Some(entity)
+                || c.finished
+                || c.stop_at.is_some_and(|t| t <= self.now)
+                || (c.chan.slot != CHAN_VOICE && c.chan.slot != CHAN_VOICE2)
+            {
+                continue;
+            }
+            let t = (self.now - c.sound_start) as f32 * c.pitch + c.skip;
+            let frames = c.pcm.frames as usize;
+            if t < 0.0 || frames == 0 {
+                continue;
+            }
+            let mut frame = (t * c.pcm.rate as f32) as usize;
+            if c.looping {
+                frame %= frames;
+            } else if frame >= frames {
+                continue;
+            }
+            let stride = c.pcm.channels.max(1) as usize;
+            let mut sum = 0i32;
+            for _ in 0..10 {
+                let data = c.pcm.samples.get((frame % frames) * stride).map_or(0, |&s| (s >> 8) as i32);
+                sum += data.abs();
+                frame += 80 + (data as u8 & 0x1F) as usize;
+            }
+            open = open.max(sum as f32 / 10.0);
+        }
+        open
     }
 }
 
@@ -534,6 +576,8 @@ impl Sounds {
             looping,
             started: now,
             sound_start: now + delay.max(0.0) as f64,
+            skip: (-delay).max(0.0),
+            pcm: pcm.clone(),
             stop_at: None,
             update: stacks.update.map(|s| {
                 let i = s.instance();

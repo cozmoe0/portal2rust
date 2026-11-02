@@ -7,6 +7,6 @@ pub fn main() {
     let model = StudioModel::load(&fs, &path).expect("model loads");
     for (i, a) in model.mdl.attachments.iter().enumerate() {
         let bone = model.mdl.bones.get(a.bone.max(0) as usize).map(|b| b.name.as_str()).unwrap_or("?");
-        println!("{i}: {} on {} at {:?}", a.name, bone, a.local.w_axis.truncate());
+        println!("{i}: {} on {} at {:?} x {:.2?} z {:.2?}", a.name, bone, a.local.w_axis.truncate(), a.local.x_axis.truncate(), a.local.z_axis.truncate());
     }
 }
