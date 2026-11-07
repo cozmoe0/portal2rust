@@ -7,7 +7,9 @@
 //! ([`save`]) and the system sets that order every frame ([`sets`]), plus a
 //! small shared vocabulary of entities ([`entity`]), views ([`view`]),
 //! render layers ([`layers`]) and messages ([`events`]) that lets the engine
-//! crates work together without depending on each other.
+//! crates work together without depending on each other. The player's own
+//! files go through [`userfs`], and the browser build's link to its page is
+//! [`web`].
 
 pub mod args;
 pub mod clock;
@@ -19,8 +21,11 @@ pub mod layers;
 pub mod rng;
 pub mod save;
 pub mod sets;
+pub mod userfs;
 pub mod vfs;
 pub mod view;
+#[cfg(target_arch = "wasm32")]
+pub mod web;
 
 use bevy::prelude::*;
 

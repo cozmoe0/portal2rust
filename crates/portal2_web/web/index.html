@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>portal2rust</title>
+<style>
+  :root {
+    --bg: #0b0d10;
+    --panel: rgba(16, 19, 24, 0.92);
+    --text: #e8ecf1;
+    --muted: #9aa4b2;
+    --blue: #3aa6ff;
+    --orange: #ff8a1c;
+    --error: #ff5d5d;
+    --line: rgba(255, 255, 255, 0.08);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  #stage { position: fixed; inset: 0; }
+  #p2r-canvas { display: block; width: 100%; height: 100%; outline: none; background: #000; }
+  .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .card { width: min(520px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 28px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
+  h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: 0.5px; }
+  h1 .b { color: var(--blue); } h1 .o { color: var(--orange); }
+  .sub { color: var(--muted); margin: 0 0 22px; }
+  button { font: inherit; cursor: pointer; border: 0; border-radius: 10px; padding: 12px 20px; }
+  #play { width: 100%; font-size: 18px; font-weight: 600; color: #fff;
+    background: linear-gradient(90deg, var(--blue), #2f7fd6 50%, var(--orange)); }
+  #play:disabled { opacity: 0.55; cursor: default; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; color: var(--muted); font-size: 13px; }
+  label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .link { background: none; color: var(--muted); padding: 0; text-decoration: underline; font-size: 13px; }
+  .bar { height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden; margin-top: 18px; }
+  .bar > div { height: 100%; width: 0%; background: linear-gradient(90deg, var(--blue), var(--orange)); transition: width 0.15s; }
+  #progress-text { margin-top: 8px; font-size: 13px; color: var(--muted); min-height: 1.4em; font-variant-numeric: tabular-nums; }
+  #status { position: fixed; left: 16px; bottom: 14px; padding: 6px 12px; border-radius: 8px; background: rgba(0, 0, 0, 0.6);
+    color: var(--text); font-size: 13px; display: none; pointer-events: none; font-variant-numeric: tabular-nums; }
+  #hint { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 10px 18px; border-radius: 10px;
+    background: rgba(0, 0, 0, 0.65); display: none; pointer-events: none; }
+  #error { display: none; }
+  #error .card { border-color: rgba(255, 93, 93, 0.4); }
+  #error h2 { margin: 0 0 10px; color: var(--error); font-size: 18px; }
+  #error pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; color: var(--muted); max-height: 40vh; overflow: auto; margin: 0; }
+  .hidden { display: none !important; }
+  @media (max-width: 480px) { .card { padding: 20px; } h1 { font-size: 22px; } }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="p2r-canvas" tabindex="0"></canvas></div>
+
+<div id="menu" class="overlay">
+  <div class="card">
+    <h1>portal<span class="b">2</span><span class="o">rust</span></h1>
+    <p class="sub">Portal 2 running in your browser, with the game files streamed from <span id="host"></span>.</p>
+    <button id="play" disabled>Preparing&hellip;</button>
+    <div class="bar"><div id="bar"></div></div>
+    <div id="progress-text"></div>
+    <div class="row">
+      <label><input type="checkbox" id="fullscreen" checked> Fullscreen</label>
+      <span id="storage"></span>
+    </div>
+    <div class="row">
+      <span>Saved games stay in this browser.</span>
+      <button class="link" id="clear" title="Saved games are kept">Clear downloaded game files</button>
+    </div>
+  </div>
+</div>
+
+<div id="error" class="overlay">
+  <div class="card"><h2 id="error-title">Something went wrong</h2><pre id="error-text"></pre></div>
+</div>
+<div id="status"></div>
+<div id="hint">Click to play</div>
+
+<script src="loader.js"></script>
+</body>
+</html>

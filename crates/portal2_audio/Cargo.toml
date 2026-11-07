@@ -12,5 +12,9 @@ source_formats.workspace = true
 cpal.workspace = true
 symphonia.workspace = true
 
+# In the browser the mix goes out through Web Audio.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+cpal = { workspace = true, features = ["wasm-bindgen"] }
+
 [lints]
 workspace = true

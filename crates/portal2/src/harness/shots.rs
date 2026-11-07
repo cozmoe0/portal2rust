@@ -16,9 +16,9 @@
 //! for `--bench-seconds` at each view instead of taking a screenshot, and
 //! appends one line per view to `--bench-out` (`re/out/bench.txt`).
 
+use bevy::platform::time::Instant;
 use std::fmt::Write as _;
 use std::path::PathBuf;
-use std::time::Instant;
 
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
@@ -136,10 +136,10 @@ struct ShotRunner {
     settle: u32,
     settle_time: Option<f32>,
     /// When the current view started settling.
-    settle_started: Option<std::time::Instant>,
+    settle_started: Option<bevy::platform::time::Instant>,
     map_settle: f32,
     /// When the current map finished loading.
-    loaded_at: Option<std::time::Instant>,
+    loaded_at: Option<bevy::platform::time::Instant>,
     out_dir: PathBuf,
     map_identity: usize,
     bench: Option<Bench>,
@@ -213,7 +213,7 @@ fn run_shots(world: &mut World) {
                 }
                 hold_view(world, &shot);
                 let mut runner = world.resource_mut::<ShotRunner>();
-                runner.settle_started = Some(std::time::Instant::now());
+                runner.settle_started = Some(bevy::platform::time::Instant::now());
                 Phase::Settling(if runner.settle_time.is_some() { u32::MAX } else { runner.settle })
             } else {
                 world.write_message(LoadMap::new(shot.map.clone(), MapLoadType::NewGame));
@@ -224,7 +224,7 @@ fn run_shots(world: &mut World) {
         Phase::Loading => {
             let old = world.resource::<ShotRunner>().map_identity;
             if identity != 0 && identity != old && world.resource::<EntityRegistry>().player.is_some() {
-                world.resource_mut::<ShotRunner>().loaded_at = Some(std::time::Instant::now());
+                world.resource_mut::<ShotRunner>().loaded_at = Some(bevy::platform::time::Instant::now());
                 Phase::Next
             } else {
                 Phase::Loading

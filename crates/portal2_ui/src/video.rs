@@ -1,9 +1,10 @@
 //! Bink video playback for the interface: startup videos, menu backgrounds
 //! and anything else that draws a movie with the painter.
 //!
-//! Each video decodes on its own thread a few frames ahead; the main
-//! thread shows the frame for the elapsed real time (frames that are late
-//! are skipped) by replacing the image the painter draws. A video's first
+//! Each video decodes on its own thread a few frames ahead (in the browser,
+//! which has one thread, frames decode on the main thread as they come
+//! due); the main thread shows the frame for the elapsed real time (frames
+//! that are late are skipped) by replacing the image the painter draws. A video's first
 //! audio track, when it has one, is decoded up front and played through
 //! the mixer when the video starts.
 
@@ -39,6 +40,9 @@ pub struct Video {
     started: Option<f64>,
     shown: Option<u32>,
     rx: Mutex<Receiver<(u32, Vec<u8>)>>,
+    /// Decodes the next frame into the channel when there is no decoder
+    /// thread (the browser); false at the end of the video.
+    pump: Option<Mutex<Pump>>,
     pending: Option<(u32, Vec<u8>)>,
     stop: Arc<AtomicBool>,
     audio: Option<String>,
@@ -47,6 +51,29 @@ pub struct Video {
 impl Drop for Video {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
+    }
+}
+
+type Pump = Box<dyn FnMut() -> bool + Send>;
+
+/// Frames decoded on the main thread per update at most; a video further
+/// behind than this skips ahead instead of stalling the frame.
+#[cfg(target_arch = "wasm32")]
+const MAX_INLINE_DECODES: u32 = 3;
+
+impl Video {
+    /// The next decoded frame, if one is ready.
+    fn next_frame(&mut self, decoded: &mut u32) -> Option<(u32, Vec<u8>)> {
+        let rx = self.rx.get_mut().unwrap();
+        if let Ok(f) = rx.try_recv() {
+            return Some(f);
+        }
+        let pump = self.pump.as_mut()?.get_mut().unwrap();
+        *decoded += 1;
+        if !pump() {
+            return None;
+        }
+        rx.try_recv().ok()
     }
 }
 
@@ -94,7 +121,7 @@ impl Videos {
         }
         let (tx, rx) = sync_channel(3);
         let stop = Arc::new(AtomicBool::new(false));
-        spawn_decoder(bink, looping, tx, stop.clone());
+        let pump = spawn_decoder(bink, looping, tx, stop.clone()).map(Mutex::new);
         let id = VideoId(self.next);
         self.next += 1;
         let image = ImageRef { id: surface.reserve_image_id(), width: w, height: h, additive: false };
@@ -108,6 +135,7 @@ impl Videos {
             started: None,
             shown: None,
             rx: Mutex::new(rx),
+            pump,
             pending: None,
             stop,
             audio: audio_name,
@@ -130,34 +158,49 @@ impl Videos {
     }
 }
 
-fn spawn_decoder(mut bink: bink::Bink, looping: bool, tx: SyncSender<(u32, Vec<u8>)>, stop: Arc<AtomicBool>) {
-    std::thread::Builder::new()
-        .name("bink".into())
-        .spawn(move || {
-            let (w, h) = (bink.width() as usize, bink.height() as usize);
-            loop {
-                if stop.load(Ordering::Relaxed) {
-                    return;
-                }
-                let frame = match bink.next_frame() {
-                    Ok(f) => f,
-                    Err(bink::Error::End) if looping => {
-                        if bink.seek(0).is_err() {
-                            return;
-                        }
-                        continue;
-                    }
-                    Err(_) => return,
-                };
+/// Decodes one frame into an RGBA buffer, rewinding looping videos at
+/// their end; `None` when the video is over or broken.
+fn decode_next(bink: &mut bink::Bink, looping: bool) -> Option<(u32, Vec<u8>)> {
+    let (w, h) = (bink.width() as usize, bink.height() as usize);
+    let mut rewound = false;
+    loop {
+        match bink.next_frame() {
+            Ok(frame) => {
                 let index = frame.index();
                 let mut rgba = vec![0u8; w * h * 4];
                 frame.to_rgba(&mut rgba);
-                if tx.send((index, rgba)).is_err() {
+                return Some((index, rgba));
+            }
+            Err(bink::Error::End) if looping && !rewound => {
+                bink.seek(0).ok()?;
+                rewound = true;
+            }
+            Err(_) => return None,
+        }
+    }
+}
+
+/// Starts the video's decoder thread; returns `None` (frames arrive on `tx`).
+#[cfg(not(target_arch = "wasm32"))]
+fn spawn_decoder(mut bink: bink::Bink, looping: bool, tx: SyncSender<(u32, Vec<u8>)>, stop: Arc<AtomicBool>) -> Option<Pump> {
+    std::thread::Builder::new()
+        .name("bink".into())
+        .spawn(move || {
+            while !stop.load(Ordering::Relaxed) {
+                let Some(frame) = decode_next(&mut bink, looping) else { return };
+                if tx.send(frame).is_err() {
                     return;
                 }
             }
         })
         .expect("spawn video decoder");
+    None
+}
+
+/// Without threads, the returned pump decodes a frame each time it is called.
+#[cfg(target_arch = "wasm32")]
+fn spawn_decoder(mut bink: bink::Bink, looping: bool, tx: SyncSender<(u32, Vec<u8>)>, _stop: Arc<AtomicBool>) -> Option<Pump> {
+    Some(Box::new(move || decode_next(&mut bink, looping).is_some_and(|f| tx.try_send(f).is_ok())))
 }
 
 fn update_videos(world: &mut World) {
@@ -174,9 +217,10 @@ fn update_videos(world: &mut World) {
             if v.finished {
                 continue;
             }
+            let mut decoded = 0;
             // Timing starts with the first decoded frame.
             if v.started.is_none() {
-                let Ok(first) = v.rx.get_mut().unwrap().try_recv() else { continue };
+                let Some(first) = v.next_frame(&mut decoded) else { continue };
                 v.started = Some(now);
                 v.pending = Some(first);
                 if let Some(a) = &v.audio {
@@ -197,10 +241,19 @@ fn update_videos(world: &mut World) {
             loop {
                 let next = match v.pending.take() {
                     Some(p) => p,
-                    None => match v.rx.get_mut().unwrap().try_recv() {
-                        Ok(p) => p,
-                        Err(_) => break,
-                    },
+                    None => {
+                        // Decoding on this thread: a video that fell far
+                        // behind (a blocking map load) skips ahead.
+                        #[cfg(target_arch = "wasm32")]
+                        if decoded >= MAX_INLINE_DECODES {
+                            v.started = Some(now - v.shown.unwrap_or(0) as f64 / v.fps);
+                            break;
+                        }
+                        match v.next_frame(&mut decoded) {
+                            Some(p) => p,
+                            None => break,
+                        }
+                    }
                 };
                 let due = match v.shown {
                     // Looping restarts at frame 0: a smaller index after the

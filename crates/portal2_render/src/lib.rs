@@ -49,6 +49,15 @@ impl Plugin for RenderSetupPlugin {
     }
 
     fn finish(&self, app: &mut App) {
+        // GPUs without BC formats (phones and tablets in the browser) get
+        // the block-compressed textures expanded to RGBA8.
+        if let Some(support) = app.world().get_resource::<bevy::image::CompressedImageFormatSupport>() {
+            let bc = support.0.contains(bevy::image::CompressedImageFormats::BC);
+            textures::set_bc_supported(bc);
+            if !bc {
+                warn!("the GPU has no BC texture formats; textures are expanded to RGBA8");
+            }
+        }
         // Nothing is lit by Bevy's clustered lights, decals or probes (the
         // game's light comes from lightmaps, ambient cubes and its own
         // buffers), so every view's clustering is wasted: GPU clustering runs

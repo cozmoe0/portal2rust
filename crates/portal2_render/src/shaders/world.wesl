@@ -76,15 +76,64 @@ const FLAG_WATER_REFRACT: u32 = 4194304u;
 @group(constants::MATERIAL_BIND_GROUP) @binding(17) var modulate_tex: texture_2d<f32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(18) var modulate_samp: sampler;
 @group(constants::MATERIAL_BIND_GROUP) @binding(19) var paint_tex: texture_2d<f32>;
-@group(constants::MATERIAL_BIND_GROUP) @binding(20) var paint_samp: sampler;
+// WebGPU allows 16 samplers per stage and the view's bindings take three,
+// so in the browser (FEW_SAMPLERS) the paint textures borrow samplers with
+// the same settings: the paint map the lightmap's (both clamped, linear,
+// read at level 0), the splat and bubble layout the bubbles', the paint's
+// cube map the material's.
+@if(!FEW_SAMPLERS) @group(constants::MATERIAL_BIND_GROUP) @binding(20) var paint_samp: sampler;
 @group(constants::MATERIAL_BIND_GROUP) @binding(21) var splat_tex: texture_2d<f32>;
-@group(constants::MATERIAL_BIND_GROUP) @binding(22) var splat_samp: sampler;
+@if(!FEW_SAMPLERS) @group(constants::MATERIAL_BIND_GROUP) @binding(22) var splat_samp: sampler;
 @group(constants::MATERIAL_BIND_GROUP) @binding(23) var bubble_layout_tex: texture_2d<f32>;
-@group(constants::MATERIAL_BIND_GROUP) @binding(24) var bubble_layout_samp: sampler;
+@if(!FEW_SAMPLERS) @group(constants::MATERIAL_BIND_GROUP) @binding(24) var bubble_layout_samp: sampler;
 @group(constants::MATERIAL_BIND_GROUP) @binding(25) var bubble_tex: texture_2d<f32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(26) var bubble_samp: sampler;
 @group(constants::MATERIAL_BIND_GROUP) @binding(27) var paint_env_tex: texture_cube<f32>;
-@group(constants::MATERIAL_BIND_GROUP) @binding(28) var paint_env_samp: sampler;
+@if(!FEW_SAMPLERS) @group(constants::MATERIAL_BIND_GROUP) @binding(28) var paint_env_samp: sampler;
+
+fn paint_map_at(uv: vec2<f32>) -> vec4<f32> {
+    var c: vec4<f32>;
+    @if(FEW_SAMPLERS) {
+        c = textureSampleLevel(paint_tex, lightmap_samp, uv, 0.0);
+    }
+    @if(!FEW_SAMPLERS) {
+        c = textureSampleLevel(paint_tex, paint_samp, uv, 0.0);
+    }
+    return c;
+}
+
+fn splat_at(uv: vec2<f32>) -> vec4<f32> {
+    var c: vec4<f32>;
+    @if(FEW_SAMPLERS) {
+        c = textureSample(splat_tex, bubble_samp, uv);
+    }
+    @if(!FEW_SAMPLERS) {
+        c = textureSample(splat_tex, splat_samp, uv);
+    }
+    return c;
+}
+
+fn bubble_layout_at(uv: vec2<f32>) -> vec4<f32> {
+    var c: vec4<f32>;
+    @if(FEW_SAMPLERS) {
+        c = textureSample(bubble_layout_tex, bubble_samp, uv);
+    }
+    @if(!FEW_SAMPLERS) {
+        c = textureSample(bubble_layout_tex, bubble_layout_samp, uv);
+    }
+    return c;
+}
+
+fn paint_env_at(dir: vec3<f32>) -> vec4<f32> {
+    var c: vec4<f32>;
+    @if(FEW_SAMPLERS) {
+        c = textureSample(paint_env_tex, envmap_samp, dir);
+    }
+    @if(!FEW_SAMPLERS) {
+        c = textureSample(paint_env_tex, paint_env_samp, dir);
+    }
+    return c;
+}
 
 // Tangent-space basis used for directional lightmaps (x: S, y: T, z: normal).
 const BUMP_BASIS_0 = vec3<f32>(0.81649658, 0.0, 0.57735027);
@@ -287,7 +336,7 @@ fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
 // bubbles that face the viewer. The game scales its splat and bubble
 // textures by the luxel position on a 512 x 256 lightmap page.
 fn paint_layer(in: VertexOutput, n: vec3<f32>, lm_uv: vec2<f32>, lm_step: f32) -> vec4<f32> {
-    let p = textureSampleLevel(paint_tex, paint_samp, lm_uv, 0.0);
+    let p = paint_map_at(lm_uv);
     let atlas = vec2<f32>(textureDimensions(paint_tex));
     let luxel = lm_uv * atlas;
     var t = vec3<f32>(1.0, 0.0, 0.0);
@@ -302,8 +351,8 @@ fn paint_layer(in: VertexOutput, n: vec3<f32>, lm_uv: vec2<f32>, lm_step: f32) -
 
     // Splat normal map with a parallax step by its own height.
     let splat_uv = luxel * 0.078125;
-    let s0 = textureSample(splat_tex, splat_samp, splat_uv);
-    let s1 = textureSample(splat_tex, splat_samp, splat_uv + vt.xy * s0.a * 0.01);
+    let s0 = splat_at(splat_uv);
+    let s1 = splat_at(splat_uv + vt.xy * s0.a * 0.01);
     let h = s0.a + p.a;
     let thin = smooth01((0.6 - h * 0.5) / 0.3);
     let cover = smooth01((h * 0.5 - 0.34) / 0.29);
@@ -315,8 +364,8 @@ fn paint_layer(in: VertexOutput, n: vec3<f32>, lm_uv: vec2<f32>, lm_step: f32) -
 
     // Two bubble layers; their spots are foreshortened toward the viewer.
     let layout_uv = luxel * 0.5078125 + vt.xy * 0.0014;
-    let la = textureSample(bubble_layout_tex, bubble_layout_samp, layout_uv * 1.76 + vt.xy * 0.0007);
-    let lb = textureSample(bubble_layout_tex, bubble_layout_samp, layout_uv + vt.xy * 0.03);
+    let la = bubble_layout_at(layout_uv * 1.76 + vt.xy * 0.0007);
+    let lb = bubble_layout_at(layout_uv + vt.xy * 0.03);
     let len_nt = max(length(vt.zx), 1e-4);
     let along = vt.z / len_nt;
     let across = vt.x / len_nt;
@@ -344,15 +393,15 @@ fn paint_layer(in: VertexOutput, n: vec3<f32>, lm_uv: vec2<f32>, lm_step: f32) -
 
     // Colour, from a second read nearer the thick part, greyed where thin.
     let ahead = vec2<f32>(0.003 * (1.0 - h)) * vec2<f32>(512.0, 256.0) / atlas;
-    let p2 = textureSampleLevel(paint_tex, paint_samp, lm_uv + ahead, 0.0);
+    let p2 = paint_map_at(lm_uv + ahead);
     let rgb = srgb_to_linear(mix(p.rgb, p2.rgb, smooth01((p2.a - 0.9) * 10.0)));
     let lum = dot(rgb, vec3<f32>(0.299, 0.587, 0.114));
     let albedo = lum * 0.5 + cover * (rgb - lum * 0.5);
 
     // Reflections of the paint's own environment map, a sixteenth strong.
     let ndv = dot(surface, to_eye);
-    let env_bubble = textureSample(paint_env_tex, paint_env_samp, reflect(-to_eye, normalize(bubble.xyz + vec3<f32>(0.0, 0.0, 1e-5)))).rgb;
-    let env_surface = textureSample(paint_env_tex, paint_env_samp, reflect(-to_eye, surface)).rgb;
+    let env_bubble = paint_env_at(reflect(-to_eye, normalize(bubble.xyz + vec3<f32>(0.0, 0.0, 1e-5)))).rgb;
+    let env_surface = paint_env_at(reflect(-to_eye, surface)).rgb;
     let spec = env_bubble * (1.0 / 16.0) * albedo * bubble.w * ndv * 2.0 + env_surface * (1.0 / 16.0) * (1.5 - ndv) * 0.67;
 
     var light = textureSampleLevel(lightmap_tex, lightmap_samp, lm_uv, 0.0).rgb;

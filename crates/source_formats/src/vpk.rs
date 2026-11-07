@@ -195,3 +195,10 @@ fn read_exact_at(file: &File, buf: &mut [u8], offset: u64) -> std::io::Result<()
     use std::os::unix::fs::FileExt;
     file.read_exact_at(buf, offset)
 }
+
+/// Targets without positioned reads: the browser, which has no archives to
+/// open in the first place (its files come from the asset stream).
+#[cfg(not(any(windows, unix)))]
+fn read_exact_at(_file: &File, _buf: &mut [u8], _offset: u64) -> std::io::Result<()> {
+    Err(std::io::ErrorKind::Unsupported.into())
+}

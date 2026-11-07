@@ -9,7 +9,8 @@
 //! back; their scripts are not run again, the VM comes back as it was.
 //!
 //! Files are gzip-compressed CBOR in our own folder (never the game's `SAVE`
-//! folder), named like the game's: `quick.sav`, `autosave.sav`,
+//! folder; in the browser, the visiting browser's storage), named like the
+//! game's: `quick.sav`, `autosave.sav`,
 //! `autosavedangerous.sav`, with one older copy of quick saves and autosaves
 //! kept (`quick01.sav`, `autosave01.sav`).
 
@@ -18,6 +19,8 @@ mod registry;
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
+
+use portal2_core::userfs;
 use std::path::PathBuf;
 
 use bevy::prelude::*;
@@ -121,7 +124,7 @@ pub struct SavedPlayer {
 }
 
 /// Our save folder: `%LOCALAPPDATA%/portal2rust/save` (or the XDG data
-/// folder elsewhere).
+/// folder elsewhere; `save` in the browser's storage).
 pub fn save_dir() -> PathBuf {
     std::env::var_os("P2R_SAVE_DIR")
         .map(PathBuf::from)
@@ -138,12 +141,11 @@ fn path_for(name: &str) -> PathBuf {
 
 /// The most recently written save's name (without `.sav`).
 pub fn newest_save() -> Option<String> {
-    let dir = std::fs::read_dir(save_dir()).ok()?;
-    dir.flatten()
-        .filter(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("sav")))
-        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
-        .max_by_key(|(t, _)| *t)
-        .and_then(|(_, p)| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+    userfs::list(save_dir())
+        .into_iter()
+        .filter(|(p, _)| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("sav")))
+        .max_by_key(|(_, t)| *t)
+        .and_then(|(p, _)| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
 }
 
 /// The map of the most recent save, if any.
@@ -153,24 +155,19 @@ pub fn newest_save_map() -> Option<String> {
 
 pub fn write_file(name: &str, file: &SaveFile) -> Result<PathBuf, String> {
     let path = path_for(name);
-    std::fs::create_dir_all(save_dir()).map_err(|e| e.to_string())?;
     let bytes = encode(file)?;
-    let tmp = path.with_extension("tmp");
-    {
-        let f = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
-        let mut gz = flate2::write::GzEncoder::new(f, flate2::Compression::fast());
-        gz.write_all(&bytes).map_err(|e| e.to_string())?;
-        gz.finish().map_err(|e| e.to_string())?;
-    }
-    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+    let mut gz = flate2::write::GzEncoder::new(Vec::with_capacity(bytes.len() / 4), flate2::Compression::fast());
+    gz.write_all(&bytes).map_err(|e| e.to_string())?;
+    let packed = gz.finish().map_err(|e| e.to_string())?;
+    userfs::write(&path, packed).map_err(|e| e.to_string())?;
     Ok(path)
 }
 
 pub fn read_file(name: &str) -> Result<SaveFile, String> {
     let path = path_for(name);
-    let f = std::fs::File::open(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let packed = userfs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut bytes = Vec::new();
-    flate2::read::GzDecoder::new(f).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    flate2::read::GzDecoder::new(packed.as_slice()).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
     let file: SaveFile = decode(&bytes)?;
     if file.version != VERSION {
         return Err(format!("save version {} (expected {VERSION})", file.version));
@@ -223,8 +220,8 @@ pub fn save_named(world: &mut World, name: &str, history: bool) {
     };
     if history {
         let (from, to) = (path_for(name), path_for(&format!("{name}01")));
-        if from.exists() {
-            let _ = std::fs::rename(&from, &to);
+        if userfs::exists(&from) {
+            let _ = userfs::rename(&from, &to);
         }
     }
     match write_file(name, &file) {
@@ -239,13 +236,13 @@ pub fn save_named(world: &mut World, name: &str, history: bool) {
 /// A dangerous autosave that turned out safe becomes the autosave.
 fn commit_dangerous(world: &mut World) {
     let (from, to) = (path_for("autosavedangerous"), path_for("autosave"));
-    if !from.exists() {
+    if !userfs::exists(&from) {
         return;
     }
-    if to.exists() {
-        let _ = std::fs::rename(&to, path_for("autosave01"));
+    if userfs::exists(&to) {
+        let _ = userfs::rename(&to, path_for("autosave01"));
     }
-    if std::fs::rename(&from, &to).is_ok() {
+    if userfs::rename(&from, &to).is_ok() {
         world.resource_mut::<SaveState>().last = Some("autosave".into());
     }
 }
@@ -266,7 +263,7 @@ pub fn load_named(world: &mut World, name: &str) {
 
 /// `reload`: the most recent save, or the current map from the start.
 fn reload_command(world: &mut World, _args: &CommandArgs) {
-    let last = world.resource::<SaveState>().last.clone().filter(|n| path_for(n).exists());
+    let last = world.resource::<SaveState>().last.clone().filter(|n| userfs::exists(path_for(n)));
     match last {
         Some(name) => load_named(world, &name),
         None => {
@@ -359,7 +356,7 @@ pub fn capture(world: &mut World, comment: &str) -> Result<SaveFile, String> {
             version: VERSION,
             map,
             comment: comment.to_owned(),
-            saved_at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()),
+            saved_at: userfs::unix_now(),
             tick: clock.tick,
             curtime: clock.curtime,
             next_id,

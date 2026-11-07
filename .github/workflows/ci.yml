@@ -27,3 +27,16 @@ jobs:
       # Tests that read the game's files skip themselves without an install.
       - name: Tests
         run: cargo test --workspace
+
+  web:
+    name: Browser build (wasm32)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy (wasm32)
+        run: cargo clippy -p portal2 --target wasm32-unknown-unknown -- -D warnings

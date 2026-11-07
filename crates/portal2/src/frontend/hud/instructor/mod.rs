@@ -93,7 +93,7 @@ fn counts_path() -> std::path::PathBuf {
 }
 
 fn load_counts() -> HashMap<String, (i32, i32)> {
-    let Ok(text) = std::fs::read_to_string(counts_path()) else { return HashMap::new() };
+    let Ok(text) = portal2_core::userfs::read_to_string(counts_path()) else { return HashMap::new() };
     text.lines()
         .filter_map(|l| {
             let mut p = l.rsplitn(3, '\t');
@@ -107,11 +107,7 @@ fn load_counts() -> HashMap<String, (i32, i32)> {
 fn save_counts(counts: &HashMap<String, (i32, i32)>) {
     let mut lines: Vec<String> = counts.iter().map(|(k, (d, s))| format!("{k}\t{d}\t{s}")).collect();
     lines.sort();
-    let path = counts_path();
-    if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    if let Err(e) = std::fs::write(&path, lines.join("\n")) {
+    if let Err(e) = portal2_core::userfs::write(counts_path(), lines.join("\n")) {
         warn!("game instructor counts: {e}");
     }
 }

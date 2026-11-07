@@ -1,0 +1,30 @@
+[package]
+name = "portal2_web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "p2web: builds portal2rust for the browser and serves it, with the game's files, to other machines on the network"
+
+[[bin]]
+name = "p2web"
+path = "src/main.rs"
+
+# The server runs on the machine with the Portal 2 install; it is never built
+# for the browser itself.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+source_formats.workspace = true
+flate2 = { workspace = true, features = ["zlib-rs"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync", "signal", "time"] }
+hyper = { version = "1", features = ["server", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["server-auto", "tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+rustls-pemfile = "2"
+rcgen = { version = "0.14", default-features = false, features = ["ring", "pem"] }
+if-addrs = "0.15"
+brotli = "8"
+wasm-bindgen-cli-support = "=0.2.129"
+
+[lints]
+workspace = true

@@ -15,7 +15,7 @@
   <img alt="Rust 2024" src="https://img.shields.io/badge/Rust-2024_edition-dea584?logo=rust&logoColor=white">
   <img alt="Bevy 0.20" src="https://img.shields.io/badge/Bevy-0.20-232326?logo=bevy&logoColor=white">
   <img alt="License: MIT or Apache-2.0" src="https://img.shields.io/badge/license-MIT%20%7C%20Apache--2.0-3aa6ff">
-  <img alt="Platform: Windows" src="https://img.shields.io/badge/platform-Windows-0078d4">
+  <img alt="Platform: Windows and the browser" src="https://img.shields.io/badge/platform-Windows%20%7C%20browser-0078d4">
   <br>
   <img alt="Lines of Rust" src="https://img.shields.io/badge/Rust-68k_lines-ff8a1c">
   <img alt="Built with Claude Code" src="https://img.shields.io/badge/built_with-Claude_Code-d97757?logo=claude&logoColor=white">
@@ -196,6 +196,18 @@ console, `V` toggles noclip. An optional [visual overhaul](docs/visual_overhaul.
 portal and laser light, wet reflections, volumetric light, bloom) is on by default;
 `r_fx_preset 0` (or `--fx off`) gives the faithful picture.
 
+**In a browser.** The engine also builds to WebAssembly. On the machine with Portal 2, run
+
+```bash
+rustup target add wasm32-unknown-unknown
+cargo run --release -p portal2_web -- run
+```
+
+and open the address it prints (`https://<this machine>:8080/`) from any machine on the network
+with a WebGPU browser. The game runs in the visiting browser; its files stream from the server
+(cached in the browser after the first visit) and its saved games stay in the browser. See
+[docs/web.md](docs/web.md).
+
 <details>
 <summary><strong>Command-line options</strong></summary>
 
@@ -251,6 +263,7 @@ it side by side, and `portal2_game` brings them together into Portal 2.
 | [`portal2_game`](crates/portal2_game) | Gameplay: entities and I/O, the player, physics, portals, devices, gels, VScript, saves. |
 | [`portal2`](crates/portal2) | The application: plugin assembly, menus, HUD and the test harness. |
 | [`portal2_tools`](crates/portal2_tools) | `p2tools`, sixty command-line probes into the game's files. |
+| [`portal2_web`](crates/portal2_web) | `p2web`: the browser build, and the HTTPS server that streams the game's files to it ([docs/web.md](docs/web.md)). |
 
 Every gameplay tick follows the original server's frame:
 

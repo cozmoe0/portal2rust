@@ -504,7 +504,191 @@ mod platform {
     }
 }
 
-#[cfg(not(windows))]
+/// Registers the game's custom fonts with the browser and waits until it
+/// has loaded them, so the first frames already draw with them (the
+/// browser loads fonts asynchronously). Run before the app starts.
+#[cfg(target_arch = "wasm32")]
+pub async fn preload_web_fonts(fs: &source_formats::fs::GameFileSystem) {
+    // The schemes list theirs under `vgui/fonts` (`.vfont`) and `resource`.
+    let mut files = fs.list("", Some("vfont"), true);
+    for ext in ["ttf", "otf"] {
+        files.extend(fs.list("resource", Some(ext), true));
+    }
+    let mut count = 0;
+    for file in &files {
+        let Some(data) = fs.read(file) else { continue };
+        let data = if file.ends_with(".vfont") {
+            match source_formats::vfont::decode(&data) {
+                Some(d) => d,
+                None => continue,
+            }
+        } else {
+            data
+        };
+        count += platform::register(data) as usize;
+    }
+    let _ = wasm_bindgen_futures::JsFuture::from(platform::fonts_ready()).await;
+    bevy::log::info!("vgui: {count} custom fonts loaded by the browser");
+}
+
+/// In the browser, glyphs come from the page's 2D canvas: the custom faces
+/// are added to the page as font faces (under each name GDI knows them by,
+/// with their own weight and style), cells are sized so that ascent plus
+/// descent is the scheme's height (GDI's cell height), the ABC widths come
+/// from the text metrics and the glyph is drawn white and read back as its
+/// coverage. Fonts the visiting machine lacks fall back to the browser's.
+#[cfg(target_arch = "wasm32")]
+mod platform {
+    use js_sys::{Float64Array, Promise, Uint8Array};
+    use wasm_bindgen::prelude::*;
+
+    use super::{Abc, FontSpec, Metrics, flags};
+
+    #[wasm_bindgen]
+    extern "C" {
+        /// Adds a face under each of its names (one per line).
+        #[wasm_bindgen(js_namespace = p2r, js_name = fontRegister)]
+        fn font_register(names: &str, weight: u16, italic: bool, data: &[u8]) -> bool;
+        #[wasm_bindgen(js_namespace = p2r, js_name = fontsReady)]
+        pub fn fonts_ready() -> Promise;
+        /// A font sized to a GDI cell height: `[id, ascent, descent, max char width]`.
+        #[wasm_bindgen(js_namespace = p2r, js_name = fontCreate)]
+        fn font_create(face: &str, tall: i32, weight: i32, italic: bool) -> Float64Array;
+        /// `[advance, left extent, right extent]` of one character.
+        #[wasm_bindgen(js_namespace = p2r, js_name = glyphMetrics)]
+        fn glyph_metrics(font: u32, ch: &str) -> Float64Array;
+        /// The character's coverage in a `w × h` cell with the pen at
+        /// (`x`, `y`), one byte per pixel.
+        #[wasm_bindgen(js_namespace = p2r, js_name = glyphDraw)]
+        fn glyph_draw(font: u32, ch: &str, w: i32, h: i32, x: i32, y: i32) -> Uint8Array;
+    }
+
+    /// The names GDI finds a face by — family (name 1), typographic family
+    /// (16), full name (4) and PostScript name (6), which the schemes use
+    /// (`UniversLTStd-BoldCn`) — plus its weight (OS/2 `usWeightClass`) and
+    /// whether it is italic, from TrueType/OpenType data.
+    fn face_names(data: &[u8]) -> Option<(Vec<String>, u16, bool)> {
+        let u16_at = |o: usize| data.get(o..o + 2).map(|b| u16::from_be_bytes([b[0], b[1]]));
+        let u32_at = |o: usize| data.get(o..o + 4).map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]));
+        let tables = u16_at(4)? as usize;
+        let table = |tag: &[u8]| (0..tables).map(|i| 12 + i * 16).find(|&rec| data.get(rec..rec + 4) == Some(tag));
+        let (weight, italic) = match table(b"OS/2").and_then(|rec| u32_at(rec + 8)) {
+            Some(os2) => (u16_at(os2 as usize + 4).unwrap_or(400), u16_at(os2 as usize + 62).is_some_and(|f| f & 1 != 0)),
+            None => (400, false),
+        };
+        let base = u32_at(table(b"name")? + 8)? as usize;
+        let count = u16_at(base + 2)? as usize;
+        let strings = base + u16_at(base + 4)? as usize;
+        let mut best: Vec<(u16, u32, String)> = Vec::new();
+        for i in 0..count {
+            let r = base + 6 + i * 12;
+            let (platform, _encoding, language, id) = (u16_at(r)?, u16_at(r + 2)?, u16_at(r + 4)?, u16_at(r + 6)?);
+            if !matches!(id, 1 | 4 | 6 | 16) {
+                continue;
+            }
+            let (len, off) = (u16_at(r + 8)? as usize, u16_at(r + 10)? as usize);
+            let Some(raw) = data.get(strings + off..strings + off + len) else { continue };
+            let (rank, text) = match platform {
+                3 => {
+                    let units: Vec<u16> = raw.as_chunks::<2>().0.iter().map(|c| u16::from_be_bytes(*c)).collect();
+                    (if language == 0x409 { 0 } else { 1 }, String::from_utf16_lossy(&units))
+                }
+                1 => (2, raw.iter().map(|&b| b as char).collect()),
+                _ => continue,
+            };
+            match best.iter_mut().find(|(i, _, _)| *i == id) {
+                Some(b) if rank < b.1 => *b = (id, rank, text),
+                Some(_) => {}
+                None => best.push((id, rank, text)),
+            }
+        }
+        let mut names: Vec<String> = Vec::new();
+        for (_, _, name) in best {
+            let name = name.trim().to_owned();
+            if !name.is_empty() && !names.contains(&name) {
+                names.push(name);
+            }
+        }
+        (!names.is_empty()).then_some((names, weight, italic))
+    }
+
+    pub fn register(data: Vec<u8>) -> bool {
+        let Some((names, weight, italic)) = face_names(&data) else { return false };
+        font_register(&names.join("\n"), weight, italic, &data)
+    }
+
+    pub struct Font {
+        id: u32,
+        ascent: i32,
+        descent: i32,
+        max_char_width: i32,
+        antialias: bool,
+    }
+
+    impl Font {
+        pub fn create(spec: &FontSpec) -> Option<Self> {
+            if spec.tall <= 0 {
+                return None;
+            }
+            let info = font_create(&spec.face, spec.tall, spec.weight, spec.flags & flags::ITALIC != 0).to_vec();
+            let &[id, ascent, descent, max_char_width] = info.as_slice() else { return None };
+            Some(Self {
+                id: id as u32,
+                ascent: ascent as i32,
+                descent: descent as i32,
+                max_char_width: max_char_width as i32,
+                antialias: spec.flags & flags::ANTIALIAS != 0,
+            })
+        }
+
+        pub fn metrics(&self, spec: &FontSpec) -> Metrics {
+            let outline = (spec.flags & flags::OUTLINE != 0) as i32;
+            let shadow = (spec.flags & flags::DROPSHADOW != 0) as i32;
+            Metrics { height: self.ascent + self.descent + shadow + 2 * outline, ascent: self.ascent, max_char_width: self.max_char_width }
+        }
+
+        pub fn abc(&self, ch: char, _metrics: &Metrics) -> (i32, i32, i32) {
+            let mut buf = [0u8; 4];
+            let m = glyph_metrics(self.id, ch.encode_utf8(&mut buf)).to_vec();
+            let &[advance, left, right] = m.as_slice() else { return (0, 0, 0) };
+            let advance = advance.round() as i32;
+            let a = (-left).floor() as i32;
+            let b = right.ceil() as i32 - a;
+            if b <= 0 {
+                // Blank glyphs (spaces) are all advance.
+                return (0, advance.max(1), 0);
+            }
+            (a, b, advance - a - b)
+        }
+
+        pub fn draw(&self, ch: char, abc: Abc, _spec: &FontSpec, metrics: &Metrics, w: i32, h: i32, rgba: &mut [u8]) {
+            if w <= 0 || h <= 0 {
+                return;
+            }
+            let mut buf = [0u8; 4];
+            // `abc.a` already holds the effects' padding: the pen starts
+            // where the glyph's box lands at that padding.
+            let coverage = glyph_draw(self.id, ch.encode_utf8(&mut buf), w, h, -abc.a, metrics.ascent).to_vec();
+            let tab = ch == '\t';
+            for (px, &level) in rgba.as_chunks_mut::<4>().0.iter_mut().zip(&coverage) {
+                let alpha = if self.antialias {
+                    level
+                } else if level >= 128 {
+                    255
+                } else {
+                    0
+                };
+                if alpha == 0 {
+                    continue;
+                }
+                let c = if tab { 0 } else { 255 };
+                px.copy_from_slice(&[c, c, c, alpha]);
+            }
+        }
+    }
+}
+
+#[cfg(not(any(windows, target_arch = "wasm32")))]
 mod platform {
     //! Without GDI there is no rasterizer yet; text is measured as empty.
     use super::{Abc, FontSpec, Metrics};

@@ -144,7 +144,7 @@ pub fn rebuild_on_map_load(
         return;
     }
     let Some(map) = map else { return };
-    let started = std::time::Instant::now();
+    let started = bevy::platform::time::Instant::now();
     let bsp = &map.bsp;
     let mut statics = build::model_volumes(bsp, 0);
     let brushes = statics.len();

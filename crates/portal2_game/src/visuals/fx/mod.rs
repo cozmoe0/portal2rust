@@ -301,7 +301,7 @@ fn settings_path() -> Option<PathBuf> {
 
 /// Runs `fx.cfg`, then the command line's `--fx`.
 fn run_settings_file(mut console: ResMut<Console>, args: Res<portal2_core::args::Args>) {
-    if let Some(text) = settings_path().and_then(|p| std::fs::read_to_string(p).ok()) {
+    if let Some(text) = settings_path().and_then(|p| portal2_core::userfs::read_to_string(p).ok()) {
         console.add_text(&text);
     }
     if let Some(preset) = args.fx.as_deref().and_then(FxPreset::parse) {
@@ -319,12 +319,9 @@ fn save_settings(world: &mut World, _args: &CommandArgs) {
         }
         text.push_str(&format!("r_fx_eyelights {}\n", console.str("r_fx_eyelights")));
     }
-    let result = settings_path().ok_or_else(|| "no data folder".to_owned()).and_then(|path| {
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-        }
-        std::fs::write(&path, text).map_err(|e| e.to_string()).map(|_| path)
-    });
+    let result = settings_path()
+        .ok_or_else(|| "no data folder".to_owned())
+        .and_then(|path| portal2_core::userfs::write(&path, text).map_err(|e| e.to_string()).map(|_| path));
     let line = match result {
         Ok(path) => format!("Wrote {}", path.display()),
         Err(e) => format!("r_fx_save failed: {e}"),

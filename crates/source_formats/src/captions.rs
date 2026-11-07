@@ -143,13 +143,9 @@ impl Captions {
     fn load_kind(&mut self, fs: &GameFileSystem, kind: &str, language: &str) -> bool {
         let rel = format!("resource/{kind}_{language}.dat");
         let mut found = false;
-        for name in fs.search_path_names() {
-            // Archives and map pakfiles are searched through `fs` below.
-            if name.ends_with(".vpk") || name.starts_with('<') {
-                continue;
-            }
-            let path = fs.root.join(&name).join(&rel);
-            let Ok(bytes) = std::fs::read(&path) else { continue };
+        // Archives and map pakfiles are searched through `fs` below.
+        for name in fs.loose_dirs() {
+            let Some(bytes) = fs.read_root(&format!("{name}/{rel}")) else { continue };
             found |= self.add_bytes(format!("{name}/{rel}"), bytes);
         }
         if !found

@@ -168,9 +168,19 @@ fn quote(s: &str) -> String {
 }
 
 impl Args {
+    /// The process's command line; in the browser, the page address's query
+    /// (`?map=sp_a1_intro1&fx=off&novid` is `sp_a1_intro1 --fx off --novid`).
     pub fn from_env() -> Self {
+        #[cfg(target_arch = "wasm32")]
+        let list = crate::web::url_args();
+        #[cfg(not(target_arch = "wasm32"))]
+        let list = std::env::args().skip(1).collect();
+        Self::from_list(list)
+    }
+
+    pub fn from_list(list: Vec<String>) -> Self {
         let mut args = Args::default();
-        let mut it = std::env::args().skip(1);
+        let mut it = list.into_iter();
         while let Some(a) = it.next() {
             match a.as_str() {
                 "--map" | "+map" => args.map = it.next().unwrap_or_default(),

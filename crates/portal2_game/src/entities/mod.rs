@@ -98,12 +98,11 @@ impl EntityDefinitions {
 }
 
 fn load_entity_definitions(mut commands: Commands, fs: Res<GameFs>) {
-    let bin = fs.root.join("bin");
-    let read = |name: &str| std::fs::read(bin.join(name)).ok().map(|b| source_formats::text::decode_text(&b));
+    let read = |name: &str| fs.read_root(&format!("bin/{name}")).map(|b| source_formats::text::decode_text(&b));
     let fgd = match read("portal2.fgd") {
         Some(text) => Fgd::parse(&text, &mut |name| read(name)),
         None => {
-            warn!("entity definitions not found in {}; class defaults unavailable", bin.display());
+            warn!("entity definitions not found in {}; class defaults unavailable", fs.root.join("bin").display());
             Fgd::default()
         }
     };
@@ -154,7 +153,7 @@ fn spawn_on_map_load(world: &mut World) {
     // A fresh script VM per map; mapspawn.nut runs before any entity.
     crate::script::init_for_map(world);
 
-    let started = std::time::Instant::now();
+    let started = bevy::platform::time::Instant::now();
     let pairs: Vec<Vec<(String, String)>> = map.bsp.entities.iter().map(|e| e.pairs.clone()).collect();
     let mut spawned: Vec<(Entity, String)> = Vec::new();
     for (index, ent) in pairs.iter().enumerate() {

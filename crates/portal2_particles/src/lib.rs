@@ -191,7 +191,7 @@ impl Plugin for ParticlePlugin {
 }
 
 fn load_library(fs: Res<GameFs>, mut library: ResMut<ParticleLibrary>) {
-    let start = std::time::Instant::now();
+    let start = bevy::platform::time::Instant::now();
     *library = ParticleLibrary::load(&fs);
     info!("particles: {} systems in {:?}", library.defs.len(), start.elapsed());
 }

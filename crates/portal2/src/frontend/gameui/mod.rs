@@ -887,12 +887,11 @@ struct SaveEntry {
 
 /// Our saves, newest first.
 fn list_saves() -> Vec<SaveEntry> {
-    let Ok(dir) = std::fs::read_dir(portal2_game::save::save_dir()) else { return Vec::new() };
-    let mut out: Vec<SaveEntry> = dir
-        .flatten()
-        .filter(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("sav")))
-        .filter_map(|e| {
-            let name = e.path().file_stem()?.to_string_lossy().into_owned();
+    let mut out: Vec<SaveEntry> = portal2_core::userfs::list(portal2_game::save::save_dir())
+        .into_iter()
+        .filter(|(p, _)| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("sav")))
+        .filter_map(|(path, _)| {
+            let name = path.file_stem()?.to_string_lossy().into_owned();
             let file = portal2_game::save::read_file(&name).ok()?;
             Some(SaveEntry { name, map: file.map, saved_at: file.saved_at })
         })
@@ -933,7 +932,14 @@ fn local_time(unix: u64) -> (u32, u32, u32, u32, u32, u32) {
     }
 }
 
-#[cfg(not(windows))]
+/// In the browser, in the visitor's own time zone.
+#[cfg(target_arch = "wasm32")]
+fn local_time(unix: u64) -> (u32, u32, u32, u32, u32, u32) {
+    let offset_minutes = js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(unix as f64 * 1000.0)).get_timezone_offset();
+    utc_time((unix as f64 - offset_minutes * 60.0).max(0.0) as u64)
+}
+
+#[cfg(not(any(windows, target_arch = "wasm32")))]
 fn local_time(unix: u64) -> (u32, u32, u32, u32, u32, u32) {
     utc_time(unix)
 }

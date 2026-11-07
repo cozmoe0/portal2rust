@@ -167,7 +167,7 @@ fn build_static_world(
         return;
     }
     let Some(map) = map else { return };
-    let started = std::time::Instant::now();
+    let started = bevy::platform::time::Instant::now();
     let solid = portal2_world::collision::mask::SOLID_ALL;
     let mut hulls: Vec<(Vec3, Quat, Collider)> = Vec::new();
     for v in &world.statics {

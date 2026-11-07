@@ -1,3 +1,8 @@
 # Rust's bundled LLD links much faster than MSVC's link.exe.
 [target.x86_64-pc-windows-msvc]
 linker = "rust-lld.exe"
+
+# Browser builds: 128-bit SIMD (every current browser has it) and room for
+# the whole 4 GiB address space.
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "target-feature=+simd128", "-C", "link-arg=--max-memory=4294967296"]

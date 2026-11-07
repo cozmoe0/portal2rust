@@ -1,6 +1,7 @@
 //! VTF textures to GPU images, with a cache keyed by path and colour space.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use bevy::asset::RenderAssetUsages;
 use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
@@ -116,8 +117,15 @@ pub fn checkerboard() -> Image {
     img
 }
 
+/// Whether the GPU takes BC (DXT) textures as they are.
+static BC_SUPPORTED: AtomicBool = AtomicBool::new(true);
+
+pub fn set_bc_supported(on: bool) {
+    BC_SUPPORTED.store(on, Ordering::Relaxed);
+}
+
 fn gpu_format(format: VtfFormat, srgb: bool, w: u32, h: u32) -> Option<TextureFormat> {
-    let block_ok = w.is_multiple_of(4) && h.is_multiple_of(4);
+    let block_ok = w.is_multiple_of(4) && h.is_multiple_of(4) && BC_SUPPORTED.load(Ordering::Relaxed);
     Some(match format {
         VtfFormat::Dxt1 | VtfFormat::Dxt1OneBitAlpha if block_ok => {
             if srgb {

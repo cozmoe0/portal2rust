@@ -174,8 +174,16 @@ fn load_map_system(
         pending.frames += 1;
         return;
     }
+    // In the browser the map's files stream in first, behind the loading
+    // screen.
+    if let Some(req) = &pending.request
+        && !portal2_core::vfs::map_files_ready(&req.name)
+    {
+        return;
+    }
     let Some(LoadMap { name, kind }) = pending.request.take() else { return };
-    let started = std::time::Instant::now();
+    portal2_core::vfs::begin_map_phase(&fs, &name);
+    let started = bevy::platform::time::Instant::now();
     // Children go with their parents; the ones already gone are skipped.
     for e in &old {
         commands.entity(e).try_despawn();
@@ -296,7 +304,9 @@ fn load_map_system(
     // Overlays draw over the faces they lie on, pulled forward in depth.
     for (batch, in_skybox) in overlay_batches {
         let info = material_cache.world(&batch.texdata_name, &mut ctx, &mut world_materials);
-        let accessed = batch.overlay_id.map(|id| OverlayMesh { id, base_texture: info.surface.vmt.as_ref().and_then(|v| v.texture_path("$basetexture")) });
+        let accessed = batch
+            .overlay_id
+            .map(|id| OverlayMesh { id, base_texture: info.surface.vmt.as_ref().and_then(|v| v.texture_path("$basetexture")) });
         let material = match world_materials.get(&info.handle).cloned() {
             Some(mut m) if m.depth_bias == 0 => {
                 m.depth_bias = portal2_render::source_material::DECAL_DEPTH_BIAS;

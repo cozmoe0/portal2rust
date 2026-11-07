@@ -133,10 +133,14 @@ fn apply_key(descriptor: &mut RenderPipelineDescriptor, key: SourceMaterialKey, 
             depth_stencil.bias.slope_scale = DECAL_SLOPE_BIAS;
         }
     }
-    if key.fx
-        && let Some(fragment) = descriptor.fragment.as_mut()
-    {
-        fragment.shader_defs.push("FX".into());
+    if let Some(fragment) = descriptor.fragment.as_mut() {
+        if key.fx {
+            fragment.shader_defs.push("FX".into());
+        }
+        // WebGPU's 16 samplers per stage (see `world.wesl`).
+        if cfg!(target_arch = "wasm32") {
+            fragment.shader_defs.push("FEW_SAMPLERS".into());
+        }
     }
 }
 
@@ -220,21 +224,23 @@ pub struct WorldMaterial {
     #[texture(17)]
     #[sampler(18)]
     pub blend_modulate: Option<Handle<Image>>,
-    /// The map's paint map, laid out like the lightmap atlas.
+    /// The map's paint map, laid out like the lightmap atlas. In the
+    /// browser some paint textures share samplers (WebGPU allows 16 per
+    /// stage; see `world.wesl`).
     #[texture(19)]
-    #[sampler(20)]
+    #[cfg_attr(not(target_arch = "wasm32"), sampler(20))]
     pub paint: Option<Handle<Image>>,
     #[texture(21)]
-    #[sampler(22)]
+    #[cfg_attr(not(target_arch = "wasm32"), sampler(22))]
     pub paint_splat: Option<Handle<Image>>,
     #[texture(23)]
-    #[sampler(24)]
+    #[cfg_attr(not(target_arch = "wasm32"), sampler(24))]
     pub paint_bubble_layout: Option<Handle<Image>>,
     #[texture(25)]
     #[sampler(26)]
     pub paint_bubble: Option<Handle<Image>>,
     #[texture(27, dimension = "cube")]
-    #[sampler(28)]
+    #[cfg_attr(not(target_arch = "wasm32"), sampler(28))]
     pub paint_envmap: Option<Handle<Image>>,
     #[storage(30, read_only)]
     pub projected_lights: Handle<ShaderBuffer>,
