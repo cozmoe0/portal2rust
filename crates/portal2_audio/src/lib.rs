@@ -62,6 +62,7 @@ impl Plugin for AudioPlugin {
                 PostUpdate,
                 (map_changed.in_set(AudioSet::MapChange), (handle_requests, update_channels).chain().in_set(AudioSet::Mix)),
             )
+            .add_systems(Last, pump_web_audio)
             .add_systems(Update, write_recording);
         let mut console = app.world_mut().resource_mut::<Console>();
         for (name, default) in [
@@ -93,6 +94,17 @@ impl Plugin for AudioPlugin {
 /// Development aid: lists the solid static volumes and entities the player's
 /// hull overlaps.
 /// Lists the playing sound channels.
+/// In the browser the mix is made here, each frame, for the page's audio
+/// worklet (see `device::web`); elsewhere the device's own thread mixes.
+fn pump_web_audio(sounds: Option<Res<Sounds>>, time: Res<Time<Real>>) {
+    #[cfg(target_arch = "wasm32")]
+    if let Some(out) = sounds.as_ref().and_then(|s| s.output.as_ref()) {
+        device::web::pump(out, time.elapsed_secs_f64());
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = (sounds, time);
+}
+
 fn snd_list_command(world: &mut World, _args: &CommandArgs) {
     let lines = list(world);
     portal2_core::console::commands::print(world, format!("{} channels", lines.len()));

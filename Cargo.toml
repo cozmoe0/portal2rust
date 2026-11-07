@@ -102,12 +102,14 @@ opt-level = 3
 codegen-units = 16
 lto = "thin"
 
-# The browser build (`cargo run -p portal2_web -- build`): everything runs on
-# the page's one thread, so it gets every optimisation there is.
+# The browser build (`cargo run -p portal2_web -- build`). Not link-time
+# optimised: whole-program LTO into one codegen unit inlines Bevy's systems
+# into functions so large that the browser's WebAssembly compiler optimises
+# them poorly, and frames took 2.5 times the CPU time of this build.
 [profile.web]
 inherits = "release"
-lto = "fat"
-codegen-units = 1
+lto = false
+codegen-units = 16
 panic = "abort"
 debug = false
 strip = "debuginfo"

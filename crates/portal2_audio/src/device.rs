@@ -6,6 +6,11 @@
 //! interpolation, like the original's default pitch quality), ramps gains
 //! towards their targets to avoid clicks and sums everything into the
 //! device's channels.
+//!
+//! In the browser there is no audio thread of ours: the page's audio
+//! worklet plays from a ring buffer the main thread fills each frame a
+//! little ahead of time (see [`web`]), so a slow frame costs a moment of
+//! silence at worst instead of the stutter of buffers scheduled late.
 
 use std::sync::{Arc, Mutex};
 
@@ -75,10 +80,19 @@ pub struct MixHandle {
 }
 
 /// The stream must stay alive (and on some hosts on its thread).
-pub struct OutputStream(#[allow(dead_code)] pub cpal::Stream);
+pub enum OutputStream {
+    Cpal(#[allow(dead_code)] cpal::Stream),
+    /// The page's audio worklet, fed by [`web::pump`].
+    #[cfg(target_arch = "wasm32")]
+    Worklet,
+}
 
 /// Opens the default output device; `None` (and a warning) when there is none.
 pub fn open() -> Option<(MixHandle, OutputStream)> {
+    #[cfg(target_arch = "wasm32")]
+    if let Some(opened) = web::open() {
+        return Some(opened);
+    }
     let host = cpal::default_host();
     let Some(device) = host.default_output_device() else {
         warn!("audio: no output device");
@@ -138,7 +152,98 @@ pub fn open() -> Option<(MixHandle, OutputStream)> {
         return None;
     }
     info!("audio: {} Hz, {channels} channels", rate);
-    Some((MixHandle { state, rate }, OutputStream(stream)))
+    Some((MixHandle { state, rate }, OutputStream::Cpal(stream)))
+}
+
+/// The browser's audio worklet output.
+#[cfg(target_arch = "wasm32")]
+pub mod web {
+    use std::cell::RefCell;
+    use std::sync::{Arc, Mutex};
+
+    use bevy::prelude::*;
+    use wasm_bindgen::prelude::*;
+
+    use super::{MixHandle, MixState, OutputStream, mix_into};
+
+    #[wasm_bindgen]
+    extern "C" {
+        /// Starts the page's audio worklet with its ring buffer; the output
+        /// rate, or nothing when the page cannot (no shared memory).
+        #[wasm_bindgen(js_namespace = p2r, js_name = audioOpen)]
+        fn audio_open() -> Option<f64>;
+        /// `[frames queued, underruns so far]`.
+        #[wasm_bindgen(js_namespace = p2r, js_name = audioStatus)]
+        fn audio_status() -> js_sys::Int32Array;
+        /// Appends interleaved stereo frames to the ring buffer.
+        #[wasm_bindgen(js_namespace = p2r, js_name = audioPush)]
+        fn audio_push(samples: &[f32]);
+    }
+
+    /// Mixed ahead of the worklet: enough for a few slow frames, grown
+    /// after each underrun and eased back when playback has been smooth.
+    const LEAD_MIN: f64 = 0.06;
+    const LEAD_START: f64 = 0.08;
+    const LEAD_MAX: f64 = 0.18;
+    const LEAD_GROW: f64 = 0.02;
+    /// Seconds without an underrun before the lead shrinks a step.
+    const CALM: f64 = 2.0;
+    const LEAD_SHRINK: f64 = 0.01;
+    /// Most mixed at once: after a long stall playback resumes with a fresh
+    /// lead rather than catching up on the time lost.
+    const MAX_CHUNK: f64 = 0.15;
+
+    struct Pump {
+        lead: f64,
+        underruns: i32,
+        calm_since: f64,
+        last_pump: f64,
+        scratch: Vec<f32>,
+    }
+
+    thread_local! {
+        static PUMP: RefCell<Pump> =
+            const { RefCell::new(Pump { lead: LEAD_START, underruns: 0, calm_since: 0.0, last_pump: 0.0, scratch: Vec::new() }) };
+    }
+
+    pub fn open() -> Option<(MixHandle, OutputStream)> {
+        let rate = audio_open()? as u32;
+        let state = Arc::new(Mutex::new(MixState { master: 1.0, channels: 2, ..default() }));
+        info!("audio: {rate} Hz, 2 channels (audio worklet)");
+        Some((MixHandle { state, rate }, OutputStream::Worklet))
+    }
+
+    /// Mixes what the worklet will need before the next frame or two.
+    pub fn pump(out: &MixHandle, now: f64) {
+        let status = audio_status().to_vec();
+        let &[queued, underruns] = status.as_slice() else { return };
+        let rate = out.rate as f64;
+        PUMP.with_borrow_mut(|p| {
+            let since_last = now - p.last_pump;
+            p.last_pump = now;
+            if underruns != p.underruns {
+                // Running dry although frames came within the lead: frames
+                // are uneven, so mix further ahead. A stall longer than any
+                // lead (a map loading) is no reason to.
+                if underruns > p.underruns && since_last < p.lead * 1.5 {
+                    p.lead = (p.lead + LEAD_GROW).min(LEAD_MAX);
+                }
+                p.underruns = underruns;
+                p.calm_since = now;
+            } else if now - p.calm_since > CALM && p.lead > LEAD_MIN {
+                p.lead = (p.lead - LEAD_SHRINK).max(LEAD_MIN);
+                p.calm_since = now;
+            }
+            let need = ((p.lead * rate) as i64 - queued as i64).min((MAX_CHUNK * rate) as i64);
+            if need <= 0 {
+                return;
+            }
+            let frames = need as usize;
+            p.scratch.resize(frames * 2, 0.0);
+            mix_into(&out.state, out.rate, 2, &mut p.scratch, &mut Vec::new());
+            audio_push(&p.scratch);
+        });
+    }
 }
 
 fn mix_into(shared: &Mutex<MixState>, rate: u32, channels: usize, out: &mut [f32], _scratch: &mut Vec<f32>) {

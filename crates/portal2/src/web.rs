@@ -1,6 +1,9 @@
 //! Running in the browser: starting once the page's loader is ready, the
-//! canvas window, and the bits of the page the game drives (the pointer
-//! lock and the error overlay).
+//! canvas window, the bits of the page the game drives (the pointer lock
+//! and the error overlay), and the dynamic quality that keeps frames smooth
+//! on whatever machine opens the page ([`quality`]).
+
+mod quality;
 
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PresentMode, PrimaryWindow, WindowResolution};
@@ -85,6 +88,10 @@ extern "C" {
     /// Shows a fatal error over the page.
     #[wasm_bindgen(js_namespace = p2r)]
     fn fatal(message: &str);
+    /// Console commands the page queued (`p2r.console(...)` in the
+    /// browser's developer console), one per line.
+    #[wasm_bindgen(js_namespace = p2r, js_name = takeCommands)]
+    fn take_commands() -> Option<String>;
 }
 
 /// Waits for the page's loader (the game's index, the menus' files, the
@@ -129,7 +136,14 @@ pub struct WebPlugin;
 
 impl Plugin for WebPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Last, follow_cursor_grab);
+        app.add_plugins(quality::QualityPlugin).add_systems(Last, follow_cursor_grab).add_systems(First, run_page_commands);
+    }
+}
+
+/// Runs the console commands the page queued.
+fn run_page_commands(mut console: ResMut<portal2_core::console::Console>) {
+    if let Some(text) = take_commands() {
+        console.add_text(&text);
     }
 }
 

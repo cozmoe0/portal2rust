@@ -159,6 +159,7 @@ fn update_displays(
     mut surface: ResMut<Surface>,
     mut displays: Query<&mut MovieDisplay>,
     mut visibility: Query<&mut Visibility>,
+    seen: Query<&ViewVisibility>,
     quads: Query<&Mesh3d>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<WorldMaterial>>,
@@ -199,6 +200,20 @@ fn update_displays(
         {
             movies.open.insert(path.clone(), id);
         }
+    }
+    // A movie no view saw last frame (on any of its screens) holds still:
+    // decoding is a fair share of a frame in the browser, where it runs on
+    // the game's own thread. Screens show their movie from the first frame
+    // they are seen.
+    let mut visible: HashMap<&str, bool> = HashMap::new();
+    for (d, (path, _)) in displays.iter().zip(&plan) {
+        if let Some(path) = path {
+            let on_screen = d.quad.and_then(|q| seen.get(q).ok()).is_some_and(|v| v.get());
+            *visible.entry(path.as_str()).or_default() |= on_screen || d.shown.is_none();
+        }
+    }
+    for (path, id) in &movies.open {
+        videos.set_paused(*id, !visible.get(path.as_str()).copied().unwrap_or(false));
     }
     for (mut d, (path, _)) in displays.iter_mut().zip(plan) {
         let image = path.as_ref().and_then(|p| movies.open.get(p)).and_then(|id| videos.get(*id)).map(|v| v.image.id);

@@ -5074,9 +5074,11 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "cpal",
+ "js-sys",
  "portal2_core",
  "source_formats",
  "symphonia",
+ "wasm-bindgen",
 ]
 
 [[package]]

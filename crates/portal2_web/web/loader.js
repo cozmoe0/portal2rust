@@ -29,7 +29,7 @@
       if (errors.length < 400 && (level !== 'log' || /ERROR|WARN|panicked/.test(text))) {
         errors.push(`[${level}] ${text.replace(/%c/g, '')}`);
       }
-      if (level === 'log' && marks.length < 200 && /loaded|map /i.test(text)) {
+      if (level === 'log' && marks.length < 200 && /loaded|map |quality|render scale/i.test(text)) {
         marks.push([Math.round(performance.now()), text.replace(/%c/g, '').split(' color:')[0]]);
       }
       original(...args);
@@ -44,13 +44,17 @@
   // Time spent in each animation frame's callbacks (the game's whole frame
   // on the CPU, rendering commands included): `p2r.frameStats()`.
   const frameTimes = new Float64Array(600);
+  const frameGaps = new Float64Array(600);
   const longFrames = [];
   let frameCount = 0;
+  let lastFrameStart = 0;
   const nativeRaf = window.requestAnimationFrame.bind(window);
   window.requestAnimationFrame = (cb) => nativeRaf((ts) => {
     const t0 = performance.now();
     cb(ts);
     const dt = performance.now() - t0;
+    frameGaps[frameCount % frameGaps.length] = lastFrameStart ? t0 - lastFrameStart : 0;
+    lastFrameStart = t0;
     frameTimes[frameCount++ % frameTimes.length] = dt;
     if (dt > 100 && longFrames.length < 100) longFrames.push([Math.round(t0), Math.round(dt)]);
   });
@@ -369,11 +373,37 @@
   p2r.errors = errors;
   p2r.marks = marks;
   p2r.audioState = () => audioState();
-  p2r.frameStats = () => {
-    const n = Math.min(frameCount, frameTimes.length);
-    const t = Array.from(frameTimes.subarray(0, n)).sort((a, b) => a - b);
-    const at = (q) => (t.length ? t[Math.min(t.length - 1, Math.floor(q * t.length))].toFixed(2) : null);
-    return { frames: frameCount, cpuMedianMs: at(0.5), cpuP90Ms: at(0.9), cpuMaxMs: at(1), longFrames };
+  // For the game's dynamic quality: [median frame interval, 90th percentile
+  // interval, median CPU time, frames] over the last 30 frames, in ms.
+  p2r.perf = () => {
+    const n = Math.min(frameCount, 30);
+    const pick = (buf) => {
+      const out = new Float64Array(n);
+      for (let i = 0; i < n; i++) out[i] = buf[(frameCount - 1 - i + buf.length) % buf.length];
+      return out.sort();
+    };
+    if (n === 0) return new Float64Array([0, 0, 0, 0]);
+    const g = pick(frameGaps);
+    const t = pick(frameTimes);
+    return new Float64Array([g[n >> 1], g[Math.min(n - 1, Math.floor(n * 0.9))], t[n >> 1], n]);
+  };
+
+  // `last`: only the most recent frames (default: the whole window of 600).
+  p2r.frameStats = (last = 600) => {
+    const n = Math.min(frameCount, frameTimes.length, last);
+    const recent = (buf) => Array.from({ length: n }, (_, i) => buf[(frameCount - 1 - i + buf.length * 2) % buf.length]).sort((a, b) => a - b);
+    const t = recent(frameTimes);
+    const g = recent(frameGaps);
+    const at = (arr, q) => (arr.length ? arr[Math.min(arr.length - 1, Math.floor(q * arr.length))].toFixed(2) : null);
+    return {
+      frames: frameCount,
+      cpuMedianMs: at(t, 0.5),
+      cpuP90Ms: at(t, 0.9),
+      cpuMaxMs: at(t, 1),
+      frameMedianMs: at(g, 0.5),
+      frameP90Ms: at(g, 0.9),
+      longFrames,
+    };
   };
 
   p2r.ready = () => ready;
@@ -475,6 +505,28 @@
 
   p2r.fatal = (message) => fatal(message, 'The game stopped');
 
+  // Render scale: the canvas (through its stage) takes a smaller CSS size
+  // and is scaled back up to the page, so the game renders fewer pixels.
+  // Mouse positions stay right: they are read in the canvas's own space.
+  const stage = $('stage');
+  p2r.viewportPixels = () => window.innerWidth * window.innerHeight * (window.devicePixelRatio || 1) ** 2;
+  p2r.setRenderScale = (s) => {
+    // The game sizes its canvas in device pixels; the stage is in CSS ones.
+    const css = s / (window.devicePixelRatio || 1);
+    if (css >= 0.999) {
+      stage.style.cssText = '';
+      return;
+    }
+    stage.style.cssText = `inset:auto;left:0;top:0;width:${css * 100}vw;height:${css * 100}vh;` +
+      `transform:scale(${1 / css});transform-origin:0 0`;
+  };
+
+  // Console commands for the game, from the browser's developer console:
+  // `p2r.console('r_fx_preset 2')`.
+  const commands = [];
+  p2r.console = (text) => { commands.push(String(text)); };
+  p2r.takeCommands = () => (commands.length ? commands.splice(0).join('\n') : undefined);
+
   // ------------------------------------------------------ pointer lock
 
   function lockPointer() {
@@ -574,6 +626,105 @@
   const audioState = () => contexts.map((c) => `${c.state} ${c.sampleRate} Hz`);
   window.addEventListener('pointerdown', resumeAudio, true);
   window.addEventListener('keydown', resumeAudio, true);
+
+  // The game mixes on the main thread a little ahead of time into a ring
+  // buffer of shared memory, and an audio worklet plays it on the browser's
+  // audio thread. A frame that runs long then costs at most a moment of
+  // silence (faded, and counted so that the game mixes further ahead),
+  // never the stutter of audio buffers scheduled late.
+  const WORKLET = `
+class P2RMix extends AudioWorkletProcessor {
+  constructor(options) {
+    super();
+    const o = options.processorOptions;
+    this.data = new Float32Array(o.data);
+    this.ctl = new Int32Array(o.ctl);
+    this.mask = o.cap - 1;
+    this.playing = false;
+  }
+  process(inputs, outputs) {
+    const out = outputs[0];
+    const L = out[0], R = out[1] || out[0], n = L.length;
+    const ctl = this.ctl, d = this.data, mask = this.mask;
+    const r = Atomics.load(ctl, 0), avail = (Atomics.load(ctl, 1) - r) | 0;
+    const m = avail < n ? Math.max(avail, 0) : n;
+    const fadeIn = !this.playing && m > 0 ? Math.min(m, 64) : 0;
+    for (let i = 0; i < m; i++) {
+      const j = ((r + i) & mask) * 2;
+      const g = i < fadeIn ? i / fadeIn : 1;
+      L[i] = d[j] * g;
+      R[i] = d[j + 1] * g;
+    }
+    if (m < n) {
+      const fade = Math.min(m, 32);
+      for (let i = 0; i < fade; i++) {
+        const g = (fade - i) / (fade + 1);
+        L[m - fade + i] *= g;
+        R[m - fade + i] *= g;
+      }
+      for (let i = m; i < n; i++) { L[i] = 0; R[i] = 0; }
+      if (this.playing) Atomics.add(ctl, 2, 1);
+      this.playing = false;
+    } else {
+      this.playing = true;
+    }
+    Atomics.store(ctl, 0, (r + m) | 0);
+    return true;
+  }
+}
+registerProcessor('p2r-mix', P2RMix);
+`;
+  let ring = null;
+  // Starts the worklet; the output rate, or undefined without shared memory
+  // (the game then uses its Web Audio fallback).
+  p2r.audioOpen = () => {
+    if (!window.crossOriginIsolated || typeof SharedArrayBuffer !== 'function' || !window.AudioWorkletNode) return undefined;
+    try {
+      const ctx = new AudioContext({ latencyHint: 'interactive' });
+      const cap = 1 << 16;
+      const data = new Float32Array(new SharedArrayBuffer(cap * 2 * 4));
+      const ctl = new Int32Array(new SharedArrayBuffer(16));
+      ring = { ctx, data, ctl, cap };
+      const url = URL.createObjectURL(new Blob([WORKLET], { type: 'text/javascript' }));
+      ctx.audioWorklet.addModule(url).then(() => {
+        const node = new AudioWorkletNode(ctx, 'p2r-mix', {
+          numberOfInputs: 0,
+          numberOfOutputs: 1,
+          outputChannelCount: [2],
+          processorOptions: { data: data.buffer, ctl: ctl.buffer, cap },
+        });
+        node.connect(ctx.destination);
+        ring.node = node;
+      }).catch((e) => console.warn('portal2rust: audio worklet failed', e));
+      return ctx.sampleRate;
+    } catch (e) {
+      console.warn('portal2rust: no audio worklet', e);
+      ring = null;
+      return undefined;
+    }
+  };
+  const ringStatus = new Int32Array(2);
+  // [frames queued, underruns so far]
+  p2r.audioStatus = () => {
+    if (ring) {
+      ringStatus[0] = (Atomics.load(ring.ctl, 1) - Atomics.load(ring.ctl, 0)) | 0;
+      ringStatus[1] = Atomics.load(ring.ctl, 2);
+    }
+    return ringStatus;
+  };
+  // Appends interleaved stereo frames (a view into the game's memory).
+  p2r.audioPush = (samples) => {
+    if (!ring) return;
+    const { data, ctl, cap } = ring;
+    const w = Atomics.load(ctl, 1);
+    const free = cap - ((w - Atomics.load(ctl, 0)) | 0);
+    const frames = Math.min(samples.length >> 1, free);
+    const start = w & (cap - 1);
+    const first = Math.min(frames, cap - start);
+    data.set(samples.subarray(0, first * 2), start * 2);
+    if (frames > first) data.set(samples.subarray(first * 2, frames * 2), 0);
+    Atomics.store(ctl, 1, (w + frames) | 0);
+  };
 
   // ------------------------------------------------------------- fonts
 
@@ -781,6 +932,26 @@
   });
 
   window.addEventListener('pagehide', flushWrites);
+
+  // A reloaded page leaves its GPU device behind until the garbage
+  // collector gets to it, with all of its video memory; destroying it as
+  // the page goes frees that at once.
+  const devices = [];
+  if (window.GPUAdapter) {
+    const requestDevice = GPUAdapter.prototype.requestDevice;
+    GPUAdapter.prototype.requestDevice = function (...args) {
+      return requestDevice.apply(this, args).then((device) => {
+        devices.push(device);
+        return device;
+      });
+    };
+  }
+  window.addEventListener('pagehide', (e) => {
+    if (e.persisted) return; // kept for the back/forward cache
+    for (const device of devices) {
+      try { device.destroy(); } catch { /* already gone */ }
+    }
+  });
 
   boot().catch((e) => fatal(e.message || e, e.title));
 })();

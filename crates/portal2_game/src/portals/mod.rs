@@ -32,6 +32,15 @@ pub struct PortalsPlugin;
 
 impl Plugin for PortalsPlugin {
     fn build(&self, app: &mut App) {
+        {
+            let mut console = app.world_mut().resource_mut::<portal2_core::console::Console>();
+            // Resolution of the views through the portals, as a fraction of
+            // the window's, and how many levels of portals seen in portals
+            // are drawn (the game's `r_portal_stencil_depth`: 2). The
+            // browser build's dynamic quality lowers them under load.
+            console.register_cvar("r_portal_scale", "1", 0);
+            console.register_cvar("r_portal_depth", "2", 0);
+        }
         app.add_plugins(MaterialPlugin::<PortalMaterial>::default())
             .init_resource::<Portals>()
             .init_resource::<PortalHoles>()
@@ -76,7 +85,10 @@ impl Default for PortalColors {
 pub struct PortalParams {
     pub color: Vec4,
     pub state: Vec4,
-    /// x: rim brightness multiplier (the visual overhaul's HDR glow, 1 otherwise).
+    /// x: rim brightness multiplier (the visual overhaul's HDR glow, 1
+    /// otherwise); yz: the pixel size of the target the surface is drawn
+    /// into, which the view texture covers at its own (possibly lower)
+    /// resolution.
     pub glow: Vec4,
 }
 
@@ -219,6 +231,17 @@ fn view_texture(width: u32, height: u32) -> Image {
     );
     image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST | TextureUsages::RENDER_ATTACHMENT;
     image
+}
+
+/// `r_portal_scale`: the views' resolution as a fraction of the window's.
+fn portal_scale(console: &portal2_core::console::Console) -> f32 {
+    let s = console.f32("r_portal_scale");
+    if s > 0.0 { s.clamp(0.25, 1.0) } else { 1.0 }
+}
+
+/// Pixel size of the portal views for a window of `screen` pixels.
+fn portal_view_size(screen: UVec2, scale: f32) -> UVec2 {
+    (screen.as_vec2() * scale).ceil().as_uvec2().clamp(UVec2::ONE, screen.max(UVec2::ONE))
 }
 
 /// A map-placed portal moves onto the surface behind it, 1/32 unit out, as
@@ -474,7 +497,13 @@ fn animate_portals(
     query: Query<&Portal>,
     mut materials: ResMut<Assets<PortalMaterial>>,
     mut cameras: Query<&mut Camera>,
+    console: Res<portal2_core::console::Console>,
+    windows: Query<&Window, With<PrimaryWindow>>,
 ) {
+    let screen = windows.single().map(|w| UVec2::new(w.physical_width(), w.physical_height())).unwrap_or(UVec2::ONE).max(UVec2::ONE);
+    let view = portal_view_size(screen, portal_scale(&console));
+    // With one level only, a portal seen inside a portal shows static.
+    let inner_views = console.i32("r_portal_depth") >= 2;
     let now = time.elapsed_secs_f64();
     let open_portals: Vec<&Portal> = portals.entities.iter().flatten().filter_map(|e| query.get(*e).ok()).collect();
     let linked = open_portals.len() == 2;
@@ -485,14 +514,29 @@ fn animate_portals(
         // The opening grows at 2 per second.
         let open = ((now - p.opened_at) * 2.0).clamp(0.0, 1.0) as f32;
         let static_amount = if linked { (1.0 - (now - last_opened)).clamp(0.0, 1.0) as f32 } else { 1.0 };
-        let state = Vec4::new(if linked { 1.0 } else { 0.0 }, now as f32, open, 1.0 - static_amount);
-        for (material, state) in [(&p.material, state), (&p.inner_material, state), (&p.end_material, Vec4::new(0.0, state.y, open, 0.0))] {
-            if let Some(mut m) = materials.get_mut(material) {
+        // The shader takes the time from the view, so a portal's materials
+        // stay unchanged (and are not prepared again) once it has opened.
+        let state = Vec4::new(if linked { 1.0 } else { 0.0 }, 0.0, open, 1.0 - static_amount);
+        let end_state = Vec4::new(0.0, 0.0, open, 0.0);
+        let inner_state = if inner_views { state } else { end_state };
+        // The outer surface is drawn in the window, the inner one in the
+        // outer view.
+        for (material, state, target) in
+            [(&p.material, state, screen), (&p.inner_material, inner_state, view), (&p.end_material, end_state, view)]
+        {
+            let target = target.as_vec2();
+            if materials.get(material).is_some_and(|m| m.params.state != state || m.params.glow.yz() != target)
+                && let Some(mut m) = materials.get_mut(material)
+            {
                 m.params.state = state;
+                m.params.glow.y = target.x;
+                m.params.glow.z = target.y;
             }
         }
         for camera in [p.camera, p.inner_camera] {
-            if let Ok(mut c) = cameras.get_mut(camera) {
+            if let Ok(mut c) = cameras.get_mut(camera)
+                && c.is_active != linked
+            {
                 c.is_active = linked;
             }
         }
@@ -517,16 +561,19 @@ fn update_holes(portals: Res<Portals>, query: Query<&Portal>, world: Res<Collisi
     }
 }
 
-/// Keeps the portal views the size of the window: they are sampled in
-/// screen space with the main view's projection.
+/// Keeps the portal views the size of the window (times `r_portal_scale`):
+/// they are sampled in screen space with the main view's projection.
 fn resize_portal_views(
     windows: Query<&Window, With<PrimaryWindow>>,
     portals: Res<Portals>,
     query: Query<&Portal>,
     mut images: ResMut<Assets<Image>>,
+    console: Res<portal2_core::console::Console>,
 ) {
     let Ok(window) = windows.single() else { return };
-    let size = Extent3d { width: window.physical_width().max(1), height: window.physical_height().max(1), depth_or_array_layers: 1 };
+    let screen = UVec2::new(window.physical_width(), window.physical_height()).max(UVec2::ONE);
+    let view = portal_view_size(screen, portal_scale(&console));
+    let size = Extent3d { width: view.x, height: view.y, depth_or_array_layers: 1 };
     for p in portals.entities.iter().flatten().filter_map(|e| query.get(*e).ok()) {
         for handle in [&p.texture, &p.inner_texture] {
             if images.get(handle).is_some_and(|i| i.texture_descriptor.size != size)
@@ -557,12 +604,16 @@ fn update_portal_cameras(
     windows: Query<&Window, With<PrimaryWindow>>,
     map: Option<Res<CurrentMap>>,
     mut pvs: Local<PvsCache>,
+    console: Res<portal2_core::console::Console>,
 ) {
     let Some(frames) = linked_frames(&portals, &query) else { return };
     let Ok((main_t, main_proj, main_exposure)) = main.single() else { return };
     let Projection::Perspective(base) = main_proj else { return };
     let Ok(window) = windows.single() else { return };
     let screen = UVec2::new(window.physical_width(), window.physical_height()).max(UVec2::ONE);
+    // The views' own pixels: rectangles found on screen are scaled to them.
+    let view_size = portal_view_size(screen, portal_scale(&console));
+    let inner_views = console.i32("r_portal_depth") >= 2;
     let eye = main_t.compute_affine();
     let full_clip_from_view = base.get_clip_from_view();
     let main_clip_from_world = full_clip_from_view * eye.inverse();
@@ -588,7 +639,7 @@ fn update_portal_cameras(
         let outer_rect = visible.then(|| pixel_rect(&seen, screen)).flatten();
         // The portal again inside its own view, in front of the exit's clip
         // plane, seen from where the exit looks out.
-        let inner_rect = outer_rect.and_then(|outer_rect| {
+        let inner_rect = outer_rect.filter(|_| inner_views).and_then(|outer_rect| {
             if from.to_local(outer.translation.into()).x <= QUAD_OFFSET {
                 return None;
             }
@@ -604,12 +655,12 @@ fn update_portal_cameras(
         });
         for (camera, virt, rect) in [(p.camera, outer, outer_rect), (p.inner_camera, m * outer, inner_rect)] {
             let Ok((mut cam, mut t, mut proj, mut exposure)) = cameras.get_mut(camera) else { continue };
-            let Some(rect) = rect else {
+            let Some(rect) = rect.and_then(|r| scale_rect(r, screen, view_size)) else {
                 cam.is_active = false;
                 continue;
             };
             cam.is_active = true;
-            let full = rect.min == UVec2::ZERO && rect.max == screen;
+            let full = rect.min == UVec2::ZERO && rect.max == view_size;
             cam.viewport = (!full).then(|| Viewport { physical_position: rect.min, physical_size: rect.size(), ..default() });
             *t = Transform::from_matrix(virt.into());
             *exposure = *main_exposure;
@@ -627,8 +678,11 @@ fn update_portal_cameras(
                 pp.base = base.clone();
                 pp.clip_plane = Some(plane_view);
                 pp.cull_plane = Some(plane_world);
+                // From the viewport itself, so that the projection covers
+                // exactly the pixels drawn.
                 pp.crop = (!full).then(|| {
-                    let ndc = |p: UVec2| Vec2::new(p.x as f32 / screen.x as f32 * 2.0 - 1.0, 1.0 - p.y as f32 / screen.y as f32 * 2.0);
+                    let ndc =
+                        |p: UVec2| Vec2::new(p.x as f32 / view_size.x as f32 * 2.0 - 1.0, 1.0 - p.y as f32 / view_size.y as f32 * 2.0);
                     Rect::from_corners(ndc(rect.min), ndc(rect.max))
                 });
             }
@@ -640,6 +694,19 @@ fn update_portal_cameras(
 /// window's larger side: refraction, the volumetric light's upsampling and
 /// filtering read a little around each pixel they draw.
 const RECT_MARGIN: f32 = 0.03;
+
+/// A rectangle of window pixels as the pixels of a view `view` in size
+/// covering the same window (rounded outwards); None when empty.
+fn scale_rect(rect: URect, screen: UVec2, view: UVec2) -> Option<URect> {
+    if view == screen {
+        return Some(rect);
+    }
+    let k = view.as_vec2() / screen.as_vec2();
+    let min = (rect.min.as_vec2() * k).floor().as_uvec2().min(view);
+    let max = (rect.max.as_vec2() * k).ceil().as_uvec2().min(view);
+    let r = URect::from_corners(min, max);
+    (!r.is_empty()).then_some(r)
+}
 
 /// The corners of a portal's quad.
 fn quad_corners(frame: &PortalFrame) -> [Vec3; 4] {

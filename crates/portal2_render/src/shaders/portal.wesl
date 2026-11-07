@@ -9,11 +9,12 @@
 
 import bevy_pbr::render::forward_io::VertexOutput;
 import bevy_pbr::render::mesh_view_bindings::view;
+import bevy_pbr::render::mesh_view_bindings::globals;
 
 struct PortalParams {
     // rgb: fallback rim colour (linear), a: colour scale
     color: vec4<f32>,
-    // x: linked (0/1), y: time, z: open amount (0..1), w: clarity (1 - static)
+    // x: linked (0/1), y: unused, z: open amount (0..1), w: clarity (1 - static)
     state: vec4<f32>,
     // x: rim brightness multiplier (the visual overhaul's HDR glow, else 1)
     glow: vec4<f32>,
@@ -39,7 +40,9 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     let open = clamp(portal.state.z, 0.0, 1.0);
     let clarity = clamp(portal.state.w, 0.0, 1.0);
-    let time = portal.state.y;
+    // The frame's time from the view (the same game clock): the material
+    // itself only changes while a portal opens or its static fades.
+    let time = globals.time;
 
     // The rim's coordinates run a little past the quad.
     let t0 = uv * 1.075 - vec2<f32>(0.0375);
@@ -74,10 +77,12 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let cover = min(alpha, 1.0);
 
     if inside > 0.5 && portal.state.x > 0.5 {
-        // The view texture is the window's size; a view drawing only part
-        // of it (a cropped portal view showing an inner portal) has a
-        // smaller viewport at the same place.
-        let screen = in.position.xy / vec2<f32>(textureDimensions(view_tex));
+        // The view texture covers the target this surface is drawn into
+        // (glow.yz, its pixel size), maybe at a lower resolution; a view
+        // drawing only part of it (a cropped portal view showing an inner
+        // portal) has a smaller viewport at the same place.
+        let target_size = select(vec2<f32>(textureDimensions(view_tex)), portal.glow.yz, portal.glow.y > 1.5);
+        let screen = in.position.xy / target_size;
         let through = textureSampleLevel(view_tex, view_samp, screen, 0.0).rgb;
         return vec4<f32>(mix(through, fire, cover), 1.0);
     }

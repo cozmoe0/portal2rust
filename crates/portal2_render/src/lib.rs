@@ -45,7 +45,8 @@ impl Plugin for RenderSetupPlugin {
         .init_resource::<materials::MaterialCache>()
         // World lighting comes entirely from baked lightmaps and ambient cubes.
         .insert_resource(GlobalAmbientLight { brightness: 0.0, ..default() })
-        .insert_resource(ClearColor(Color::BLACK));
+        .insert_resource(ClearColor(Color::BLACK))
+        .add_systems(PostUpdate, single_cluster);
     }
 
     fn finish(&self, app: &mut App) {
@@ -66,5 +67,15 @@ impl Plugin for RenderSetupPlugin {
         if let Some(mut settings) = app.world_mut().get_resource_mut::<bevy::light::cluster::GlobalClusterSettings>() {
             settings.gpu_clustering = None;
         }
+    }
+}
+
+/// Nothing is lit by Bevy's clustered lights (see `finish`), yet every view
+/// would still build a grid of thousands of clusters on the CPU each frame:
+/// one cluster per view does. (`ClusterConfig::None` leaves the views'
+/// cluster bindings out, which the materials' layouts expect.)
+fn single_cluster(mut cameras: Query<&mut bevy::light::cluster::ClusterConfig, Added<Camera3d>>) {
+    for mut config in &mut cameras {
+        *config = bevy::light::cluster::ClusterConfig::Single;
     }
 }

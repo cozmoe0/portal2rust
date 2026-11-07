@@ -46,6 +46,10 @@ pub struct Video {
     pending: Option<(u32, Vec<u8>)>,
     stop: Arc<AtomicBool>,
     audio: Option<String>,
+    /// Held where it is (an in-world screen nobody can see); its clock
+    /// stops too.
+    paused: bool,
+    paused_at: Option<f64>,
 }
 
 impl Drop for Video {
@@ -139,6 +143,8 @@ impl Videos {
             pending: None,
             stop,
             audio: audio_name,
+            paused: false,
+            paused_at: None,
         };
         self.playing.push((id, video));
         Some(id)
@@ -146,6 +152,14 @@ impl Videos {
 
     pub fn get(&self, id: VideoId) -> Option<&Video> {
         self.playing.iter().find(|(i, _)| *i == id).map(|(_, v)| v)
+    }
+
+    /// Holds a video (or lets it go on): no frames are decoded or shown
+    /// while held, and it carries on from the same place.
+    pub fn set_paused(&mut self, id: VideoId, paused: bool) {
+        if let Some((_, v)) = self.playing.iter_mut().find(|(i, _)| *i == id) {
+            v.paused = paused;
+        }
     }
 
     pub fn close(&mut self, id: VideoId) {
@@ -216,6 +230,15 @@ fn update_videos(world: &mut World) {
         for (_, v) in videos.playing.iter_mut() {
             if v.finished {
                 continue;
+            }
+            if v.paused {
+                if v.started.is_some() && v.paused_at.is_none() {
+                    v.paused_at = Some(now);
+                }
+                continue;
+            }
+            if let (Some(at), Some(started)) = (v.paused_at.take(), v.started.as_mut()) {
+                *started += now - at;
             }
             let mut decoded = 0;
             // Timing starts with the first decoded frame.

@@ -85,11 +85,27 @@ impl Frame {
             let luma = &self.y.row(y)[..w];
             let cb = self.u.row(y / 2);
             let cr = self.v.row(y / 2);
-            let alpha = self.alpha.as_ref().map(|a| &a.row(y)[..w]);
-            for (x, px) in dst.as_chunks_mut::<4>().0.iter_mut().enumerate() {
-                let rgb = yuv_to_rgb(luma[x], cb[x / 2], cr[x / 2]);
-                px[..3].copy_from_slice(&rgb);
-                px[3] = alpha.map_or(255, |a| a[x]);
+            let pixels = dst.as_chunks_mut::<4>().0;
+            // Two pixels share each chroma sample: its terms are worked out
+            // once per pair (the same arithmetic as `yuv_to_rgb`).
+            for (pair, (px, luma)) in pixels.chunks_mut(2).zip(luma.chunks(2)).enumerate() {
+                let d = cb[pair] as i32 - 128;
+                let e = cr[pair] as i32 - 128;
+                let (r, g, b) = (104597 * e + 32768, -25675 * d - 53279 * e + 32768, 132201 * d + 32768);
+                for (p, &l) in px.iter_mut().zip(luma) {
+                    let c = (l as i32 - 16) * 76309;
+                    *p = [
+                        ((c + r) >> 16).clamp(0, 255) as u8,
+                        ((c + g) >> 16).clamp(0, 255) as u8,
+                        ((c + b) >> 16).clamp(0, 255) as u8,
+                        255,
+                    ];
+                }
+            }
+            if let Some(alpha) = &self.alpha {
+                for (p, &a) in pixels.iter_mut().zip(&alpha.row(y)[..w]) {
+                    p[3] = a;
+                }
             }
         }
     }

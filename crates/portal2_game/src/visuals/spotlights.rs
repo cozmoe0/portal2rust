@@ -272,8 +272,10 @@ fn update_spotlights(
         let forward: Vec3 = gt.rotation() * Vec3::X;
         let to_eye = (eye - gt.translation()).normalize_or_zero();
         let fade = forward.dot(to_eye).clamp(0.0, 1.0);
-        if let Some(mut m) = materials.get_mut(&halo.0)
-            && (m.params.state.y - fade).abs() > 0.01
+        // Asking for the material mutably marks it changed (and prepares it
+        // again), so only when the fade has moved.
+        if materials.get(&halo.0).is_some_and(|m| (m.params.state.y - fade).abs() > 0.01)
+            && let Some(mut m) = materials.get_mut(&halo.0)
         {
             m.params.state.y = fade;
         }

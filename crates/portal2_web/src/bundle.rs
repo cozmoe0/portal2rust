@@ -37,16 +37,95 @@ fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
 }
 
 /// What the patch changes, and a marker for copies already patched.
-const WGPU_PATCH: &str = "p2r-wgpu-patch-1";
+const WGPU_PATCH: &str = "p2r-wgpu-patch-3";
+
+/// Textures and buffers destroyed a frame after their last handle drops.
+const GC_MODULE: &str = r#"
+/// portal2rust: a browser frees a texture's or buffer's memory only when it
+/// is destroyed or its JavaScript object is garbage collected, and this
+/// backend left dropped ones to the collector, which knows nothing of GPU
+/// memory: render targets reallocated on a resize piled up until the GPU
+/// paged. Each texture and buffer gets a guard that its views and the bind
+/// groups using it share, as native wgpu's own references work; when the
+/// last one goes, the resource is destroyed at the start of the next frame,
+/// by which time every command using it has been submitted.
+mod p2r_gc {
+    use alloc::{rc::Rc, vec::Vec};
+    use core::cell::RefCell;
+
+    use super::webgpu_sys;
+
+    pub enum Kind {
+        Texture(webgpu_sys::GpuTexture),
+        Buffer(webgpu_sys::GpuBuffer),
+    }
+
+    pub struct Guard(Option<Kind>);
+
+    impl core::fmt::Debug for Guard {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            f.write_str("Guard")
+        }
+    }
+
+    struct State {
+        frame: u64,
+        pending: Vec<(u64, Kind)>,
+    }
+
+    struct Shared(RefCell<State>);
+
+    // SAFETY: the WebGPU backend runs on the page's one thread.
+    unsafe impl Sync for Shared {}
+
+    static STATE: Shared = Shared(RefCell::new(State { frame: 0, pending: Vec::new() }));
+
+    pub fn guard(kind: Kind) -> Rc<Guard> {
+        Rc::new(Guard(Some(kind)))
+    }
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            // (wgpu is a 2021-edition crate: no `let` chains.)
+            let Some(kind) = self.0.take() else { return };
+            if let Ok(mut state) = STATE.0.try_borrow_mut() {
+                let frame = state.frame;
+                state.pending.push((frame, kind));
+            }
+        }
+    }
+
+    /// A new frame: what was dropped in an earlier one goes.
+    pub fn next_frame() {
+        let due: Vec<Kind> = {
+            let Ok(mut state) = STATE.0.try_borrow_mut() else { return };
+            state.frame += 1;
+            let frame = state.frame;
+            let (due, keep): (Vec<_>, Vec<_>) = state.pending.drain(..).partition(|(f, _)| *f < frame);
+            state.pending = keep;
+            due.into_iter().map(|(_, k)| k).collect()
+        };
+        for kind in due {
+            match kind {
+                Kind::Texture(t) => t.destroy(),
+                Kind::Buffer(b) => b.destroy(),
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WebBindGroup {"#;
 
 /// wgpu's WebGPU backend reads a device's features and limits back from the
 /// browser on every query (about fifty calls into JavaScript), and Bevy asks
 /// for the limits on every draw: a sixth of a frame's time in busy views.
 /// Both never change for a device, so the browser build uses a copy of the
-/// locked wgpu release that keeps the first answer. The copy lives in the
-/// data folder and only this build points Cargo at it. `None` (and a
-/// warning) when the source is not where Cargo keeps it or no longer looks
-/// as expected.
+/// locked wgpu release that keeps the first answer. The same copy destroys
+/// textures and buffers once nothing refers to them (see `GC_MODULE`). The
+/// copy lives in the data folder and only this build points Cargo at it.
+/// `None` (and a warning) when the source is not where Cargo keeps it or no
+/// longer looks as expected.
 fn patched_wgpu(opts: &Options) -> Option<PathBuf> {
     let lock = std::fs::read_to_string(workspace_root().join("Cargo.lock")).ok()?;
     let version = locked_version(&lock, "wgpu")?;
@@ -86,18 +165,76 @@ fn patched_wgpu(opts: &Options) -> Option<PathBuf> {
             "impl dispatch::DeviceInterface for WebDevice {\n    fn features(&self) -> crate::Features {\n        map_wgt_features(self.inner.features())\n    }\n\n    fn limits(&self) -> crate::Limits {\n        map_wgt_limits(self.inner.limits())\n    }",
             "impl WebDevice {\n    fn p2r_caps(&self) -> &(crate::Features, crate::Limits) {\n        self.p2r_caps.get_or_init(|| (map_wgt_features(self.inner.features()), map_wgt_limits(self.inner.limits())))\n    }\n}\n\nimpl dispatch::DeviceInterface for WebDevice {\n    fn features(&self) -> crate::Features {\n        self.p2r_caps().0\n    }\n\n    fn limits(&self) -> crate::Limits {\n        self.p2r_caps().1.clone()\n    }",
         ),
+        // Destroying textures and buffers no longer referred to.
+        ("#[derive(Debug, Clone)]\npub struct WebBindGroup {", GC_MODULE),
+        (
+            "    pub(crate) inner: webgpu_sys::GpuBindGroup,\n    /// Unique identifier for this BindGroup.",
+            "    pub(crate) inner: webgpu_sys::GpuBindGroup,\n    /// portal2rust: keeps what the group refers to alive.\n    #[allow(dead_code)]\n    p2r: Vec<Rc<p2r_gc::Guard>>,\n    /// Unique identifier for this BindGroup.",
+        ),
+        (
+            "    pub(crate) inner: webgpu_sys::GpuTextureView,\n    /// Unique identifier for this TextureView.",
+            "    pub(crate) inner: webgpu_sys::GpuTextureView,\n    p2r: Option<Rc<p2r_gc::Guard>>,\n    /// Unique identifier for this TextureView.",
+        ),
+        (
+            "    mapping: Rc<RefCell<WebBufferMapState>>,\n    /// Unique identifier for this Buffer.",
+            "    mapping: Rc<RefCell<WebBufferMapState>>,\n    p2r: Option<Rc<p2r_gc::Guard>>,\n    /// Unique identifier for this Buffer.",
+        ),
+        (
+            "    fn new(inner: webgpu_sys::GpuBuffer, desc: &crate::BufferDescriptor<'_>) -> Self {\n        Self {\n            inner,",
+            "    fn new(inner: webgpu_sys::GpuBuffer, desc: &crate::BufferDescriptor<'_>) -> Self {\n        Self {\n            p2r: Some(p2r_gc::guard(p2r_gc::Kind::Buffer(inner.clone()))),\n            inner,",
+        ),
+        (
+            "    drop_guard: Option<Rc<DropGuard>>,\n    /// Unique identifier for this Texture.",
+            "    drop_guard: Option<Rc<DropGuard>>,\n    p2r: Option<Rc<p2r_gc::Guard>>,\n    /// Unique identifier for this Texture.",
+        ),
+        (
+            "        let texture = self.inner.create_texture(&mapped_desc).unwrap();\n        WebTexture {\n            inner: texture,",
+            "        let texture = self.inner.create_texture(&mapped_desc).unwrap();\n        WebTexture {\n            p2r: Some(p2r_gc::guard(p2r_gc::Kind::Texture(texture.clone()))),\n            inner: texture,",
+        ),
+        (
+            "        let web_surface_texture = WebTexture {\n            inner: surface_texture,",
+            "        let web_surface_texture = WebTexture {\n            p2r: None,\n            inner: surface_texture,",
+        ),
+        (
+            "            drop_guard: Some(Rc::new(DropGuard::new(drop_callback))),\n",
+            "            drop_guard: Some(Rc::new(DropGuard::new(drop_callback))),\n            p2r: None,\n",
+        ),
+        (
+            "        WebTextureView {\n            inner: view,\n",
+            "        WebTextureView {\n            p2r: self.p2r.clone(),\n            inner: view,\n",
+        ),
+        (
+            "        let mapped_entries = desc\n            .entries\n            .iter()\n            .map(|binding| match binding.resource {",
+            "        let mut p2r_guards = Vec::new();\n        let mapped_entries = desc\n            .entries\n            .iter()\n            .map(|binding| match binding.resource {",
+        ),
+        (
+            "                    let buffer = buffer.inner.as_webgpu();\n                    let mapped_buffer_binding",
+            "                    let buffer = buffer.inner.as_webgpu();\n                    p2r_guards.extend(buffer.p2r.clone());\n                    let mapped_buffer_binding",
+        ),
+        (
+            "                    let texture_view = &texture_view.inner.as_webgpu().inner;\n",
+            "                    let texture_view = texture_view.inner.as_webgpu();\n                    p2r_guards.extend(texture_view.p2r.clone());\n                    let texture_view = &texture_view.inner;\n",
+        ),
+        (
+            "        WebBindGroup {\n            inner: bind_group,\n",
+            "        WebBindGroup {\n            p2r: p2r_guards,\n            inner: bind_group,\n",
+        ),
+        (
+            "        let detail = WebSurfaceOutputDetail {\n",
+            "        p2r_gc::next_frame();\n        let detail = WebSurfaceOutputDetail {\n",
+        ),
     ];
     let mut patched = text.replace("\r\n", "\n");
     for (from, to) in edits {
         if patched.matches(from).count() != 1 {
-            eprintln!("p2web: warning: wgpu {version} changed shape; building without the WebGPU limits cache");
+            eprintln!("p2web: warning: wgpu {version} changed shape; building without the WebGPU patch");
             let _ = std::fs::remove_dir_all(&dest);
             return None;
         }
         patched = patched.replace(from, to);
     }
     std::fs::write(&file, patched).ok()?;
-    std::fs::write(dest.join(WGPU_PATCH), "features and limits cached per device\n").ok()?;
+    std::fs::write(dest.join(WGPU_PATCH), "features and limits cached per device; unused textures and buffers destroyed\n").ok()?;
     Some(dest)
 }
 
