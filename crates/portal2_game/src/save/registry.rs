@@ -207,6 +207,7 @@ fn load_physics(world: &mut World, e: Entity, bytes: &[u8]) -> Result<(), String
 pub fn after_restore(world: &mut World) {
     crate::entities::scenes::resume_speech(world);
     crate::entities::movers::restore_brush_collision(world);
+    crate::entities::movers::restore_mover_positions(world);
     crate::entities::props::restore_door_windows(world);
     crate::screen::drop_stale_fade(world);
     if let Some(held) = world.get_resource::<crate::physics::carry::Holding>().and_then(|h| h.entity) {

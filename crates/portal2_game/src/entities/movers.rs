@@ -121,8 +121,8 @@ fn spawn_door(world: &mut World, e: Entity) {
         let movedir = angles_forward(me.get_vec3("movedir").unwrap_or(Vec3::ZERO));
         let size = model_size(world, &me);
         let lip = me.get_f32("lip").unwrap_or(0.0);
-        let distance = (movedir.abs().dot(size) - lip).max(0.0);
-        (Transform { translation: closed.translation + movedir * distance, ..closed }, distance)
+        let distance = door_distance(movedir, size, lip);
+        (Transform { translation: closed.translation + movedir * distance, ..closed }, distance.abs())
     };
     let start_open = me.get_i32("spawnpos") == Some(1) || me.has_flag(1);
     let progress = if start_open { 1.0 } else { 0.0 };
@@ -140,6 +140,16 @@ fn spawn_door(world: &mut World, e: Entity) {
         linear: false,
     };
     world.entity_mut(e).insert(mover);
+}
+
+/// How far a sliding door moves along its move direction when it opens: its
+/// size along that direction less the lip. A lip larger than the door makes
+/// this negative, and the door then opens the opposite way, as in the game:
+/// `sp_a2_sphere_peek`'s 32-unit ceiling panel (lip 224, moving "down")
+/// opens 192 units up at map spawn and closes back down when GLaDOS lowers
+/// the ceiling.
+fn door_distance(movedir: Vec3, size: Vec3, lip: f32) -> f32 {
+    movedir.abs().dot(size) - lip
 }
 
 fn spawn_movelinear(world: &mut World, e: Entity) {
@@ -182,6 +192,29 @@ pub fn rebase(world: &mut World, e: Entity, from: bevy::math::Affine3A, to: bevy
     let change = to.inverse() * from;
     m.closed = Transform::from_matrix(Mat4::from(change * m.closed.compute_affine()));
     m.open = Transform::from_matrix(Mat4::from(change * m.open.compute_affine()));
+}
+
+/// After a restore: every mover stands where its saved progress puts it
+/// between its end positions (worked out again from the map at spawn, see
+/// `Restore for Mover`). A save written while the end positions were wrong
+/// (before negative door distances, `sp_a2_sphere_peek`'s ceiling panel
+/// held at its closed spot although open) then comes back right. Skipped
+/// for a mover parented elsewhere than the map says (`SetParent`), whose
+/// end positions the spawn code worked out in another space.
+pub fn restore_mover_positions(world: &mut World) {
+    let movers: Vec<(Entity, Mover)> = world.query::<(Entity, &Mover)>().iter(world).map(|(e, m)| (e, m.clone())).collect();
+    for (e, m) in movers {
+        let spawn_parent =
+            world.get::<MapEntity>(e).and_then(|me| me.get("parentname")).map(|p| p.split(',').next().unwrap_or(p).to_ascii_lowercase());
+        let parent = world
+            .get::<ChildOf>(e)
+            .and_then(|c| world.get::<MapEntity>(c.parent()))
+            .and_then(|me| me.targetname.as_deref())
+            .map(str::to_ascii_lowercase);
+        if spawn_parent == parent {
+            apply_progress(world, e, &m);
+        }
+    }
 }
 
 fn apply_progress(world: &mut World, e: Entity, m: &Mover) {
@@ -384,8 +417,11 @@ impl portal2_core::save::Restore for Mover {
     fn keep(&mut self, live: Self) {
         self.closed = live.closed;
         self.open = live.open;
-        // Map data that no input changes; older saves hold a wrong one.
+        // Map data that no input changes; older saves hold a wrong one
+        // (a door whose lip passes its size saved with no travel at all,
+        // which closed it in one step).
         self.wait = live.wait;
+        self.travel = live.travel;
         if self.wait < 0.0 {
             self.close_at = None;
         }
@@ -395,3 +431,23 @@ impl portal2_core::save::Restore for Mover {
 impl portal2_core::save::Restore for Rotating {}
 
 impl portal2_core::save::Restore for Toggleable {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A door moves its size less the lip; a lip past its size sends it the
+    /// other way (`sp_a2_sphere_peek`'s ceiling panel: 32 thick, lip 224,
+    /// moving down, opens 192 up).
+    #[test]
+    fn door_distance_goes_negative_past_the_lip() {
+        let down = angles_forward(Vec3::new(90.0, 0.0, 0.0));
+        let size = Vec3::new(256.0, 256.0, 32.0);
+        assert!((door_distance(down, size, 224.0) + 192.0).abs() < 1e-3);
+        let open = Vec3::new(-1952.0, 1568.0, 464.0) + down * door_distance(down, size, 224.0);
+        assert!((open.z - 656.0).abs() < 1e-3, "{open:?}");
+        // An ordinary door slides its size less the lip.
+        let side = angles_forward(Vec3::new(0.0, 90.0, 0.0));
+        assert!((door_distance(side, Vec3::new(8.0, 64.0, 128.0), 4.0) - 60.0).abs() < 1e-3);
+    }
+}
