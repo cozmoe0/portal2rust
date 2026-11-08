@@ -140,14 +140,20 @@ pub struct DamageFade {
 const DAMAGE_FADE_PER_POINT: f32 = 0.0137;
 const DAMAGE_FADE_DECAY: f32 = 0.09;
 /// The painter blends in linear light, the game on the displayed (gamma)
-/// image: the same look needs the opacity raised to `1 - (1 - a)^2.2` and a
-/// colour that lands mid-tones where the game's (45, 0, 0) does.
-const DAMAGE_FADE_GAMMA: f32 = 2.2;
-const DAMAGE_FADE_PAINT_COLOR: [u8; 3] = [56, 0, 0];
+/// image: the same look needs the opacity raised to `1 - (1 - a)^1.7` and a
+/// dark, slightly brown red. Fitted to the game's screen under a turret's
+/// fire (its displayed image going to about 0.64 × itself + (22, 6.5, 7.3)):
+/// a purer red lifted the dark parts of the picture too far and too red.
+const DAMAGE_FADE_GAMMA: f32 = 1.7;
+const DAMAGE_FADE_PAINT_COLOR: [u8; 3] = [51, 12, 14];
+
+/// Most the red builds up to: under a turret's steady fire the game's
+/// screen holds at about 0.36 to 0.4 (a single `hurtme 30` reaches 0.41).
+const DAMAGE_FADE_MAX: f32 = 0.42;
 
 impl DamageFade {
     pub fn hurt(&mut self, amount: f32) {
-        self.alpha = (self.alpha + amount.max(0.0) * DAMAGE_FADE_PER_POINT).min(1.0);
+        self.alpha = (self.alpha + amount.max(0.0) * DAMAGE_FADE_PER_POINT).min(DAMAGE_FADE_MAX.max(self.alpha));
     }
 }
 

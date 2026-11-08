@@ -70,7 +70,12 @@ fn apply_damage(
     let now = clock.curtime;
     let Ok((mut p, mut h)) = players.single_mut() else { return };
     if p.noclip || h.god {
-        damage.clear();
+        // The screen still turns red when hit (the game's does under `god`).
+        for d in damage.read() {
+            if let Some(f) = fade.as_mut() {
+                f.hurt(d.amount);
+            }
+        }
         return;
     }
     for d in damage.read() {
