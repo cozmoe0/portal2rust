@@ -9,6 +9,7 @@ pub mod func_tank;
 pub mod funnel;
 pub mod futbol;
 pub mod laser;
+pub mod receiver_visual;
 pub mod security_camera;
 pub mod turret;
 pub mod turret_visual;
@@ -36,6 +37,7 @@ impl Plugin for DevicesPlugin {
             catapult::CatapultPlugin,
             turret::TurretPlugin,
             turret_visual::TurretVisualPlugin,
+            receiver_visual::ReceiverVisualPlugin,
             security_camera::SecurityCameraPlugin,
             func_tank::FuncTankPlugin,
             futbol::FutbolPlugin,

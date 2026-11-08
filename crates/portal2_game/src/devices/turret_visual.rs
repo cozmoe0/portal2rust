@@ -9,6 +9,10 @@
 //! second closed, and out (0 at 0.1) over a quarter second when it dies or
 //! a second when switched off. Changes take a tenth of a second otherwise.
 //!
+//! The game measures how much of a glow the view sees by counting the
+//! pixels of a small quad at it that pass the depth test, so the turret's
+//! own shell hides the eye from behind and most of it edge-on.
+//!
 //! With the overhaul's lights, the eye casts a small red glow on what is
 //! around it, the laser sight a thin red light along its length (and a
 //! faint red line in the air, with the volumetrics) and a brighter spot
@@ -32,6 +36,9 @@ const EYE_SPRITE: &str = "sprites/glow1";
 const EYE_ATTACHMENT: &str = "light";
 /// World glow (render mode 9).
 const MODE_WORLD_GLOW: f32 = 9.0;
+/// How far in front of the lens the eye's light sits, so it lights what
+/// the eye faces rather than the inside of the shell.
+const EYE_LIGHT_OFFSET: f32 = 4.0;
 /// The overhaul's lights.
 const EYE_LIGHT_COLOR: Vec3 = Vec3::new(1.0, 0.04, 0.02);
 const EYE_LIGHT_INTENSITY: f32 = 260.0;
@@ -60,8 +67,9 @@ pub struct TurretEye {
     brightness: f32,
     scale: f32,
     visible: f32,
-    /// Where the glow is (for the lights).
+    /// Where the glow is and the way the lens faces (for the lights).
     pub position: Vec3,
+    pub forward: Vec3,
 }
 
 /// The eye's brightness (0..255), scale and the seconds it takes to get
@@ -75,6 +83,17 @@ pub fn eye_look(state: EyeState, blink: bool) -> (f32, f32, f32) {
         EyeState::Dead => (0.0, 0.1, 0.25),
         EyeState::Disabled => (0.0, 0.1, 1.0),
     }
+}
+
+/// How much of the eye's glow the turret's own shell leaves in view, seen
+/// from `to_view` (unit vector from the lens toward the viewer) for a lens
+/// facing `forward`: all of it from the front, about a fifth edge-on and
+/// none from behind. The lens sits on the front of a rounded shell, so
+/// this stands in for the game's pixel count against the model's depth.
+pub fn shell_visibility(forward: Vec3, to_view: Vec3) -> f32 {
+    let d = forward.dot(to_view);
+    let t = ((d + 0.15) / 0.5).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
 }
 
 /// Moves `value` toward `target` at the pace that covers `span` in `time`.
@@ -140,17 +159,26 @@ fn draw_eyes(
                 scale,
                 visible: 0.0,
                 position: place.translation,
+                forward: (place.rotation * Vec3::X).normalize_or_zero(),
             });
             continue;
         };
         let (target, target_scale, fade) = eye_look(t.eye_state, t.eye_blink);
         eye.brightness = approach(eye.brightness, target, 255.0, fade, dt);
         eye.scale = approach(eye.scale, target_scale, 0.3, fade, dt);
+        let forward = (place.rotation * Vec3::X).normalize_or_zero();
         eye.position = place.translation;
-        // How much of the glow the view sees (the turret's own shell aside).
+        eye.forward = forward;
+        // How much of the glow the view sees: what the turret's own shell
+        // leaves (its collision hull is coarser than the model, so it can't
+        // stand in), then whether anything else is in the way.
         let seen = eye_pos.map_or(0.0, |from| {
-            let tr = physics.trace(from, place.translation, Vec3::ZERO, Vec3::ZERO, mask::SOLID_ALL, &[e]);
-            if !tr.hit() || tr.fraction > 0.995 { 1.0 } else { 0.0 }
+            let shell = shell_visibility(forward, (from - place.translation).normalize_or_zero());
+            if shell <= 0.0 {
+                return 0.0;
+            }
+            let tr = physics.trace(from, place.translation + forward, Vec3::ZERO, Vec3::ZERO, mask::SOLID_ALL, &[e]);
+            if !tr.hit() || tr.fraction > 0.995 { shell } else { 0.0 }
         });
         eye.visible += (seen - eye.visible) * (dt * 10.0).min(1.0);
         let on = eye.brightness > 0.5;
@@ -193,7 +221,7 @@ fn turret_lights(
         let glow = eye.brightness / 255.0;
         if glow > 0.02 {
             lights.frame.push(FxLightData {
-                position: eye.position,
+                position: eye.position + eye.forward * EYE_LIGHT_OFFSET,
                 shape: FxLightShape::Point { attenuation: Vec3::new(48.0, 0.0, 1.0) },
                 color: EYE_LIGHT_COLOR * EYE_LIGHT_INTENSITY * glow,
                 range: EYE_LIGHT_RANGE,
@@ -206,8 +234,11 @@ fn turret_lights(
         let Some(path) = sight.filter(|_| t.enabled && !matches!(t.state, TurretState::Dead | TurretState::Closing)) else {
             continue;
         };
+        // The sight starts inside the shell; its light starts where it
+        // leaves it, at the lens, so it doesn't bleed through the sides.
+        let out = (eye.position - path.start).dot(path.dir).clamp(0.0, path.start.distance(path.end));
         lights.frame.push(FxLightData {
-            position: path.start,
+            position: path.start + path.dir * out,
             shape: FxLightShape::Line { end: path.end, facing: Vec3::ZERO },
             color: LASER_LIGHT_COLOR * LASER_LIGHT_INTENSITY,
             range: LASER_LIGHT_RANGE,
@@ -244,5 +275,16 @@ mod tests {
             b = approach(b, 0.0, 255.0, 0.25, 0.01);
         }
         assert!(b.abs() < 1e-3, "{b}");
+    }
+
+    /// The shell hides the glow from behind, most of it edge-on, none of it
+    /// from the front.
+    #[test]
+    fn the_shell_hides_the_eye_from_behind() {
+        assert_eq!(shell_visibility(Vec3::X, Vec3::X), 1.0);
+        assert_eq!(shell_visibility(Vec3::X, -Vec3::X), 0.0);
+        let side = shell_visibility(Vec3::X, Vec3::Y);
+        assert!(side > 0.1 && side < 0.4, "{side}");
+        assert_eq!(shell_visibility(Vec3::X, Vec3::new(-0.3, 0.95, 0.0).normalize()), 0.0);
     }
 }

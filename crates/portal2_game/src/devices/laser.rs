@@ -13,6 +13,16 @@
 //! `prop_laser_catcher.poweron` and loops `prop_laser_catcher.powerloop`,
 //! showing its lit skin; powering down plays `prop_laser_catcher.poweroff`
 //! (server.dll `sub_103C61F0` / `sub_103C62C0`).
+//!
+//! What a beam powers is a box, not the model: catchers and relays make an
+//! internal `point_laser_target` at their model's `laser_target`
+//! attachment (server.dll `sub_103C59F0`), and each stretch of each beam
+//! is tested against every target's box (`sub_103B40E0`). The boxes are
+//! world-aligned (`sub_103C5B10`): a relay's (not a terminal point) 10 by
+//! 10 across and 17 up and down each way, so a beam through the hollow
+//! middle of `laser_receptacle.mdl` powers it and runs on; a terminal
+//! point's 11 each way, except in the centred catcher, where it is the
+//! catcher's forward times 15 plus its right and up times 20.
 
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, MeshVertexBufferLayoutRef, PrimitiveTopology};
@@ -32,7 +42,6 @@ use portal2_audio::SoundRequest;
 use portal2_core::entity::MapEntity;
 use portal2_core::sets::PlayerMoveSet;
 use portal2_core::vfs::GameFs;
-use portal2_render::models::StudioAnimator;
 use portal2_render::textures::TextureCache;
 use portal2_world::MapObject;
 use portal2_world::collision::{Collider as TraceCollider, Physics};
@@ -102,6 +111,64 @@ pub struct LaserReceiver {
     shown: Option<bool>,
 }
 
+/// The box a beam powers a receiver through: around `offset` (in the
+/// receiver's space), world-aligned.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct LaserTargetBox {
+    pub offset: Vec3,
+    pub size: TargetSize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum TargetSize {
+    /// A point that only passes the beam on (relays): 10, 10, 17.
+    PassThrough,
+    /// A terminal point: 11 each way.
+    Terminal,
+    /// The centred catcher's: its forward times 15 plus right and up
+    /// times 20.
+    CatcherCenter,
+}
+
+impl LaserTargetBox {
+    /// The box's centre and half extents for the receiver placed at `at`.
+    pub fn world(&self, at: &GlobalTransform) -> (Vec3, Vec3) {
+        let half = match self.size {
+            TargetSize::PassThrough => Vec3::new(10.0, 10.0, 17.0),
+            TargetSize::Terminal => Vec3::splat(11.0),
+            TargetSize::CatcherCenter => {
+                let r = at.rotation();
+                // Source's right is -Y.
+                (r * Vec3::X * 15.0 + (r * -Vec3::Y + r * Vec3::Z) * 20.0).abs()
+            }
+        };
+        (at.transform_point(self.offset), half)
+    }
+}
+
+/// Whether the stretch of beam crosses the box (slab test).
+pub fn segment_hits_box(seg: &BeamSegment, center: Vec3, half: Vec3) -> bool {
+    let d = seg.end - seg.start;
+    let (lo, hi) = (center - half, center + half);
+    let (mut enter, mut exit) = (0.0f32, 1.0f32);
+    for axis in 0..3 {
+        let (o, v) = (seg.start[axis], d[axis]);
+        if v.abs() < 1e-6 {
+            if o < lo[axis] || o > hi[axis] {
+                return false;
+            }
+            continue;
+        }
+        let (a, b) = ((lo[axis] - o) / v, (hi[axis] - o) / v);
+        enter = enter.max(a.min(b));
+        exit = exit.min(a.max(b));
+        if enter > exit {
+            return false;
+        }
+    }
+    true
+}
+
 /// A laser touched a turret this tick.
 #[derive(Message, Clone, Copy, Debug)]
 pub struct LaserHitTurret(pub Entity);
@@ -146,11 +213,35 @@ fn spawn_receiver(world: &mut World, e: Entity) {
     }) else {
         return;
     };
-    if let Some(path) = me.studio_model() {
+    let model = me.studio_model().and_then(|path| {
         let skin = me.get_i32("skin").unwrap_or(0).max(0) as usize;
-        attach_studio_model(world, e, &path, ModelOptions { skin, ..default() });
+        attach_studio_model(world, e, &path, ModelOptions { skin, ..default() })
+    });
+    // Catchers and relays power through a target at their model's
+    // `laser_target` attachment; a map's target is its own point.
+    let target = if me.classname == "point_laser_target" {
+        let terminal = me.get_i32("terminalpoint").unwrap_or(1) != 0;
+        Some(LaserTargetBox { offset: Vec3::ZERO, size: if terminal { TargetSize::Terminal } else { TargetSize::PassThrough } })
+    } else {
+        model.as_ref().and_then(|m| {
+            let mdl = &m.studio.mdl;
+            let a = &mdl.attachments[mdl.find_attachment("laser_target")?];
+            let bone = m.default_pose.get(a.bone.max(0) as usize).copied().unwrap_or(Mat4::IDENTITY);
+            let size = if me.classname == "prop_laser_relay" {
+                TargetSize::PassThrough
+            } else if me.studio_model().is_some_and(|p| p.eq_ignore_ascii_case("models/props/laser_catcher_center.mdl")) {
+                TargetSize::CatcherCenter
+            } else {
+                TargetSize::Terminal
+            };
+            Some(LaserTargetBox { offset: (bone * a.local).transform_point3(Vec3::ZERO), size })
+        })
+    };
+    let mut ent = world.entity_mut(e);
+    ent.insert(LaserReceiver::default());
+    if let Some(target) = target {
+        ent.insert(target);
     }
-    world.entity_mut(e).insert(LaserReceiver::default());
 }
 
 fn emitter_input(world: &mut World, call: &InputCall) -> bool {
@@ -177,7 +268,7 @@ fn update_lasers(
     portals: Res<Portals>,
     portal_query: Query<&Portal>,
     mut emitters: Query<(Entity, &mut LaserEmitter, &GlobalTransform)>,
-    mut receivers: Query<(Entity, &mut LaserReceiver, &GlobalTransform, &MapEntity, Option<&mut StudioAnimator>)>,
+    mut receivers: Query<(Entity, &mut LaserReceiver, &GlobalTransform, &MapEntity, Option<&LaserTargetBox>)>,
     cubes: Query<(&MapEntity, &GlobalTransform, &TraceCollider)>,
     players: Query<(Entity, &Player)>,
     parents: Query<&ChildOf>,
@@ -209,17 +300,12 @@ fn update_lasers(
                     let center = tr.translation + tr.rotation * ((col.shape.mins + col.shape.maxs) * 0.5);
                     Some((center, tr.rotation * Vec3::X))
                 }
-                // Relays let the beam run on through them.
-                "prop_laser_relay" => {
-                    let tr = t.compute_transform();
-                    Some((tr.translation + dir * 24.0, dir))
-                }
                 _ => None,
             }
         };
         let ignore = with_ancestors(e, &parents);
         let segments = trace_beam(&physics, frames, start, dir, LASER_MASK, &ignore, 16, redirect);
-        // Receivers hit by the beam's ends, and targets along its path.
+        // Receivers the beam ends on, and those whose target box it crosses.
         for seg in &segments {
             if let Some(hit) = seg.hit_entity
                 && let Ok((_, mut r, _, me, _)) = receivers.get_mut(hit)
@@ -232,9 +318,12 @@ fn update_lasers(
             {
                 turret_hits.write(LaserHitTurret(hit));
             }
-            for (_, mut r, rt, me, _) in &mut receivers {
-                if me.classname == "point_laser_target" && segment_point_distance(seg, rt.translation()).0 < 12.0 {
-                    r.hit = true;
+            for (_, mut r, rt, _, target) in &mut receivers {
+                if let Some(target) = target {
+                    let (center, half) = target.world(rt);
+                    if segment_hits_box(seg, center, half) {
+                        r.hit = true;
+                    }
                 }
             }
             if let Some((_, p)) = player
@@ -273,7 +362,7 @@ fn update_lasers(
         }
         laser.segments = segments;
     }
-    for (re, mut r, _, me, anim) in &mut receivers {
+    for (re, mut r, _, me, _) in &mut receivers {
         if r.hit {
             r.unhit_ticks = 0;
         } else {
@@ -283,10 +372,8 @@ fn update_lasers(
         if powered != r.powered {
             r.powered = powered;
             out.write(FireOutput::new(re, if powered { "OnPowered" } else { "OnUnpowered" }));
+            // The spin follows in `receiver_visual`.
             if me.classname != "point_laser_target" {
-                if let Some(mut a) = anim {
-                    a.set_sequence(if powered { "spin" } else { "idle" });
-                }
                 if powered {
                     sounds.write(SoundRequest::on("prop_laser_catcher.poweron", re));
                     sounds.write(SoundRequest::stop("prop_laser_catcher.poweroff", re));
@@ -564,3 +651,44 @@ impl portal2_core::save::Restore for LaserEmitter {
 }
 
 impl portal2_core::save::Restore for LaserReceiver {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn seg(start: Vec3, end: Vec3) -> BeamSegment {
+        BeamSegment { start, end, dir: (end - start).normalize(), hit_entity: None, through_portal: false }
+    }
+
+    /// A beam through a relay's hollow middle powers it; one above its box,
+    /// beside it or stopping short does not.
+    #[test]
+    fn beams_power_relays_through_their_target_box() {
+        let relay = LaserTargetBox { offset: Vec3::new(0.0, 0.0, 28.0), size: TargetSize::PassThrough };
+        let at = GlobalTransform::from_translation(Vec3::new(256.0, -576.0, 4.0));
+        let (center, half) = relay.world(&at);
+        assert_eq!(center, Vec3::new(256.0, -576.0, 32.0));
+        assert_eq!(half, Vec3::new(10.0, 10.0, 17.0));
+        let through = seg(Vec3::new(-544.0, -577.0, 18.0), Vec3::new(448.0, -577.0, 18.0));
+        assert!(segment_hits_box(&through, center, half));
+        let above = seg(Vec3::new(-544.0, -577.0, 52.0), Vec3::new(448.0, -577.0, 52.0));
+        assert!(!segment_hits_box(&above, center, half));
+        let beside = seg(Vec3::new(-544.0, -540.0, 18.0), Vec3::new(448.0, -540.0, 18.0));
+        assert!(!segment_hits_box(&beside, center, half));
+        let short = seg(Vec3::new(-544.0, -577.0, 18.0), Vec3::new(200.0, -577.0, 18.0));
+        assert!(!segment_hits_box(&short, center, half));
+        // Diagonally across the box.
+        let diagonal = seg(Vec3::new(200.0, -640.0, 32.0), Vec3::new(300.0, -500.0, 32.0));
+        assert!(segment_hits_box(&diagonal, center, half));
+    }
+
+    /// The centred catcher's box follows the way it faces.
+    #[test]
+    fn the_centred_catchers_box_turns_with_it() {
+        let catcher = LaserTargetBox { offset: Vec3::ZERO, size: TargetSize::CatcherCenter };
+        let facing_x = GlobalTransform::IDENTITY;
+        assert!((catcher.world(&facing_x).1 - Vec3::new(15.0, 20.0, 20.0)).abs().max_element() < 1e-4);
+        let facing_y = GlobalTransform::from_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2));
+        assert!((catcher.world(&facing_y).1 - Vec3::new(20.0, 15.0, 20.0)).abs().max_element() < 1e-4);
+    }
+}

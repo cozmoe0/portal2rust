@@ -369,6 +369,17 @@ From server.dll.
   plays `prop_laser_catcher.poweroff` and stops the loop
   (`sub_103C61F0` / `sub_103C62C0`). Catcher skins: clean 0 / 1, rusted
   (`SkinType`) 2 / 3.
+- What a beam powers is a box, not the model. Catchers and relays make an
+  internal `point_laser_target` at their model's `laser_target`
+  attachment (`sub_103C59F0`; a relay's is not a terminal point), and each
+  stretch of each beam is tested against every target's box (a swept box
+  and a ray-box test, `sub_103B40E0`); the beam's own trace skips
+  `point_laser_target`. The boxes are world-aligned (`sub_103C5B10`):
+  not terminal, 10 / 10 / 17 half extents (so a beam through the hollow
+  middle of `laser_receptacle.mdl`, which collides only at its feet and
+  cap, powers the relay and runs on); terminal, 11 each way, except a
+  target owned by `laser_catcher_center.mdl`, where they are
+  |forward × 15 + (right + up) × 20|.
 - Fizzlers: `VFX.FizzlerStart` when one comes on, `VFX.FizzlerDestroy` when
   it goes off; all of them share one `VFX.FizzlerLp` through a
   `fizzler_multiorigin_sound_player` (`sub_103970D0`).

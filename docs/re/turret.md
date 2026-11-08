@@ -94,6 +94,13 @@ dissipation) on the eye attachment: on its target brightness 255 and scale
 at 0.2; dormant 192 at 0.2 over 0.5 s; dead 0 at 0.1 over 0.25 s; disabled
 the same over 1 s.
 
+A world glow is drawn over everything, scaled by how much of a small quad
+at it passes the depth test, so the turret's own shell hides the eye from
+behind and most of it edge-on. The port has no depth query: it fades the
+glow by the angle between the lens's facing and the view (all of it from
+the front, about a fifth edge-on, none from behind; the collision hull is
+too coarse to trace against) and traces against everything else.
+
 ## Muzzle flash (client)
 
 `fire` and `fire2` carry `AE_NPC_MUZZLEFLASH` events at their first frame
