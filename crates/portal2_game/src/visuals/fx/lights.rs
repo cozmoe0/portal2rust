@@ -50,9 +50,13 @@ pub enum FxLightShape {
         exponent: f32,
         attenuation: Vec3,
     },
-    /// A tube from the light's position to `end`.
+    /// A tube from the light's position to `end`. With a non-zero `facing`
+    /// it shines mostly that way and round its sides, only faintly behind
+    /// (a light bridge lights the walls beside it and what stands on it more
+    /// than the floor beneath).
     Line {
         end: Vec3,
+        facing: Vec3,
     },
     /// A one-sided elliptical disc facing `normal` (portals).
     Ellipse {
@@ -94,7 +98,7 @@ impl FxLightData {
             FxLightShape::Spot { axis, cos_inner, cos_outer, exponent, attenuation } => {
                 (KIND_SPOT, axis, cos_outer, cos_inner, exponent, attenuation)
             }
-            FxLightShape::Line { end } => (KIND_LINE, end, 0.0, 0.0, 0.0, Vec3::ZERO),
+            FxLightShape::Line { end, facing } => (KIND_LINE, end, 0.0, 0.0, 0.0, facing),
             FxLightShape::Ellipse { normal, up, half_width, half_height } => (KIND_ELLIPSE, normal, half_width, half_height, 0.0, up),
         };
         let slot = shadow_slot.map_or(-1.0, |s| s as f32);
@@ -125,7 +129,7 @@ impl FxLightData {
     /// The nearest point of the light to `p` (for scoring).
     fn nearest(&self, p: Vec3) -> Vec3 {
         match self.shape {
-            FxLightShape::Line { end } => closest_on_segment(self.position, end, p),
+            FxLightShape::Line { end, .. } => closest_on_segment(self.position, end, p),
             _ => self.position,
         }
     }
@@ -330,7 +334,7 @@ fn laser_lights(settings: Res<FxSettings>, emitters: Query<&LaserEmitter>, mut l
             }
             lights.frame.push(FxLightData {
                 position: s.start,
-                shape: FxLightShape::Line { end: s.end },
+                shape: FxLightShape::Line { end: s.end, facing: Vec3::ZERO },
                 color: color * LASER_BEAM_INTENSITY,
                 range: LASER_RANGE,
                 flags: both,
@@ -409,7 +413,7 @@ mod tests {
     fn packing_and_scoring() {
         let line = FxLightData {
             position: Vec3::ZERO,
-            shape: FxLightShape::Line { end: Vec3::new(100.0, 0.0, 0.0) },
+            shape: FxLightShape::Line { end: Vec3::new(100.0, 0.0, 0.0), facing: Vec3::ZERO },
             color: Vec3::ONE,
             range: 100.0,
             flags: light_flags::DIFFUSE,

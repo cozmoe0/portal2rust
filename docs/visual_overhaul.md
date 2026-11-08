@@ -18,6 +18,7 @@ matches captures taken before the overhaul (see [Verification](#verification)).
 | `--fx off\|medium\|high\|ultra` | the same on the command line (applied after `fx.cfg`) |
 | `r_fx_<feature> -1\|0\|1` | follow the preset, force off, force on |
 | `r_fx_eyelights <scale>` | brightness of Wheatley's and GLaDOS's eye lights (1 default, 0 off; needs `lights`) |
+| `r_fx_panellights <scale>` | brightness of the glow from the lamps on GLaDOS's panel arms (1 default, 0 off; needs `lights`) |
 | `r_fx_save` | writes the `r_fx_*` values to `fx.cfg` beside the saves (`%LOCALAPPDATA%\portal2rust`), which runs at startup |
 
 Features: `lights`, `shadows`, `ao`, `ssr`, `wetness`, `fog` (haze), `volumetrics`, `bloom`,
@@ -46,6 +47,7 @@ model material binds, with the shaders reading it.
 | Settings | `fx/mod.rs` | `FxSettings` from the cvars, extracted to the render world; `fx.cfg`; `--fx` |
 | Material variant | `fx/material.rs`, `portal2_render/src/fx.rs`, `source_material.rs` | the shared buffer (switches, lights, probes) and the `FX` shader variant, swapped in and out with the preset |
 | Lights | `fx/lights.rs`, `fx/portal_light.rs`, `shaders/fx.wesl` | portals as one-sided elliptical area lights, lasers as tube lights plus emitter and impact, the world-light lump's fixtures as highlights only; scored, budgeted, shaded with representative points and GGX |
+| Panel lamps | `fx/panel_lights.rs` | the self-lit lamps and strips on the panel arms, telescoping arms and shields (`models/anim_wp/`), found once per model and skin from the self-lit mask and the mesh, as small soft lights on their bones; a lamp hidden from the view behind walls or panels fades out |
 | Eye lights | `fx/eye_lights.rs` | Wheatley's (every core's) and GLaDOS's eyes as soft shadowed spot lights from the lens, following the eye's bones; a core's brightness follows its lids, iris and voice |
 | Shadows | `fx/shadows.rs` | wide distance maps from the portals, drawn like the projected textures' ones, redrawn on demand |
 | Occlusion | `fx/screen.rs`, `shaders/fx_ao.wesl` | depth-based hemisphere occlusion on the main view after the opaque pass |
@@ -54,7 +56,7 @@ model material binds, with the shaders reading it.
 | Atmosphere | `fx/atmosphere.rs`, `shaders/fx_volumetric.wesl` | haze coloured by the map's ambient light; volumetric scattering from projected textures, volumetric lights and ambient haze, on the main view and the portals' views, softly limited so no room fills with smoke |
 | Screen-space reflections | `fx/ssr.rs`, `shaders/fx_ssr.wesl` | puddles reflect the scene, portals and beams included (ultra) |
 | Post | `fx/postfx.rs`, `shaders/fx_post.wesl` | bloom, identity-below-the-knee tone curve, grade, dither |
-| Light bridges | `devices/bridge_visual.rs`, `shaders/bridge.wesl` | over the game's own bridge surface: HDR edges for the bloom, a grazing sheen, pulses running out along the strands, glows at the emitter and the wall, a bright projection front, ripples under the player's feet and resting props, and a tube light along each piece |
+| Light bridges | `devices/bridge_visual.rs`, `shaders/bridge.wesl` | over the game's own bridge surface: HDR edges for the bloom, a grazing sheen, pulses running out along the strands, glows at the emitter and the wall, a bright projection front, ripples under the player's feet and resting props; a deep saturated field with fine strands of light weaving through it and white-hot rail cores; tube lights along the rails (diffuse, plus their own brighter highlights that run up ribbed walls and wet floors) and the surface, facing up so the floor seen through the bridge stays dark; and a faint blue glow in the air over it (the volumetrics now take tube lights) |
 
 Design decisions worth knowing:
 
@@ -97,7 +99,7 @@ Design decisions worth knowing:
   `effects/projected_wall` material, rails on its edges, the drawn length growing at 150 units
   per 16 ms think, `projected_wall_impact` sparks where it lands), at the brightness the game
   shows for each tone map scale. The overhaul only adds on top of that surface, all in the one
-  draw per piece, plus one tube light.
+  draw per piece, plus its lights.
 - **No temporal filter.** Noise in the occlusion and volumetrics uses a fixed per-pixel pattern
   and spatial filtering; the 4× MSAA stays, and highlights get specular antialiasing. Nothing can
   ghost behind moving objects or portal crossings.

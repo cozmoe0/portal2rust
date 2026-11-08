@@ -207,6 +207,11 @@ fn projected_in(p: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
     return total;
 }
 
+fn on_segment(a: vec3<f32>, b: vec3<f32>, p: vec3<f32>) -> vec3<f32> {
+    let ab = b - a;
+    return a + ab * saturate(dot(p - a, ab) / max(dot(ab, ab), 1e-4));
+}
+
 // Light from the overhaul's volumetric lights arriving at `p`.
 fn fx_in(p: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
     var total = vec3<f32>(0.0);
@@ -222,7 +227,11 @@ fn fx_in(p: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
         }
         used += 1u;
         let kind = u32(l.position.w);
-        let delta = p - l.position.xyz;
+        // A tube's light comes from its nearest point.
+        var delta = p - l.position.xyz;
+        if kind == 2u {
+            delta = p - on_segment(l.position.xyz, l.axis.xyz, p);
+        }
         let d = max(length(delta), 1.0);
         var atten = 0.0;
         if kind <= 1u {
@@ -231,6 +240,9 @@ fn fx_in(p: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
                 let cone = saturate((dot(delta / d, l.axis.xyz) - l.axis.w) / max(l.params.x - l.axis.w, 1e-4));
                 atten *= pow(cone, max(l.params.w, 1e-3));
             }
+        } else if kind == 2u {
+            // A tube (a light bridge's glow), softened over its radius.
+            atten = 1.0 / (d * d + l.up.w * l.up.w);
         } else if kind == 3u {
             // A portal glows into the air in front of it.
             let side = dot(delta, l.axis.xyz);
@@ -259,9 +271,10 @@ fn fx_in(p: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
                 }
             }
         }
-        // Fixtures are bright point sources; their beams stay a hint.
-        let share = select(1.0, 0.09, (u32(l.params.y) & FXL_FIXTURE) != 0u)
-            * smoothstep(OWN_LIGHT_NEAR, OWN_LIGHT_FAR, distance(l.position.xyz, view.world_position));
+        // Fixtures are bright point sources; their beams stay a hint. A tube
+        // (a bridge's glow) runs past the viewer and is never their own.
+        let own = select(smoothstep(OWN_LIGHT_NEAR, OWN_LIGHT_FAR, distance(l.position.xyz, view.world_position)), 1.0, kind == 2u);
+        let share = select(1.0, 0.09, (u32(l.params.y) & FXL_FIXTURE) != 0u) * own;
         total += l.color.rgb * (atten * share) * phase(dot(delta / d, -dir));
     }
     return total;

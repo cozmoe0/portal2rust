@@ -286,6 +286,13 @@ fn fx_lighting(s: FxSurface) -> FxLit {
                 sp = fx_segment_to_ray(l.position.xyz, l.axis.xyz, s.pos, r);
                 let d = distance(lp, s.pos);
                 atten = 1.0 / (d * d + size * size);
+                // A facing tube (a light bridge) shines up and round its
+                // sides, a fifth as much straight behind.
+                let facing = l.up.xyz;
+                if dot(facing, facing) > 0.25 {
+                    let side = dot((s.pos - lp) / max(d, 1e-3), facing);
+                    atten *= 0.2 + 0.8 * smoothstep(-0.7, 0.15, side);
+                }
             }
             // A one-sided ellipse (portal), with a little wrap over its edge
             // so the frame around the opening catches the glow.

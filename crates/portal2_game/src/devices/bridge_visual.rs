@@ -17,7 +17,8 @@
 //! With the visual overhaul on, the shader adds its extras (HDR edges,
 //! pulses, end glows, the projection front, ripples around the player's feet
 //! and props resting on the bridge) and each piece lights its surroundings
-//! with a blue tube light along its length.
+//! in blue: a tube light along each rail and a wide one along the surface,
+//! plus a glow at the projection front while the bridge shoots out.
 
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, MeshVertexBufferLayoutRef, PrimitiveTopology};
@@ -49,10 +50,31 @@ const IMPACT_INSET: f32 = 3.125;
 const OPEN_END: f32 = 16000.0;
 /// Props whose centre is this close above the surface leave a ripple.
 const CONTACT_HEIGHT: f32 = 36.0;
-/// The overhaul's tube light along each piece.
-const LIGHT_COLOR: Vec3 = Vec3::new(0.22, 0.6, 1.0);
-const LIGHT_INTENSITY: f32 = 200.0;
-const LIGHT_RANGE: f32 = 190.0;
+/// The overhaul's light from each piece: a tube along each glowing rail
+/// (their pale cyan, with highlights that run up ribbed walls and across
+/// wet floors) and a wide one along the deeper blue surface between them,
+/// so the bridge washes the walls, floors and props around it in its
+/// colour; a faint blue glow in the air over it; and a glow at the front
+/// while it projects.
+const RAIL_LIGHT_COLOR: Vec3 = Vec3::new(0.26, 0.66, 1.0);
+const RAIL_LIGHT_INTENSITY: f32 = 160.0;
+/// The rails' highlights are their own light, brighter than their diffuse
+/// glow, so walls and floors catch crisp reflections without being washed
+/// out.
+const RAIL_HIGHLIGHT_INTENSITY: f32 = 320.0;
+const RAIL_LIGHT_RADIUS: f32 = 20.0;
+const RAIL_LIGHT_RANGE: f32 = 300.0;
+const SURFACE_LIGHT_COLOR: Vec3 = Vec3::new(0.12, 0.42, 1.0);
+const SURFACE_LIGHT_INTENSITY: f32 = 230.0;
+const SURFACE_LIGHT_RADIUS: f32 = 44.0;
+const SURFACE_LIGHT_RANGE: f32 = 280.0;
+const HAZE_COLOR: Vec3 = Vec3::new(0.15, 0.48, 1.0);
+const HAZE_INTENSITY: f32 = 2200.0;
+const HAZE_RADIUS: f32 = 40.0;
+const HAZE_HEIGHT: f32 = 10.0;
+const HAZE_RANGE: f32 = 260.0;
+const FRONT_LIGHT_INTENSITY: f32 = 700.0;
+const FRONT_LIGHT_RANGE: f32 = 220.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, ShaderType)]
 pub struct BridgeParams {
@@ -406,31 +428,87 @@ fn contacts_on(part: &PiecePart, players: &Query<&Player>, props: &Query<&Global
     out
 }
 
-/// The overhaul's light from each shown piece: a tube along its centre.
+/// The overhaul's light from each shown piece: its rails, its surface, and
+/// the projection front while it grows.
 pub(super) fn bridge_lights(settings: Res<FxSettings>, bridges: Query<&BridgeVisual>, mut lights: ResMut<FxLights>) {
     if !settings.has(features::LIGHTS) {
         return;
     }
+    let tube = |start: Vec3, end: Vec3, facing: Vec3, color: Vec3, radius: f32, range: f32, flags: u32| FxLightData {
+        position: start,
+        shape: FxLightShape::Line { end, facing },
+        color,
+        range,
+        flags,
+        radius,
+        priority: 1.5,
+        shadow: false,
+    };
     for visual in &bridges {
-        for part in &visual.parts {
+        let count = visual.parts.len();
+        for (i, part) in visual.parts.iter().enumerate() {
             if part.shown < 8.0 {
                 continue;
             }
             let start = part.world_start();
+            let along = part.rotation * Vec3::X * part.shown;
+            let side = part.rotation * Vec3::Y * (WIDTH * 0.5);
+            let up = part.rotation * Vec3::Z * (THICKNESS * 0.5 + 1.0);
+            let both = light_flags::DIFFUSE | light_flags::SPECULAR;
+            // A bridge to walk on lights the walls beside it and what stands
+            // on it, and only a little of the floor beneath, which shows
+            // through it and would wash out its blue. One standing as a wall
+            // lights both ways.
+            let normal = part.rotation * Vec3::Z;
+            let facing = if normal.z > 0.7 { normal } else { Vec3::ZERO };
+            for s in [side, -side] {
+                let a = start + s + up;
+                let (glow, highlight) = (RAIL_LIGHT_COLOR * RAIL_LIGHT_INTENSITY, RAIL_LIGHT_COLOR * RAIL_HIGHLIGHT_INTENSITY);
+                lights.frame.push(tube(a, a + along, facing, glow, RAIL_LIGHT_RADIUS, RAIL_LIGHT_RANGE, light_flags::DIFFUSE));
+                lights.frame.push(tube(a, a + along, facing, highlight, RAIL_LIGHT_RADIUS, RAIL_LIGHT_RANGE, light_flags::SPECULAR));
+            }
+            // The surface is a broad emitter, diffuse only (a highlight on
+            // the floor seen through it would wash it out).
+            lights.frame.push(tube(
+                start,
+                start + along,
+                facing,
+                SURFACE_LIGHT_COLOR * SURFACE_LIGHT_INTENSITY,
+                SURFACE_LIGHT_RADIUS,
+                SURFACE_LIGHT_RANGE,
+                light_flags::DIFFUSE,
+            ));
+            // The air over it glows (only where the overhaul's volumetrics
+            // run; the light itself adds nothing to surfaces).
+            let lift = part.rotation * Vec3::Z * HAZE_HEIGHT;
             lights.frame.push(FxLightData {
-                position: start,
-                shape: FxLightShape::Line { end: start + part.rotation * Vec3::X * part.shown },
-                color: LIGHT_COLOR * LIGHT_INTENSITY,
-                range: LIGHT_RANGE,
-                flags: light_flags::DIFFUSE,
-                radius: 24.0,
-                priority: 1.0,
-                shadow: false,
+                priority: 2.5,
+                ..tube(start + lift, start + along + lift, Vec3::ZERO, HAZE_COLOR * HAZE_INTENSITY, HAZE_RADIUS, HAZE_RANGE, light_flags::VOLUMETRIC)
             });
+            // The front of a bridge still shooting out.
+            let reaching = part.shown < part.len - 0.5;
+            let glow = if reaching {
+                1.0
+            } else if i + 1 == count {
+                visual.front
+            } else {
+                0.0
+            };
+            if glow > 0.01 {
+                lights.frame.push(FxLightData {
+                    position: start + along + up * 4.0,
+                    shape: FxLightShape::Point { attenuation: Vec3::new(1600.0, 0.0, 1.0) },
+                    color: RAIL_LIGHT_COLOR * FRONT_LIGHT_INTENSITY * glow,
+                    range: FRONT_LIGHT_RANGE,
+                    flags: both,
+                    radius: 24.0,
+                    priority: 2.0,
+                    shadow: false,
+                });
+            }
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

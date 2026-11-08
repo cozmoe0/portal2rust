@@ -523,7 +523,7 @@ fn lamp_lights(
             let light = match lamp.end {
                 Some(end) => FxLightData {
                     position,
-                    shape: FxLightShape::Line { end: joint.transform_point(end) + normal * SURFACE_OFFSET },
+                    shape: FxLightShape::Line { end: joint.transform_point(end) + normal * SURFACE_OFFSET, facing: Vec3::ZERO },
                     color,
                     range,
                     flags: light_flags::DIFFUSE | light_flags::SPECULAR,
