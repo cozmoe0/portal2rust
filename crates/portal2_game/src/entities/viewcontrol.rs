@@ -21,7 +21,11 @@ use portal2_core::sets::PlayerCameraSet;
 pub fn register(app: &mut App) {
     app.init_resource::<ActiveView>()
         .add_systems(FixedUpdate, update_proxies.after(portal2_core::sets::PlayerMoveSet))
-        .add_systems(PostUpdate, track_proxy_motion.before(TransformSystems::Propagate))
+        // Measured after this frame's animation has moved the proxy's bones.
+        .add_systems(
+            PostUpdate,
+            track_proxy_motion.after(portal2_render::models::animation::animate_models).before(TransformSystems::Propagate),
+        )
         .add_systems(
             PostUpdate,
             apply_view.in_set(PlayerCameraSet).after(crate::player::place_camera).before(portal2_world::camera::sync_camera_transform),
@@ -276,10 +280,22 @@ fn track_proxy_motion(world: &mut World) {
     p.last_velocity = velocity;
 }
 
+/// Share of the game's fake-acceleration push the player gets. At full
+/// strength the first map's container ride builds base velocities of 300
+/// to 850 units/s (walking is 175) that take seconds to wind down, sliding
+/// the player from one end of the hidden box to the other and into its
+/// walls; softened, the jolts sway the player instead.
+const FAKE_ACCEL_STRENGTH: f32 = 0.4;
+
+/// The fastest the fake acceleration ever carries the player, about half
+/// walking speed, so they can always walk against it.
+const FAKE_ACCEL_MAX_SPEED: f32 = 90.0;
+
 /// With `usefakeacceleration`, the proxy's change of velocity this tick
 /// (ignored when tiny or huge) pushes the player the other way through
 /// their base velocity, which otherwise winds down: it loses 100 units/s
-/// each second and a quarter of itself.
+/// each second and a quarter of itself. Unlike the game, the push is
+/// softened and capped (`FAKE_ACCEL_STRENGTH`, `FAKE_ACCEL_MAX_SPEED`).
 fn fake_acceleration(world: &mut World, e: Entity) {
     let dt = world.resource::<Time<Fixed>>().delta_secs();
     let Some(proxy) = proxy_entity(world, e) else { return };
@@ -302,7 +318,8 @@ fn fake_acceleration(world: &mut World, e: Entity) {
     let s = &mut player.state;
     let speed = s.base_velocity.length();
     let base = if speed >= dt * 100.0 { s.base_velocity * ((speed - dt * 100.0) / speed) } else { Vec3::ZERO };
-    s.base_velocity = base * (1.0 - dt * 0.25).max(0.0) - accel * 3.0 * scale;
+    let push = accel * 3.0 * scale * FAKE_ACCEL_STRENGTH;
+    s.base_velocity = (base * (1.0 - dt * 0.25).max(0.0) - push).clamp_length_max(FAKE_ACCEL_MAX_SPEED);
     s.base_velocity_set = true;
 }
 
