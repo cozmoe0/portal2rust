@@ -327,6 +327,13 @@ fn set_world_rotation(world: &mut World, e: Entity, angles: Vec3) {
     if let Some(mut t) = world.get_mut::<Transform>(e) {
         t.rotation = local;
     }
+    // A free physics prop turns its body, as the game's SetAngles teleports
+    // its physics object.
+    if parent.is_none()
+        && let Some(mut r) = world.get_mut::<avian3d::prelude::Rotation>(e)
+    {
+        r.0 = q;
+    }
 }
 
 fn set_angles(ctx: &mut Ctx, args: &[Value]) -> Result<Value> {

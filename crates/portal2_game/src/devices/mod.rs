@@ -11,6 +11,7 @@ pub mod futbol;
 pub mod laser;
 pub mod security_camera;
 pub mod turret;
+pub mod turret_visual;
 
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
@@ -34,6 +35,7 @@ impl Plugin for DevicesPlugin {
             funnel::FunnelPlugin,
             catapult::CatapultPlugin,
             turret::TurretPlugin,
+            turret_visual::TurretVisualPlugin,
             security_camera::SecurityCameraPlugin,
             func_tank::FuncTankPlugin,
             futbol::FutbolPlugin,

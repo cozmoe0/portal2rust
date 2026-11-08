@@ -48,6 +48,7 @@ impl Plugin for GamePhysicsPlugin {
                 build_static_world.after(portal2_world::collision::rebuild_on_map_load).before(portal2_core::sets::EntitySpawnSet),
             )
             .add_systems(Update, (attach_bodies, attach_follower_bodies, attach_player_body, sync_portal_slabs, sync_disabled_colliders))
+            .add_systems(FixedUpdate, rest_new_props)
             .add_plugins((carry::CarryPlugin, held_clone::HeldClonePlugin, portal_travel::PortalTravelPlugin));
         inputs::register(app);
         constraints::register(app);
@@ -229,6 +230,24 @@ pub fn model_mass(fs: &GameFs, path: &str) -> Option<f32> {
     }
     let mdl = source_formats::mdl::Mdl::parse(fs.read(path)?).ok()?;
     (mdl.mass > 0.0).then_some(mdl.mass)
+}
+
+/// A physics prop that starts at rest where the map put it, until something
+/// moves it: a floor turret placed with a leg over a gap
+/// (`sp_a2_turret_intro`'s first, standing on the broken floor) stands
+/// there as in the game rather than toppling the moment the map starts.
+/// The physics engine wakes a body as it first joins the simulation, so
+/// it is put to sleep a couple of ticks in (the physics ticks it has had).
+#[derive(Component, Default)]
+pub struct StartsAtRest(pub u8);
+
+fn rest_new_props(mut commands: Commands, mut props: Query<(Entity, &mut StartsAtRest), With<RigidBody>>) {
+    for (e, mut rest) in &mut props {
+        rest.0 += 1;
+        if rest.0 >= 2 {
+            commands.entity(e).insert(Sleeping).remove::<StartsAtRest>();
+        }
+    }
 }
 
 /// Gives every entity with trace collision a matching physics body: physics

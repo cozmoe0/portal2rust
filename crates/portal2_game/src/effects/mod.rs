@@ -5,6 +5,7 @@
 
 pub mod ar2_explosion;
 pub mod hooks;
+pub mod muzzle_flash;
 
 use bevy::prelude::*;
 use portal2_core::entity::MapEntity;
@@ -23,6 +24,7 @@ impl Plugin for EffectsPlugin {
         world.resource_mut::<SpawnHandlers>().register("info_particle_system", spawn_info);
         world.resource_mut::<InputHandlers>().register("info_particle_system", effect_input);
         ar2_explosion::register(app);
+        muzzle_flash::register(app);
     }
 }
 

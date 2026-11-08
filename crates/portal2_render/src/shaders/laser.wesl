@@ -17,7 +17,8 @@ struct LaserParams {
     color: vec4<f32>,
     // x: half width, y: noise minimum, z: noise maximum, w: 1 with a second texture
     shape: vec4<f32>,
-    // Second texture transform: x scale, y rotation (radians), z offset per second
+    // Second texture transform: x scale, y rotation (radians), z offset per
+    // second; w: 1 for the visual overhaul's soft halo instead (no texture)
     transform: vec4<f32>,
 }
 
@@ -70,6 +71,14 @@ fn fragment(in: LaserVertexOutput) -> @location(0) vec4<f32> {
     // Effects stay out of projected-texture shadow maps.
     if fog.mode == 2u {
         discard;
+    }
+    if laser.transform.w > 0.5 {
+        // A hot thin core inside a soft halo across the beam, faintly
+        // shimmering along it as if through dust.
+        let x = (in.uv.x - 0.5) * 2.0;
+        let shimmer = 0.85 + 0.15 * sin(in.uv.y * 23.0 - globals.time * 3.0) * sin(in.uv.y * 7.0 + globals.time * 1.3);
+        let halo = (exp(-x * x * 5.0) * 0.45 + exp(-x * x * 60.0) * 0.9) * shimmer;
+        return vec4<f32>(laser.color.rgb * halo * view.exposure, 0.0);
     }
     var c = textureSample(base_tex, base_samp, in.uv).rgb * laser.color.rgb;
     if laser.shape.w > 0.5 {

@@ -3,8 +3,20 @@
 //! on sight it deploys and fires once its wind-up, longer the further the
 //! player is, has passed, turning its head toward them and shooting when
 //! it points within 10° of them. Losing sight it scans for a few seconds,
-//! then folds up. It talks throughout. Tipping one over makes it spray
-//! bullets and give up; carrying, lasers and disabling stop it.
+//! then folds up. It talks throughout; carrying, lasers and disabling stop
+//! it.
+//!
+//! Each shot plays `fire` or `fire2` (the first or second pair of guns),
+//! whose model events flash their muzzles (`effects::muzzle_flash`), and
+//! leaves from the next of the four muzzles in turn.
+//!
+//! Knocked over (server.dll's tipped think), it sounds its alarm and thrashes
+//! for 2 to 2.5 s, thinking every 0.05 s: firing each think and jerking its
+//! head toward a new random aim up to 60° away. Then it turns to face ahead,
+//! says its last line (`NPC_FloorTurret.Die` and the disabled line), folds up
+//! (`retract`, `NPC_FloorTurret.Retract`) and, once folded, plays its dying
+//! `eye_off` and its eye goes out. A turret started on uneven ground stays
+//! put until something moves it (`physics`: it starts at rest).
 
 use avian3d::prelude::RigidBody;
 use bevy::prelude::*;
@@ -56,8 +68,15 @@ const SEARCH_TIME_SHORT: f64 = 1.5;
 const SHORT_SEARCH_FLAG: u32 = 128;
 /// Wind-up before the first shot at the edge of the range.
 const MAX_WIND_UP: f64 = 2.5;
-/// Seconds a tipped turret sprays bullets before giving up.
-const TIPPED_TIME: f64 = 2.0;
+/// Seconds a tipped turret thrashes before giving up (random in between),
+/// thinking and firing every `TIPPED_THINK`, with random aims up to
+/// `THRASH_AIM` degrees away.
+const THRASH_TIME: (f32, f32) = (2.0, 2.5);
+const TIPPED_THINK: f64 = 0.05;
+const THRASH_AIM: f32 = 60.0;
+/// The four muzzles, fired in turn: the first pair plays `fire`, the
+/// second `fire2`.
+const MUZZLES: [&str; 4] = ["LFT_Gun1_Muzzle", "RT_Gun1_Muzzle", "LFT_Gun2_Muzzle", "RT_Gun2_Muzzle"];
 /// Up axis further from vertical than 60° counts as knocked over.
 const UPRIGHT_COS: f32 = 0.5;
 /// Walls, glass, props and light bridges block a turret's view.
@@ -102,9 +121,24 @@ pub enum TurretState {
     Active,
     /// Lost the player: scanning until the search time runs out.
     Scanning,
-    /// Knocked over: spraying bullets until it gives up.
+    /// Knocked over: thrashing and spraying bullets until it gives up,
+    /// then turning to face ahead.
     Tipped,
+    /// Given up: folding (`retract`) before it dies.
+    Closing,
     Dead,
+}
+
+/// What the eye shows (server.dll's eye states): bright on its target,
+/// blinking while searching, dim closed, out when dead or disabled.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum EyeState {
+    SeeTarget,
+    Seeking,
+    #[default]
+    Dormant,
+    Dead,
+    Disabled,
 }
 
 /// What the turret last talked about (index into the game's line table).
@@ -180,6 +214,14 @@ pub struct Turret {
     gagged: bool,
     #[serde(default)]
     held: bool,
+    /// When a tipped turret stops thrashing.
+    #[serde(default)]
+    thrash_until: f64,
+    #[serde(default)]
+    pub eye_state: EyeState,
+    /// The seeking eye blinks between two looks, one per think.
+    #[serde(default)]
+    pub eye_blink: bool,
 }
 
 fn spawn_turret(world: &mut World, e: Entity) {
@@ -227,9 +269,20 @@ fn spawn_turret(world: &mut World, e: Entity) {
             tipped_since: None,
             gagged: me.get_i32("gagged").unwrap_or(0) != 0,
             held: false,
+            thrash_until: 0.0,
+            eye_state: EyeState::Dormant,
+            eye_blink: false,
         },
     ));
+    // Placed in the map (spawned as it loads), it stands where it was put
+    // until something moves it; one a dropper makes later falls as usual.
+    if now < MAP_START_SPAWN {
+        world.entity_mut(e).insert(crate::physics::StartsAtRest::default());
+    }
 }
+
+/// Entities spawned before this much map time came with the map.
+const MAP_START_SPAWN: f64 = 0.05;
 
 fn turret_input(world: &mut World, call: &InputCall) -> bool {
     let Some(mut t) = world.get_mut::<Turret>(call.target) else { return false };
@@ -239,18 +292,30 @@ fn turret_input(world: &mut World, call: &InputCall) -> bool {
         "toggle" => t.enabled = !t.enabled,
         "enablegagging" => t.gagged = true,
         "disablegagging" => t.gagged = false,
-        "selfdestruct" | "selfdestructimmediately" => t.state = TurretState::Dead,
+        "selfdestruct" | "selfdestructimmediately" => {
+            t.state = TurretState::Dead;
+            t.eye_state = EyeState::Dead;
+        }
         "firebullet" | "enablepickup" | "disablepickup" => {}
         _ => return false,
     }
     true
 }
 
-/// Short-lived tracer line.
+/// A bullet's tracer: a short streak racing from the muzzle to where the
+/// bullet went, as the game's line-and-whiz tracers fly (64 to 128 units
+/// long, 0.5 to 1.5 wide, thousands of units a second).
 #[derive(Component)]
 struct Tracer {
-    until: f64,
+    start: Vec3,
+    dir: Vec3,
+    distance: f32,
+    length: f32,
+    width: f32,
+    spawned: f64,
 }
+
+const TRACER_SPEED: f32 = 6000.0;
 
 /// What a turret does in one think, applied after the per-turret logic.
 struct Effects<'a> {
@@ -258,6 +323,15 @@ struct Effects<'a> {
     sounds: Vec<SoundRequest>,
     outputs: Vec<FireOutput>,
     sequences: Vec<(&'a str, &'a str)>,
+}
+
+/// World placement of a model attachment from its joints' current
+/// placement (the head's aim and the deployed guns included).
+fn attachment_placement(anim: &StudioAnimator, joints: &Query<&GlobalTransform>, name: &str) -> Option<Transform> {
+    let mdl = &anim.model.studio.mdl;
+    let a = mdl.attachments.get(mdl.find_attachment(name)?)?;
+    let joint = joints.get(*anim.joints.get(a.bone.max(0) as usize)?).ok()?;
+    Some(joint.compute_transform() * Transform::from_matrix(a.local))
 }
 
 impl Turret {
@@ -303,6 +377,7 @@ fn run_turrets(
     clock: Res<GameClock>,
     physics: Physics,
     mut turrets: Query<(Entity, &mut Turret, &GlobalTransform, &MapEntity, Option<&RigidBody>, Option<&mut StudioAnimator>)>,
+    joints: Query<&GlobalTransform>,
     players: Query<(Entity, &Player)>,
     holding: Option<Res<crate::physics::carry::Holding>>,
     mut lasered: MessageReader<LaserHitTurret>,
@@ -321,10 +396,12 @@ fn run_turrets(
             && t.state != TurretState::Dead
         {
             t.state = TurretState::Dead;
+            t.eye_state = EyeState::Dead;
             out.write(FireOutput::new(e, "OnDeath"));
         }
     }
-    let player = players.single().ok().filter(|(_, p)| !p.noclip);
+    // The game's turrets shoot at a player flying with noclip too.
+    let player = players.single().ok();
     for (e, mut t, gt, me, _, anim) in &mut turrets {
         if t.state == TurretState::Dead || now < t.next_think {
             continue;
@@ -334,6 +411,10 @@ fn run_turrets(
         let tr = gt.compute_transform();
         let eye = tr.transform_point(t.eye);
         let up = tr.rotation * Vec3::Z;
+        // The muzzle the next shot leaves from, and its direction.
+        let muzzle = |t: &Turret, anim: &Option<Mut<StudioAnimator>>| {
+            anim.as_deref().and_then(|a| attachment_placement(a, &joints, MUZZLES[(t.muzzle + 1) % 4]))
+        };
 
         // Carried: no shooting, complains once.
         let carried = held == Some(e);
@@ -344,20 +425,69 @@ fn run_turrets(
             }
         }
 
-        // Knocked over: sprays bullets for a while, then gives up.
+        // Folding up after giving up: dies once folded.
+        if t.state == TurretState::Closing {
+            if anim.as_ref().is_none_or(|a| a.finished) {
+                t.state = TurretState::Dead;
+                t.eye_state = EyeState::Dead;
+                fx.sequences.push(("eye_off", "idle_eye_off"));
+            }
+            flush(fx, &mut sound_out, &mut out, anim);
+            continue;
+        }
+
+        // Knocked over: thrashes and sprays bullets for a while, then faces
+        // ahead and gives up.
         if up.z < UPRIGHT_COS && !carried {
-            let since = *t.tipped_since.get_or_insert(now);
+            t.next_think = now + TIPPED_THINK;
             if t.state != TurretState::Tipped {
                 t.state = TurretState::Tipped;
+                t.tipped_since = Some(now);
+                t.thrash_until = now + portal2_core::rng::random_range(THRASH_TIME.0, THRASH_TIME.1) as f64;
+                t.eye_state = EyeState::SeeTarget;
+                if !t.gagged {
+                    fx.sounds.push(SoundRequest::on("NPC_FloorTurret.Alarm", e));
+                }
                 t.say(e, Talk::Tipped, &mut fx);
             }
-            if now - since > TIPPED_TIME {
-                t.state = TurretState::Dead;
-                fx.outputs.push(FireOutput::new(e, "OnTipped"));
-                fx.sounds.push(SoundRequest::on("NPC_FloorTurret.Die", e));
+            if now < t.thrash_until {
+                if now >= t.shot_time {
+                    let (start, dir) = match muzzle(&t, &anim) {
+                        Some(m) => (m.translation, m.rotation * Vec3::X),
+                        None => (eye, tr.rotation * t.aim_dir()),
+                    };
+                    fire(
+                        &mut t,
+                        e,
+                        start,
+                        dir,
+                        None,
+                        &physics,
+                        &mut fx,
+                        &mut commands,
+                        &mut damage,
+                        &mut meshes,
+                        &mut materials,
+                        &mut shared,
+                    );
+                    t.shot_time = now + TIPPED_THINK;
+                }
+                let r = || portal2_core::rng::random_range(-THRASH_AIM, THRASH_AIM);
+                let goal = Vec2::new(r(), r());
+                t.turn_toward(goal);
+            } else if t.aim.length_squared() > 1e-4 {
+                // Faces ahead first, its guns still out.
+                t.turn_toward(Vec2::ZERO);
+                fx.sequences.push(("idlealert", "idlealert"));
             } else {
-                let dir = tr.rotation * t.aim_dir();
-                fire(&mut t, e, eye, dir, None, &physics, &mut fx, &mut commands, &mut damage, &mut meshes, &mut materials, &mut shared);
+                t.state = TurretState::Closing;
+                if !t.gagged {
+                    fx.sounds.push(SoundRequest::on("NPC_FloorTurret.Die", e));
+                    fx.sounds.push(SoundRequest::on(Talk::Disabled.sound(), e));
+                    fx.sounds.push(SoundRequest::on("NPC_FloorTurret.Retract", e));
+                }
+                fx.sequences.push(("retract", "retract"));
+                fx.outputs.push(FireOutput::new(e, "OnTipped"));
             }
             flush(fx, &mut sound_out, &mut out, anim);
             continue;
@@ -365,6 +495,8 @@ fn run_turrets(
         t.tipped_since = None;
         if t.state == TurretState::Tipped {
             t.state = TurretState::Idle;
+            t.aim = Vec2::ZERO;
+            fx.sequences.push(("idle", "idle"));
         }
 
         // The player, when this turret can see them inside its cone.
@@ -393,6 +525,7 @@ fn run_turrets(
                     fx.sequences.push(("deploy", "idlealert"));
                 }
                 t.state = TurretState::Active;
+                t.eye_state = EyeState::SeeTarget;
                 if now > t.next_activate_sound {
                     fx.sounds.push(SoundRequest::on("NPC_FloorTurret.Activate", e));
                     t.next_activate_sound = now + 3.0;
@@ -406,11 +539,12 @@ fn run_turrets(
                 let to = (center - eye).normalize_or_zero();
                 let cos = if dist < CLOSE_RANGE { CLOSE_FIRE_COS } else { FIRE_COS };
                 if now > t.shot_time && muzzle_dir.dot(to) >= cos {
+                    let start = muzzle(&t, &anim).map_or(eye, |m| m.translation);
                     fire(
                         &mut t,
                         e,
-                        eye,
-                        to,
+                        start,
+                        (center - start).normalize_or(to),
                         Some((pe, center)),
                         &physics,
                         &mut fx,
@@ -432,6 +566,7 @@ fn run_turrets(
                 let short = me.spawnflags() & SHORT_SEARCH_FLAG != 0;
                 t.search_until = now + if short { SEARCH_TIME_SHORT } else { SEARCH_TIME };
                 t.state = TurretState::Scanning;
+                t.eye_state = EyeState::Seeking;
                 let line = if t.enabled { Talk::Search } else { Talk::Disabled };
                 t.say(e, line, &mut fx);
                 fx.outputs.push(FireOutput::new(e, "OnLostTarget"));
@@ -440,17 +575,25 @@ fn run_turrets(
                 if now > t.search_until {
                     // Folds back up.
                     t.state = TurretState::Idle;
+                    t.eye_state = EyeState::Dormant;
                     t.aim = Vec2::ZERO;
                     fx.sequences.push(("retract", "idle"));
                     fx.sounds.push(SoundRequest::on("NPC_FloorTurret.Retire", e));
                     t.say(e, Talk::Retire, &mut fx);
                 } else {
+                    t.eye_blink = !t.eye_blink;
                     // Sweeps its head around while searching.
                     let s = now as f32;
                     t.turn_toward(Vec2::new((s * 2.0).sin() * 20.0, (s * 1.3).sin() * 20.0));
                 }
             }
             _ => {}
+        }
+        // Switched off, its eye goes out until it is switched back on.
+        if !t.enabled {
+            t.eye_state = EyeState::Disabled;
+        } else if t.eye_state == EyeState::Disabled {
+            t.eye_state = EyeState::Dormant;
         }
         flush(fx, &mut sound_out, &mut out, anim);
     }
@@ -473,12 +616,13 @@ fn flush(fx: Effects, sounds: &mut MessageWriter<SoundRequest>, out: &mut Messag
     }
 }
 
-/// One bullet along `dir` from the next muzzle: damages the player when it
-/// reaches them, leaves a tracer, and pushes a tipped turret back.
+/// One bullet along `dir` from the next muzzle (at `start`): plays that
+/// pair's firing sequence (whose events flash the muzzles), damages the
+/// player when it reaches them and leaves a tracer.
 fn fire(
     t: &mut Turret,
     e: Entity,
-    eye: Vec3,
+    start: Vec3,
     dir: Vec3,
     target: Option<(Entity, Vec3)>,
     physics: &Physics,
@@ -490,8 +634,7 @@ fn fire(
     shared: &mut Option<(Handle<Mesh>, Handle<EffectMaterial>)>,
 ) {
     t.muzzle = (t.muzzle + 1) % 4;
-    let side = if t.muzzle < 2 { 1.0 } else { -1.0 };
-    let start = eye + dir * 8.0 + dir.cross(Vec3::Z).normalize_or_zero() * (6.0 * side);
+    fx.sequences.push((if t.muzzle < 2 { "fire" } else { "fire2" }, "idlealert"));
     let ignore = [e];
     let tr = physics.trace(start, start + dir * 16384.0, Vec3::ZERO, Vec3::ZERO, mask::SOLID_ALL, &ignore);
     let mut end = tr.end;
@@ -505,22 +648,40 @@ fn fire(
     fx.sounds.push(SoundRequest::on("NPC_FloorTurret.ShotSounds", e));
     let (mesh, material) = shared
         .get_or_insert_with(|| {
-            (meshes.add(super::tube_mesh(4)), materials.add(EffectMaterial::glow(Vec3::new(1.0, 0.8, 0.4) * 3.0, 6.0, 0.02)))
+            (meshes.add(super::tube_mesh(4)), materials.add(EffectMaterial::glow(Vec3::new(1.0, 0.82, 0.5) * 1.2, 6.0, 0.02)))
         })
         .clone();
-    commands.spawn((
-        Tracer { until: fx.now + 0.05 },
-        MapObject,
-        Mesh3d(mesh),
-        MeshMaterial3d(material),
-        super::segment_transform(start, end, 0.4, 0.4),
-    ));
+    let distance = start.distance(end);
+    let tracer = Tracer {
+        start,
+        dir: (end - start).normalize_or(dir),
+        distance,
+        length: portal2_core::rng::random_range(64.0, 128.0),
+        width: portal2_core::rng::random_range(0.5, 1.5),
+        spawned: fx.now,
+    };
+    let place = tracer.place(fx.now);
+    commands.spawn((tracer, MapObject, Mesh3d(mesh), MeshMaterial3d(material), place.unwrap_or_default()));
 }
 
-fn fade_tracers(clock: Res<GameClock>, tracers: Query<(Entity, &Tracer)>, mut commands: Commands) {
-    for (e, t) in &tracers {
-        if clock.curtime >= t.until {
-            commands.entity(e).despawn();
+impl Tracer {
+    /// The streak's placement at `now`; None once it has arrived.
+    fn place(&self, now: f64) -> Option<Transform> {
+        let head = ((now - self.spawned) as f32 * TRACER_SPEED).clamp(0.0, self.distance);
+        let tail = (head - self.length).max(0.0);
+        if tail >= self.distance - 0.01 || (now - self.spawned) as f32 * TRACER_SPEED > self.distance + self.length {
+            return None;
+        }
+        let w = self.width * 0.5;
+        Some(super::segment_transform(self.start + self.dir * tail, self.start + self.dir * head.max(tail + 1.0), w, w))
+    }
+}
+
+fn fade_tracers(clock: Res<GameClock>, mut tracers: Query<(Entity, &Tracer, &mut Transform)>, mut commands: Commands) {
+    for (e, t, mut place) in &mut tracers {
+        match t.place(clock.curtime) {
+            Some(p) => *place = p,
+            None => commands.entity(e).despawn(),
         }
     }
 }
@@ -533,19 +694,35 @@ pub fn show_aim(mut turrets: Query<(&Turret, &mut StudioAnimator)>) {
     }
 }
 
-/// A turret's laser sight: its beam and the glow where it ends.
+/// A turret's laser sight: its beam, the glow where it ends and, with the
+/// visual overhaul, a soft red halo along the beam.
 #[derive(Component)]
 struct LaserSight {
     beam: Entity,
     halo: Entity,
+    glow: Entity,
+}
+
+/// Where a turret's laser sight runs this frame (for its light).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct LaserSightPath {
+    pub start: Vec3,
+    pub end: Vec3,
+    pub dir: Vec3,
 }
 
 struct SightAssets {
     beam_mesh: Handle<Mesh>,
     beam: Handle<LaserBeamMaterial>,
+    glow: Handle<LaserBeamMaterial>,
     halo_mesh: Handle<Mesh>,
     halo: Handle<SpriteMaterial>,
 }
+
+/// The overhaul's halo along a laser sight: units each side of the beam,
+/// and its colour (HDR, so the bloom takes it).
+const SIGHT_GLOW_HALF_WIDTH: f32 = 1.6;
+const SIGHT_GLOW_COLOR: Vec3 = Vec3::new(1.0, 0.035, 0.03);
 
 /// Draws each turret's laser sight from the eye along the head's aim to
 /// whatever it meets.
@@ -554,6 +731,7 @@ fn draw_lasers(
     physics: Physics,
     mut commands: Commands,
     turrets: Query<(Entity, &Turret, &GlobalTransform, Option<&LaserSight>)>,
+    settings: Res<crate::visuals::fx::FxSettings>,
     mut placed: Query<(&mut Transform, &mut Visibility), Without<Turret>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut beams: ResMut<Assets<LaserBeamMaterial>>,
@@ -564,7 +742,7 @@ fn draw_lasers(
     mut shared: Local<Option<SightAssets>>,
 ) {
     for (e, t, gt, sight) in &turrets {
-        let on = t.enabled && !matches!(t.state, TurretState::Dead);
+        let on = t.enabled && !matches!(t.state, TurretState::Dead | TurretState::Closing);
         let tr = gt.compute_transform();
         let eye = tr.transform_point(t.eye);
         let dir = tr.rotation * t.aim_dir();
@@ -574,12 +752,15 @@ fn draw_lasers(
         // Pulled back a little so the wall it lies on does not cut it.
         let halo_place = Transform::from_translation(hit - dir);
         let want = if on { Visibility::Visible } else { Visibility::Hidden };
+        let glow_on = on && settings.has(crate::visuals::fx::features::EMISSIVE);
+        commands.entity(e).insert(LaserSightPath { start, end: hit, dir });
         if let Some(s) = sight {
-            for (entity, place) in [(s.beam, beam_place), (s.halo, halo_place)] {
+            let glow_want = if glow_on { want } else { Visibility::Hidden };
+            for (entity, place, show) in [(s.beam, beam_place, want), (s.halo, halo_place, want), (s.glow, beam_place, glow_want)] {
                 if let Ok((mut t, mut vis)) = placed.get_mut(entity) {
                     *t = place;
-                    if *vis != want {
-                        *vis = want;
+                    if *vis != show {
+                        *vis = show;
                     }
                 }
             }
@@ -594,6 +775,7 @@ fn draw_lasers(
             SightAssets {
                 beam_mesh: meshes.add(laser::beam_quad()),
                 beam: beams.add(laser::beam_material(&fs, &mut textures, &mut images, SIGHT_MATERIAL, SIGHT_WIDTH, color)),
+                glow: beams.add(laser::glow_material(SIGHT_GLOW_HALF_WIDTH, SIGHT_GLOW_COLOR)),
                 halo_mesh: meshes.add(sprite_quad()),
                 halo: sprites.add(SpriteMaterial {
                     params: SpriteParams {
@@ -628,7 +810,17 @@ fn draw_lasers(
                 NoFrustumCulling,
             ))
             .id();
-        commands.entity(e).insert(LaserSight { beam, halo });
+        let glow = commands
+            .spawn((
+                MapObject,
+                Mesh3d(assets.beam_mesh.clone()),
+                MeshMaterial3d(assets.glow.clone()),
+                beam_place,
+                if glow_on { Visibility::Visible } else { Visibility::Hidden },
+                NoFrustumCulling,
+            ))
+            .id();
+        commands.entity(e).insert(LaserSight { beam, halo, glow });
     }
 }
 
@@ -665,6 +857,9 @@ mod tests {
             tipped_since: None,
             gagged: false,
             held: false,
+            thrash_until: 0.0,
+            eye_state: EyeState::Dormant,
+            eye_blink: false,
         };
         t.turn_toward(Vec2::new(90.0, -40.0));
         assert_eq!(t.aim, Vec2::new(12.0, -12.0));

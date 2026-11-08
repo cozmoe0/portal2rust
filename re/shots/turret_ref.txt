@@ -1,0 +1,4 @@
+turret_fire1 sp_a2_turret_intro 760 -1696 -128 0 180 0 god
+turret_fire2 sp_a2_turret_intro 760 -1696 -128 0 180 0 god
+turret_fire3 sp_a2_turret_intro 760 -1680 -128 5 185 0 god
+turret_fire4 sp_a2_turret_intro 700 -1696 -128 10 180 0 god

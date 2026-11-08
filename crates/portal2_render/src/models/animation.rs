@@ -73,6 +73,10 @@ pub struct StudioAnimator {
     pose: Vec<f32>,
     /// Pose needs re-sampling even if the cycle did not move.
     dirty: bool,
+    /// The sequence was just (re)started: events at its very first cycle
+    /// are still to be reported (the game counts a fresh sequence from just
+    /// before 0, so a turret's `fire` flashes the moment it starts).
+    fresh: bool,
 }
 
 impl StudioAnimator {
@@ -92,6 +96,7 @@ impl StudioAnimator {
             layers: Vec::new(),
             pose,
             dirty: true,
+            fresh: true,
         };
         a.set_sequence_index(0);
         a
@@ -111,6 +116,7 @@ impl StudioAnimator {
         self.playing = true;
         self.looping = self.sequence_flags(index) & seq_flags::LOOPING != 0;
         self.dirty = true;
+        self.fresh = true;
     }
 
     /// Starts a sequence by name; returns false when the model lacks it.
@@ -236,11 +242,13 @@ pub fn animate_models(
             }
             anim.cycle = cycle;
             anim.dirty = true;
-            // Report events whose cycle was crossed this frame.
+            // Report events whose cycle was crossed this frame (a fresh
+            // sequence's first cycle included).
+            let fresh = std::mem::take(&mut anim.fresh);
             if let Some((owner, local)) = anim.model.studio.sequence(anim.sequence) {
                 for e in &owner.mdl.sequences[local].events {
                     let crossed = match (backwards, cycle >= previous) {
-                        (false, true) => e.cycle > previous && e.cycle <= cycle,
+                        (false, true) => (e.cycle > previous || (fresh && e.cycle >= previous)) && e.cycle <= cycle,
                         (false, false) => e.cycle > previous || e.cycle <= cycle,
                         (true, false) => e.cycle < previous && e.cycle >= cycle,
                         (true, true) => e.cycle < previous || e.cycle >= cycle,

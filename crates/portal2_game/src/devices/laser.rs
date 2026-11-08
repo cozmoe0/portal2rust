@@ -372,6 +372,20 @@ pub(crate) fn srgb_to_linear(c: f32) -> f32 {
     if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
 }
 
+/// The visual overhaul's soft halo along a beam: no texture, a glow that
+/// falls off across its width (`half_width` units each side), in `color`.
+pub(crate) fn glow_material(half_width: f32, color: Vec3) -> LaserBeamMaterial {
+    LaserBeamMaterial {
+        params: LaserParams {
+            color: color.extend(0.0),
+            shape: Vec4::new(half_width, 1.0, 1.0, 0.0),
+            transform: Vec4::new(1.0, 0.0, 0.0, 1.0),
+        },
+        base: None,
+        base2: None,
+    }
+}
+
 /// The beam material for a laser beam VMT: its base texture and, for
 /// UnlitTwoTexture, the second texture with its transform and the
 /// LinearRamp or TextureScroll and UniformNoise or Sine proxies (a Sine

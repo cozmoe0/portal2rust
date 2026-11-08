@@ -69,6 +69,44 @@ tipped, disabled, collide, pickup, shot at, dissolved, flung, burned.
   line for 1 s. A burning turret has a 1 in 4 chance of crying out when it
   catches fire, then burns for `sv_portal_turret_min/max_burn_time`.
 
+## Tipped (server)
+
+- Knocked over (`sub_102E35A0`, the side check), the turret sets its thrash
+  time 2 to 2.5 s ahead, thinks every 0.05 s, sets its eye to "sees target"
+  and sounds `NPC_FloorTurret.Alarm` (unless gagged).
+- Tipped think (`sub_10327F40`): the tipped talk state, no enemy. Until the
+  thrash time (and while not carried): every 0.05 s it plays its firing
+  activity (`fire` for the first pair of muzzles, `fire2` for the second)
+  and shoots from the muzzle (when `sv_portal_turret_shoot_at_death`), and
+  its goal angles jump to its own plus a random −60° to 60° in pitch and
+  in yaw, the head turning toward them.
+- After that it faces ahead (open idle). Once the head is there it plays
+  `NPC_FloorTurret.Die` and `NPC_FloorTurret.TalkDisabled`, closes
+  (`retract`, `NPC_FloorTurret.Retract`) and takes its death; when the
+  close has finished it plays `ACT_FLOOR_TURRET_DIE` (`eye_off`), its eye
+  goes dead and it thinks slowly from then on.
+
+## Eye glow (server)
+
+`sub_10328910` keeps `sprites/glow1.vmt` in red (world glow, render fx no
+dissipation) on the eye attachment: on its target brightness 255 and scale
+0.4 within 0.1 s; searching it blinks each think between 224 at 0.3 and 192
+at 0.2; dormant 192 at 0.2 over 0.5 s; dead 0 at 0.1 over 0.25 s; disabled
+the same over 1 s.
+
+## Muzzle flash (client)
+
+`fire` and `fire2` carry `AE_NPC_MUZZLEFLASH` events at their first frame
+(`COMBINE LFT_Gun1_muzzle` and `RT_Gun1_muzzle`, or the `Gun2` pair). The
+`COMBINE` NPC flash (client.dll `sub_103FFC80`) is drawn in the muzzle's
+frame with a scale of 1 to 1.5: five sparks of `effects/combinemuzzle1` or
+`2` along the barrel (2 × scale apart, 50 to 150 units/s, 0.1 s, 6 to 8
+units scaled and smaller further out), three spikes of five across it (up,
+and down to each side, 1 × scale apart, a quarter of 50 to 150 units/s,
+0.2 s, 2 to 4 units scaled), a glow of `effects/strider_muzzle` 12 to 16
+units shrinking to nothing over 0.3 to 0.4 s, all white and fading out, and
+an elight of colour (64, 128, 255) × 2⁵ and radius 32 to 128 for 0.05 s.
+
 ## Head and laser (client and server)
 
 - The head turns through the `aim_yaw` (±60°) and `aim_pitch` (±15°)
@@ -88,6 +126,12 @@ tipped, disabled, collide, pickup, shot at, dissolved, flung, burned.
   `models/props/turret_01.mdl` is a leftover whose material is self-lit.
 
 ## Player damage tint
+
+Captured in the game under a turret's fire with `god` (`re/shots/turret_ref.txt`,
+`re/tools/capture.py`): the screen still turns red, and holds at about
+0.64 × the image + (22, 6.5, 7.3), a fade toward roughly (61, 18, 20) at
+0.36.
+
 
 - Bullets (`DMG_BULLET`) only play `Flesh.BulletImpact` from the player's
   damage effects (server.dll `sub_101E7EC0`; crush and drowning get red

@@ -332,7 +332,7 @@ fn animation_done_outputs(mut finished: MessageReader<AnimationFinished>, mut ou
 /// named in its options to the model's own entity (the container ride's
 /// impacts are `FireUser1`-`4` on its master model), sound events play
 /// their sound from the model, particle events start their effect at the
-/// named attachment (or the model).
+/// named attachment (or the model), muzzle flash events flash at theirs.
 const SCRIPT_EVENT_FIRE_INPUT: i32 = 1100;
 
 fn animation_events(mut events: MessageReader<AnimationEvent>, mut commands: Commands) {
@@ -355,6 +355,18 @@ fn animation_event(world: &mut World, ev: &AnimationEvent) {
     match ev.name.as_str() {
         "AE_CL_PLAYSOUND" | "AE_SV_PLAYSOUND" => {
             portal2_audio::emit(world, ev.options.trim(), portal2_audio::Emit { entity: Some(e), ..default() });
+        }
+        // `COMBINE <attachment>`: the only kind Portal 2's models use (the
+        // floor turret's `fire` and `fire2`).
+        "AE_NPC_MUZZLEFLASH" | "AE_MUZZLEFLASH" => {
+            let mut parts = ev.options.split_whitespace();
+            let (Some(kind), Some(attachment)) = (parts.next(), parts.next()) else { return };
+            if !kind.eq_ignore_ascii_case("COMBINE") {
+                return;
+            }
+            if let Some(at) = super::attachment_world(world, e, attachment) {
+                world.write_message(crate::effects::muzzle_flash::MuzzleFlash { at });
+            }
         }
         "AE_CL_CREATE_PARTICLE_EFFECT" => {
             let mut parts = ev.options.split_whitespace();
