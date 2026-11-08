@@ -72,6 +72,13 @@ pub struct TurretEye {
     pub forward: Vec3,
 }
 
+impl TurretEye {
+    /// The glow sprite's entity.
+    pub fn sprite(&self) -> Entity {
+        self.sprite
+    }
+}
+
 /// The eye's brightness (0..255), scale and the seconds it takes to get
 /// there, for its state.
 pub fn eye_look(state: EyeState, blink: bool) -> (f32, f32, f32) {
@@ -151,7 +158,7 @@ fn draw_eyes(
                     NoFrustumCulling,
                 ))
                 .id();
-            commands.entity(e).insert(TurretEye {
+            commands.entity(e).try_insert(TurretEye {
                 sprite,
                 material,
                 size: source.size,
@@ -234,21 +241,24 @@ fn turret_lights(
         let Some(path) = sight.filter(|_| t.enabled && !matches!(t.state, TurretState::Dead | TurretState::Closing)) else {
             continue;
         };
-        // The sight starts inside the shell; its light starts where it
-        // leaves it, at the lens, so it doesn't bleed through the sides.
-        let out = (eye.position - path.start).dot(path.dir).clamp(0.0, path.start.distance(path.end));
+        for (i, seg) in path.segments.iter().enumerate() {
+            // The sight starts inside the shell; its light starts where it
+            // leaves it, at the lens, so it doesn't bleed through the sides.
+            let out = if i == 0 { (eye.position - seg.start).dot(seg.dir).clamp(0.0, seg.start.distance(seg.end)) } else { 0.0 };
+            lights.frame.push(FxLightData {
+                position: seg.start + seg.dir * out,
+                shape: FxLightShape::Line { end: seg.end, facing: Vec3::ZERO },
+                color: LASER_LIGHT_COLOR * LASER_LIGHT_INTENSITY,
+                range: LASER_LIGHT_RANGE,
+                flags: light_flags::DIFFUSE | light_flags::SPECULAR | light_flags::VOLUMETRIC,
+                radius: 3.0,
+                priority: 1.2,
+                shadow: false,
+            });
+        }
+        let Some(last) = path.segments.last().filter(|s| !s.through_portal) else { continue };
         lights.frame.push(FxLightData {
-            position: path.start + path.dir * out,
-            shape: FxLightShape::Line { end: path.end, facing: Vec3::ZERO },
-            color: LASER_LIGHT_COLOR * LASER_LIGHT_INTENSITY,
-            range: LASER_LIGHT_RANGE,
-            flags: light_flags::DIFFUSE | light_flags::SPECULAR | light_flags::VOLUMETRIC,
-            radius: 3.0,
-            priority: 1.2,
-            shadow: false,
-        });
-        lights.frame.push(FxLightData {
-            position: path.end - path.dir * 2.0,
+            position: last.end - last.dir * 2.0,
             shape: FxLightShape::Point { attenuation: Vec3::new(30.0, 0.0, 1.0) },
             color: LASER_LIGHT_COLOR * LASER_SPOT_INTENSITY,
             range: LASER_SPOT_RANGE,

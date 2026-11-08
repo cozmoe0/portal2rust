@@ -360,6 +360,21 @@ impl Batch {
         });
     }
 
+    /// A streak of the whole texture from `head` back to `tail`, `radius`
+    /// units each side, facing the view (code-driven sparks).
+    pub fn streak(&mut self, head: Vec3, tail: Vec3, radius: f32, color: [f32; 4]) {
+        self.quad(&Vert {
+            pos: head,
+            mode: MODE_TRAIL,
+            blend: 0.0,
+            shape: [radius, 0.0, 1.0, 0.0],
+            rects: [FULL; 3],
+            axis0: tail,
+            axis1: Vec3::ONE,
+            color,
+        });
+    }
+
     /// Writes the arrays into `mesh`, replacing what it held.
     pub fn write(self, mesh: &mut Mesh) {
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, self.pos);

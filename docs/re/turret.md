@@ -32,6 +32,38 @@ die, tractor beam) and adds held and tractor-beam thinks.
 - A turret whose up axis is more than about 25° from vertical (up z below
   0.9) gets pushed back by 30 × the shot direction with every shot.
 - `NPC_FloorTurret.ShotSounds` plays per shot.
+- Linked portals don't hide the player: the port lets a turret looking
+  into one see the player beyond the other (aiming at where they appear
+  through it), and its bullets, tracers and laser sight carry on through.
+
+## Burning and blowing up (server)
+
+- The laser's beam stops on a turret (its trace mask takes monsters). Each
+  tick it deals burn damage to what it stops on, and a turret (or hover
+  turret) it stops on is ignited (`Ignite(30, NPC only)`, `sub_103B27D0`);
+  the laser then runs on once the turret has gone.
+- Catching fire (`sub_10325D10`, flag `FL_ONFIRE`): burn time is
+  `sv_portal_turret_min_burn_time` (1.0) to `sv_portal_turret_max_burn_time`
+  (1.5) s from now; one time in four it says `TalkStartBurning` (not when
+  gagged) and holds other cries for 1 s; it then thinks every 0.1 s only
+  for burning (`sub_103248D0`), saying `TalkBurned` every 0.5 to 0.75 s.
+- The flames are `CEntityFlame`'s: `burning_character` on the client
+  (control point 1 on the burning entity, spread over its model; control
+  point 2 the emission scale from its speed), with `General.BurningFlesh`
+  for NPCs.
+- When the time is up: `ExplosionCreate` at its origin with magnitude 232,
+  radius 244 and spawn flags 1385 (no damage, smoke, sparks, sound,
+  fireball smoke or dynamic light), a screen shake (20, 150 Hz, 0.75 s,
+  radius 750), `TalkBurned` stopped, and the blow-up (`sub_103260E0`):
+  blast damage 15 (`DMG_BLAST`) in 120 units around its centre plus 12 up,
+  `NPC_FloorTurret.Destruct`, its collision model's `break` pieces
+  (`PropBreakableCreateAll`, angular velocity ±800 each axis, burst scale
+  100 by default), `OnExplode`, and it is removed. In co-op the pieces are
+  `turret_coop_explosion` particles instead.
+- `turret.phy` breaks into ten `turret_fx_break_gib` models (burst 500,
+  `debris`, fade after 20 s), each placed by its `placementOrigin`
+  attachment and carrying `turret_burning_gib_01` or `turret_smoke_gib1`
+  on its own attachment (its model's `particles` keyvalues).
 
 ## Settings
 

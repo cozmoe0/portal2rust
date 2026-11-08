@@ -171,6 +171,14 @@ pub enum InitKind {
         cp: i32,
         local: bool,
     },
+    /// `Position on Model Random`: the game picks a point in a random
+    /// hitbox of the model at the control point; here a point in the
+    /// owner's model box (when the code starting the effect gives one),
+    /// scaled by `hitbox scale`.
+    OnModel {
+        cp: i32,
+        scale: f32,
+    },
     Offset {
         min: Vec3,
         max: Vec3,
@@ -899,6 +907,7 @@ fn initializer(op: &ParticleOperator) -> InitKind {
             growth_time: p.f("randomly distribution growth time", 0.0),
             scale_cp: p.cp("scale cp (distance/speed/local speed)", -1),
         },
+        "position on model random" => InitKind::OnModel { cp: p.cp("control_point_number", 0), scale: p.f("hitbox scale", 1.0) },
         "position within box random" => InitKind::Box {
             min: p.v("min", Vec3::ZERO),
             max: p.v("max", Vec3::ZERO),

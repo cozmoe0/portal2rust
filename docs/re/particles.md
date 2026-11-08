@@ -160,6 +160,10 @@ Each operator has a strength in [0, 1] from the collection time `t`:
   both the position and the previous position.
 - `Sequence Random`: a uniform integer from `sequence_min` to
   `sequence_max`; `shuffle` and `linear` deal from a deck instead.
+- `Position on Model Random`: the game picks a point in a random hitbox of
+  the model at `control_point_number`; the port takes a point in the model
+  box the code starting the effect gives (scaled by `hitbox scale`), in
+  that control point's frame.
 
 ## Control points
 

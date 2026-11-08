@@ -348,6 +348,9 @@ pub struct Collection {
     accel: Vec<Vec3>,
     /// The parent's particle positions (current, previous) this frame.
     parent_cache: Vec<(Vec3, Vec3)>,
+    /// The box of the model the effect rides, in control point 0's space
+    /// (for `Position on Model Random`).
+    pub model_box: Option<(Vec3, Vec3)>,
 }
 
 /// Creates collections from library indices (children need the library).
@@ -356,6 +359,14 @@ pub trait Library {
 }
 
 impl Collection {
+    /// Sets the box of the model the effect rides, for it and its children.
+    pub fn set_model_box(&mut self, model_box: Option<(Vec3, Vec3)>) {
+        self.model_box = model_box;
+        for child in &mut self.children {
+            child.collection.set_model_box(model_box);
+        }
+    }
+
     pub fn new(def: DefRef, library: &dyn Library, seed: u32) -> Self {
         let children = def
             .children
@@ -393,6 +404,7 @@ impl Collection {
             linear: 0,
             accel: Vec::new(),
             parent_cache: Vec::new(),
+            model_box: None,
         };
         c.start_emitters();
         c
@@ -984,6 +996,22 @@ impl Collection {
                         vel += (c.forward * l.x - c.left * l.y + c.up * l.z) * scale.z;
                     }
                     self.set_velocity(i, vel);
+                }
+            }
+            InitKind::OnModel { cp, scale } => {
+                for i in first..n {
+                    let o = match self.model_box {
+                        Some((min, max)) => {
+                            let half = (max - min) * 0.5 * scale;
+                            (min + max) * 0.5 + rand_vec(self, -half, half)
+                        }
+                        None => Vec3::ZERO,
+                    };
+                    let c = self.cp(cp);
+                    let created = self.particles.s[CREATED][i];
+                    let pos = c.at(self.step_fraction(created)) + c.rotate(o);
+                    self.particles.v[POSITION][i] = pos;
+                    self.particles.v[PREV_POSITION][i] = pos;
                 }
             }
             InitKind::Box { min, max, cp, local } => {

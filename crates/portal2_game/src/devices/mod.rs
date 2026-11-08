@@ -12,6 +12,7 @@ pub mod laser;
 pub mod receiver_visual;
 pub mod security_camera;
 pub mod turret;
+pub mod turret_break;
 pub mod turret_visual;
 
 use bevy::asset::RenderAssetUsages;
@@ -37,6 +38,7 @@ impl Plugin for DevicesPlugin {
             catapult::CatapultPlugin,
             turret::TurretPlugin,
             turret_visual::TurretVisualPlugin,
+            turret_break::TurretBreakPlugin,
             receiver_visual::ReceiverVisualPlugin,
             security_camera::SecurityCameraPlugin,
             func_tank::FuncTankPlugin,

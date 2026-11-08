@@ -92,6 +92,10 @@ pub struct ParticleEffect {
     /// kept up to date by that code every frame.
     #[serde(skip)]
     pub cp_frames: Vec<(usize, Transform)>,
+    /// The box of the model the effect rides, in its own space (for
+    /// `Position on Model Random`).
+    #[serde(skip)]
+    pub model_box: Option<(Vec3, Vec3)>,
     /// Remove the entity once the effect has run its course.
     pub one_shot: bool,
     /// Start again whenever the effect has run its course.
@@ -140,6 +144,7 @@ impl ParticleEffect {
             cp_names: Vec::new(),
             cp_values: Vec::new(),
             cp_frames: Vec::new(),
+            model_box: None,
             one_shot: false,
             repeat: false,
             collection: None,
@@ -308,6 +313,9 @@ fn simulate(
             let mut cp = control_point(&GlobalTransform::from(*t));
             cp.prev_position = c.cps[(*i).min(sim::MAX_CONTROL_POINTS - 1)].position;
             c.set_cp(*i, cp);
+        }
+        if c.model_box != fx.model_box {
+            c.set_model_box(fx.model_box);
         }
         if fx.end_cap {
             fx.end_cap = false;
