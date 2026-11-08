@@ -176,16 +176,21 @@ fn physics_prop_input(world: &mut World, call: &InputCall) -> bool {
         }
         return true;
     }
-    if call.input != "dissolve" {
+    let e = call.target;
+    // `SilentDissolve` (weighted cubes; the goo pits' kill triggers send it)
+    // kills the cube without the fizzle, but fires `OnFizzled` all the same,
+    // which is what tells a dropper to bring a new one.
+    let silent = call.input == "silentdissolve"
+        && world.get::<MapEntity>(e).is_some_and(|me| me.classname == "prop_weighted_cube" || me.get_bool("allowsilentdissolve"));
+    if call.input != "dissolve" && !silent {
         return false;
     }
-    let e = call.target;
     if let Some(mut holding) = world.get_resource_mut::<crate::physics::carry::Holding>()
         && holding.entity == Some(e)
     {
         holding.entity = None;
     }
-    if let Some(at) = portal2_audio::sound_origin(world, e) {
+    if !silent && let Some(at) = portal2_audio::sound_origin(world, e) {
         portal2_audio::emit(world, "Prop.Fizzled", portal2_audio::Emit { origin: Some(at), ..default() });
     }
     fire_output(world, e, "OnFizzled", call.activator, None);
