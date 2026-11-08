@@ -255,7 +255,7 @@ pub enum PortalFx {
 }
 
 /// How far in front of the portal's plane its quad is drawn.
-const QUAD_OFFSET: f32 = 0.4;
+pub const QUAD_OFFSET: f32 = 0.4;
 /// How far behind a portal's plane its linked view, and the models cut off
 /// at it, still draw. Past the quad's offset: what lies between the plane
 /// and the quad is hidden behind the quad, so the view through the other

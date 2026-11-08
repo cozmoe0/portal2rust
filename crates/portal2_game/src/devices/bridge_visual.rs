@@ -14,6 +14,15 @@
 //!   control point 1 on the portal (or 512 units above a wall end)
 //!   (`sub_103A3A80`).
 //!
+//! - Through linked portals the bridge reads as one: each piece's texture,
+//!   strands and pulses are laid along the whole path from the projector
+//!   (the texture anchored to the projection front, as the game's), only
+//!   the first piece glows at its emitter, and where a piece meets a portal
+//!   it is drawn a little past the portal's plane, for the view through the
+//!   other portal to show, while from the room's side the strip between the
+//!   plane and the portal's quad is left to that view: every point of the
+//!   bridge is drawn exactly once, whichever is drawn first.
+//!
 //! With the visual overhaul on, the shader adds its extras (HDR edges,
 //! pulses, end glows, the projection front, ripples around the player's feet
 //! and props resting on the bridge) and each piece lights its surroundings
@@ -27,7 +36,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError};
 use bevy::shader::ShaderRef;
 
-use super::bridge::{BridgePiece, LightBridge, THICKNESS, WIDTH, piece_basis};
+use super::bridge::{BridgePiece, LightBridge, PortalPlane, THICKNESS, WIDTH, piece_basis};
 use crate::entities::props::PhysicsProp;
 use crate::player::Player;
 use crate::visuals::fx::lights::{FxLightData, FxLightShape, FxLights, light_flags};
@@ -50,6 +59,9 @@ const IMPACT_INSET: f32 = 3.125;
 const OPEN_END: f32 = 16000.0;
 /// Props whose centre is this close above the surface leave a ripple.
 const CONTACT_HEIGHT: f32 = 36.0;
+/// How far a piece is drawn past a portal it meets: past where the view
+/// through the other portal clips (`portals::CLIP_BEHIND`).
+const PAST_PORTAL: f32 = crate::portals::CLIP_BEHIND + 0.1;
 /// The overhaul's light from each piece: a tube along each glowing rail
 /// (their pale cyan, with highlights that run up ribbed walls and across
 /// wet floors) and a wide one along the deeper blue surface between them,
@@ -86,6 +98,18 @@ pub struct BridgeParams {
     pub path: Vec4,
     /// x along, y left of centre, z strength (0 for none).
     pub contacts: [Vec4; 4],
+    /// x: where the drawn quad starts, units along from the piece's start
+    /// (negative when drawn past the portal it leaves), y: shown length,
+    /// z: the projection front's distance along the whole path.
+    pub extent: Vec4,
+    /// The planes (xyz facing, w offset) of the portals the piece leaves
+    /// and enters; zero for none.
+    pub leave: Vec4,
+    pub enter: Vec4,
+}
+
+fn plane_params(plane: Option<PortalPlane>) -> Vec4 {
+    plane.map_or(Vec4::ZERO, |p| p.normal.extend(p.normal.dot(p.point)))
 }
 
 /// `effects/projected_wall`'s three textures and the rail's, sampled with
@@ -165,6 +189,8 @@ struct PiecePart {
     /// when the projection gets there: control point 1 for each.
     start_impact: Option<Vec3>,
     end_impact: Option<Vec3>,
+    leaves: Option<PortalPlane>,
+    enters: Option<PortalPlane>,
 }
 
 impl PiecePart {
@@ -301,10 +327,13 @@ pub(super) fn draw_bridges(
             {
                 spawn_impact(&mut commands, part.piece, part.len * 0.5 - IMPACT_INSET, cp1);
             }
+            // The quads cover the drawn length from the piece's start, and
+            // a little past the portals it meets once drawn up to them.
+            let from = if disp > 0.0 && part.leaves.is_some() { -PAST_PORTAL } else { 0.0 };
+            let to = disp + if disp >= part.len && part.enters.is_some() { PAST_PORTAL } else { 0.0 };
             if moved {
-                // The quads cover the drawn length from the piece's start.
-                let x = -part.len * 0.5 + disp * 0.5;
-                let length = disp.max(0.01);
+                let x = -part.len * 0.5 + (from + to) * 0.5;
+                let length = (to - from).max(0.01);
                 // (Parts spawned this frame exist from the next one.)
                 if let Ok(mut t) = transforms.get_mut(part.surface) {
                     *t = Transform::from_xyz(x, 0.0, THICKNESS * 0.5).with_scale(Vec3::new(length, WIDTH, 1.0));
@@ -321,13 +350,19 @@ pub(super) fn draw_bridges(
             let front_glow = if reaching { 1.0 } else if last { front } else { 0.0 };
             let meets_surface = last && part.len < OPEN_END;
             let contacts = if fx { contacts_on(part, &players, &props) } else { [Vec4::ZERO; 4] };
+            // Only the first piece glows where it leaves its emitter.
+            let emitter = if i == 0 { 1.0 } else { 0.0 };
             let params = BridgeParams {
-                shape: Vec4::new(disp, WIDTH, 0.0, if fx { 1.0 } else { 0.0 }),
-                path: Vec4::new(part.start, front_glow, 1.0, if meets_surface { 1.0 } else { 0.0 }),
+                shape: Vec4::new((to - from).max(0.01), WIDTH, 0.0, if fx { 1.0 } else { 0.0 }),
+                path: Vec4::new(part.start, front_glow, emitter, if meets_surface { 1.0 } else { 0.0 }),
                 contacts,
+                extent: Vec4::new(from, disp, shown, 0.0),
+                leave: plane_params(part.leaves),
+                enter: plane_params(part.enters),
             };
             set_params(&mut materials, &part.material, params);
-            set_params(&mut materials, &part.rail_material, BridgeParams { shape: Vec4::new(disp, WIDTH, 1.0, params.shape.w), ..default() });
+            let rail = BridgeParams { shape: Vec4::new(params.shape.x, WIDTH, 1.0, params.shape.w), contacts: [Vec4::ZERO; 4], ..params };
+            set_params(&mut materials, &part.rail_material, rail);
         }
     }
 }
@@ -380,6 +415,8 @@ fn build_parts(commands: &mut Commands, materials: &mut Assets<BridgeMaterial>, 
             placed: false,
             start_impact,
             end_impact,
+            leaves: piece.leaves,
+            enters: piece.enters,
         });
         start += len;
     }
@@ -515,7 +552,7 @@ mod tests {
     use super::*;
 
     fn piece(start: [f32; 3], end: [f32; 3]) -> BridgePiece {
-        BridgePiece { start: Vec3::from(start), end: Vec3::from(end), up: Vec3::Z }
+        BridgePiece::new(Vec3::from(start), Vec3::from(end), Vec3::Z)
     }
 
     #[test]

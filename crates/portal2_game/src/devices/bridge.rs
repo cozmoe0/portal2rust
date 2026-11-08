@@ -50,6 +50,28 @@ pub struct BridgePiece {
     pub start: Vec3,
     pub end: Vec3,
     pub up: Vec3,
+    /// The portal the piece comes out of, and the one it goes into.
+    pub leaves: Option<PortalPlane>,
+    pub enters: Option<PortalPlane>,
+}
+
+impl BridgePiece {
+    pub fn new(start: Vec3, end: Vec3, up: Vec3) -> Self {
+        Self { start, end, up, leaves: None, enters: None }
+    }
+}
+
+/// A portal's plane: its centre and outward facing.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PortalPlane {
+    pub point: Vec3,
+    pub normal: Vec3,
+}
+
+impl PortalPlane {
+    fn of(frame: &portal2_world::collision::portal::PortalFrame) -> Self {
+        Self { point: frame.center, normal: frame.forward }
+    }
 }
 
 #[derive(Component, serde::Serialize, serde::Deserialize)]
@@ -103,23 +125,31 @@ fn cast(
 ) -> Vec<BridgePiece> {
     let mut out = Vec::new();
     let (mut start, mut dir, mut up) = (start, dir.normalize_or(Vec3::X), up.normalize_or(Vec3::Z));
+    let (mut trace_from, mut leaves) = (start, None);
     for _ in 0..8 {
-        let tr = physics.trace(start, start + dir * 16384.0, Vec3::ZERO, Vec3::ZERO, BRIDGE_MASK, ignore);
-        out.push(BridgePiece { start, end: tr.end, up });
-        let Some(frames) = frames else { break };
-        if tr.fraction >= 1.0 {
-            break;
-        }
-        let Some(slot) = (0..2).find(|&s| {
-            let l = frames[s].to_local(tr.end);
-            l.x.abs() < 2.0 && frames[s].in_opening(l, 0.0) && dir.dot(frames[s].forward) < 0.0
-        }) else {
+        let tr = physics.trace(trace_from, trace_from + dir * 16384.0, Vec3::ZERO, Vec3::ZERO, BRIDGE_MASK, ignore);
+        let mut piece = BridgePiece { leaves, ..BridgePiece::new(start, tr.end, up) };
+        let slot = frames.filter(|_| tr.fraction < 1.0).and_then(|frames| {
+            (0..2).find(|&s| {
+                let l = frames[s].to_local(tr.end);
+                l.x.abs() < 2.0 && frames[s].in_opening(l, 0.0) && dir.dot(frames[s].forward) < 0.0
+            })
+        });
+        let (Some(frames), Some(slot)) = (frames, slot) else {
+            out.push(piece);
             break;
         };
+        piece.enters = Some(PortalPlane::of(&frames[slot]));
+        out.push(piece);
         let m = transfer(&frames[slot], &frames[1 - slot]);
         dir = m.transform_vector3(dir).normalize_or(Vec3::X);
         up = m.transform_vector3(up).normalize_or(Vec3::Z);
-        start = m.transform_point3(tr.end) + dir;
+        // The next piece starts where this one went in, carried through, so
+        // the path (and the texture and pulses laid along it) runs on
+        // without a step; its trace starts a unit out, clear of the wall.
+        start = m.transform_point3(tr.end);
+        trace_from = start + dir;
+        leaves = Some(PortalPlane::of(&frames[1 - slot]));
     }
     out
 }
@@ -267,7 +297,7 @@ mod tests {
     /// beside it or clear above it is left alone.
     #[test]
     fn clearance_lifts_a_player_onto_a_bridge_through_their_legs() {
-        let piece = BridgePiece { start: Vec3::new(-200.0, 0.0, 0.0), end: Vec3::new(200.0, 0.0, 0.0), up: Vec3::Z };
+        let piece = BridgePiece::new(Vec3::new(-200.0, 0.0, 0.0), Vec3::new(200.0, 0.0, 0.0), Vec3::Z);
         let top = THICKNESS * 0.5;
         let feet = top - 12.0;
         let (near, _) = clearance(&piece, Vec3::new(0.0, 0.0, feet + HALF.z), HALF).unwrap();
@@ -285,7 +315,7 @@ mod tests {
     /// far side (on top of it) as the fallback.
     #[test]
     fn clearance_below_when_the_middle_is_under_it() {
-        let piece = BridgePiece { start: Vec3::new(-200.0, 0.0, 60.0), end: Vec3::new(200.0, 0.0, 60.0), up: Vec3::Z };
+        let piece = BridgePiece::new(Vec3::new(-200.0, 0.0, 60.0), Vec3::new(200.0, 0.0, 60.0), Vec3::Z);
         let (near, far) = clearance(&piece, Vec3::new(0.0, 0.0, HALF.z), HALF).unwrap();
         assert!(near.z < 0.0 && far.z > 0.0, "{near:?} {far:?}");
         // The far side puts the feet on its top.

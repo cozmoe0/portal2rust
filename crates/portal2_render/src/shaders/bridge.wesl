@@ -26,17 +26,26 @@ import bevy_pbr::render::mesh_view_bindings::fog;
 import bevy_pbr::render::mesh_view_bindings::globals;
 
 struct BridgeParams {
-    // x: shown length of this piece, y: width, z: 0 surface / 1 rail,
+    // x: length of the drawn quad, y: width, z: 0 surface / 1 rail,
     // w: 1 with the visual overhaul
     shape: vec4<f32>,
     // x: distance along the bridge from the projector to this piece's start,
     // y: brightness of the projection front at the far end (0..1),
-    // z: 1 when the piece starts at a projector or portal (an emitter glow),
+    // z: 1 when the piece starts at the projector (an emitter glow),
     // w: 1 when the far end meets a surface rather than a portal
     path: vec4<f32>,
     // Things touching the surface: x units along from the piece's start,
     // y units left of the centre line, z strength (0 for none), w unused.
     contacts: array<vec4<f32>, 4>,
+    // x: where the quad starts, units along from the piece's start
+    // (negative when it is drawn past the portal the piece leaves), y: the
+    // piece's shown length, z: the projection front's distance along the
+    // whole path from the projector
+    extent: vec4<f32>,
+    // The planes (xyz facing, w offset) of the portals the piece leaves and
+    // enters; zero for none
+    leave: vec4<f32>,
+    enter: vec4<f32>,
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> bridge: BridgeParams;
@@ -49,6 +58,20 @@ struct BridgeParams {
 @group(constants::MATERIAL_BIND_GROUP) @binding(5) var rail_tex: texture_2d<f32>;
 
 const TAU: f32 = 6.2831853;
+// How far in front of its plane a portal's quad is drawn.
+const PORTAL_QUAD_OFFSET: f32 = 0.4;
+
+// Where a piece meets a portal, the strip between the portal's plane and its
+// quad belongs to the view through the other portal (which draws the piece
+// on past the plane): seen from the room in front of the portal it is left
+// out, so the bridge is drawn there once, whatever comes first.
+fn left_to_portal_view(p: vec3<f32>, plane: vec4<f32>) -> bool {
+    if dot(plane.xyz, plane.xyz) < 0.5 {
+        return false;
+    }
+    let eye = dot(plane.xyz, view.world_position) - plane.w;
+    return eye > 0.0 && dot(plane.xyz, p) - plane.w < PORTAL_QUAD_OFFSET;
+}
 
 // The `Sine` material proxy.
 fn sine_proxy(t: f32, lo: f32, hi: f32, period: f32, offset: f32) -> f32 {
@@ -82,9 +105,11 @@ fn fade_with_fog(color: vec3<f32>, depth: f32) -> vec3<f32> {
     return color * (1.0 - f);
 }
 
-fn rail(uv: vec2<f32>, t: f32) -> vec3<f32> {
+// `path` is the distance along the whole bridge, so the texture runs on
+// through portals.
+fn rail(uv: vec2<f32>, path: f32, t: f32) -> vec3<f32> {
     let alpha = sine_proxy(t, 0.8, 1.0, 0.1, 0.0);
-    var c = textureSample(rail_tex, samp, vec2<f32>(uv.x, uv.y * bridge.shape.x / 128.0)).rgb * alpha;
+    var c = textureSample(rail_tex, samp, vec2<f32>(uv.x, path / 128.0)).rgb * alpha;
     if bridge.shape.w > 0.5 {
         // Brighter than the display's white, so the rails bloom, with a
         // white-hot core inside the cyan.
@@ -118,17 +143,23 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
         uv = in.uv;
     }
     let t = globals.time;
-    let len = max(bridge.shape.x, 0.01);
+    // Units from this piece's start, and its shown length.
+    let along = bridge.extent.x + uv.y * bridge.shape.x;
+    let len = max(bridge.extent.y, 0.01);
     let width = bridge.shape.y;
     let fx = bridge.shape.w > 0.5;
     let depth = view_depth(in.world_position.xyz);
+    if left_to_portal_view(in.world_position.xyz, bridge.leave) || left_to_portal_view(in.world_position.xyz, bridge.enter) {
+        discard;
+    }
     if bridge.shape.z > 0.5 {
-        return vec4<f32>(rail(uv, t) * view.exposure, 0.0);
+        return vec4<f32>(rail(uv, bridge.path.x + along, t) * view.exposure, 0.0);
     }
 
-    // Units from this piece's start, and the material's V (0 at the far end).
-    let along = uv.y * len;
-    let v = (len - along) / 128.0;
+    // The material's V: 0 at the projection front (the game anchors the
+    // texture there), counted along the whole path so it runs on through
+    // portals.
+    let v = (bridge.extent.z - (bridge.path.x + along)) / 128.0;
     let u = uv.x;
 
     // $basetexturetransform: scaled about the centre by a fast Sine, scrolled
@@ -194,7 +225,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
         c = c + pulse * (strand * tint * 2.2 + edge * base.rgb * 1.2 + tint * 0.12);
 
         // Glow where the bridge leaves its emitter and where it meets a wall.
-        let to_end = len - along;
+        let to_end = max(len - along, 0.0);
         let end_glow = exp(-to_end / 9.0) * bridge.path.w + exp(-along / 14.0) * bridge.path.z * 0.6;
         c = c + tint * end_glow * (0.6 + edge);
 

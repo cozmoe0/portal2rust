@@ -11,9 +11,11 @@
 // - Unlinked (or full of static), the hole churns with smoke-fire: a
 //   twice domain-warped noise, slowly turning, dark smoke between bright
 //   fire, brighter toward the rim.
-// - Linked, the view through shows inside the hole, shimmering in the heat
-//   near the rim, a little darker there and tinted by the portal's light,
-//   so it sits inside the fire. When the partner (re)opens, the static
+// - Linked, the view through shows inside the hole, a little darker near
+//   the rim and tinted by the portal's light, so it sits inside the fire.
+//   It shimmers in the heat only while the portal opens: at rest the view
+//   lines up exactly with the room around the portal (a light bridge or a
+//   floor running through reads as one). When the partner (re)opens, the static
 //   burns away from the centre outward behind a bright front.
 // - While it opens (half a second), the fire around the rim smears along
 //   it, the edge wobbles and the flames run taller and faster; all of it
@@ -198,9 +200,10 @@ fn portal_fx(i: PortalFxIn) -> PortalFxOut {
         out.view = see * (1.0 - 0.1 * near_rim) * cover;
         // The portal's light scattered over the view near the rim.
         emit += mid * 0.3 * exp(sd / 8.0) * see;
-        // Heat shimmer near the rim, pulled slightly inward; the point read
-        // stays inside the hole (the view only covers the opening).
-        let shimmer = exp(sd / 6.0) * (1.2 + 3.0 * k);
+        // Heat shimmer near the rim while opening, pulled slightly inward;
+        // the point read stays inside the hole (the view only covers the
+        // opening).
+        let shimmer = exp(sd / 6.0) * 3.0 * k;
         var offset = vec2<f32>(0.0);
         if shimmer > 0.03 {
             let d = vec2<f32>(
