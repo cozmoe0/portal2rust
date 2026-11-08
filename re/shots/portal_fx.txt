@@ -1,0 +1,17 @@
+# The overhaul's fire portals (r_fx_portals, docs/visual_overhaul.md):
+# name map x y z pitch yaw roll (feet origin, as setpos) [console commands].
+#
+# The open_* views close sp_a1_intro2's orange portal and open it again
+# after `wait N` frames, so with a short settle each is captured at a
+# different point of the half-second opening (shots run the waits at
+# roughly 30 frames a second; more frames, earlier in the opening):
+#   cargo run --profile fast -p portal2 -- --shots re/shots/portal_fx.txt --shots-out re/out/fx_portals/open --shot-settle-time 0.55 --shot-map-settle 12 --fx ultra
+# With --shot-settle-time 1.3 the same views show the linked pair's static
+# burning away after the reopening instead (the blue portal is opened too,
+# so the pair is linked).
+open_15 sp_a1_intro2 -319.8 -180.0 -8.0 40.0 270.0 0 alias reopen "ent_fire portal_blue_1 SetActivatedState 1; ent_fire portal_red_1 SetActivatedState 0; wait 15; ent_fire portal_red_1 SetActivatedState 1"; reopen
+open_12 sp_a1_intro2 -319.8 -180.0 -8.0 40.0 270.0 0 alias reopen "ent_fire portal_blue_1 SetActivatedState 1; ent_fire portal_red_1 SetActivatedState 0; wait 12; ent_fire portal_red_1 SetActivatedState 1"; reopen
+open_09 sp_a1_intro2 -319.8 -180.0 -8.0 40.0 270.0 0 alias reopen "ent_fire portal_blue_1 SetActivatedState 1; ent_fire portal_red_1 SetActivatedState 0; wait 9; ent_fire portal_red_1 SetActivatedState 1"; reopen
+open_06 sp_a1_intro2 -319.8 -180.0 -8.0 40.0 270.0 0 alias reopen "ent_fire portal_blue_1 SetActivatedState 1; ent_fire portal_red_1 SetActivatedState 0; wait 6; ent_fire portal_red_1 SetActivatedState 1"; reopen
+open_03 sp_a1_intro2 -319.8 -180.0 -8.0 40.0 270.0 0 alias reopen "ent_fire portal_blue_1 SetActivatedState 1; ent_fire portal_red_1 SetActivatedState 0; wait 3; ent_fire portal_red_1 SetActivatedState 1"; reopen
+open_01 sp_a1_intro2 -319.8 -180.0 -8.0 40.0 270.0 0 alias reopen "ent_fire portal_blue_1 SetActivatedState 1; ent_fire portal_red_1 SetActivatedState 0; wait 1; ent_fire portal_red_1 SetActivatedState 1"; reopen

@@ -22,8 +22,9 @@ matches captures taken before the overhaul (see [Verification](#verification)).
 | `r_fx_save` | writes the `r_fx_*` values to `fx.cfg` beside the saves (`%LOCALAPPDATA%\portal2rust`), which runs at startup |
 
 Features: `lights`, `shadows`, `ao`, `ssr`, `wetness`, `fog` (haze), `volumetrics`, `bloom`,
-`grade` (tone curve and grade), `emissive`, `foliage`, `reflections` (probe reflections) and
-`procedural` (portal flicker, drifting dust).
+`grade` (tone curve and grade), `emissive`, `foliage`, `reflections` (probe reflections),
+`procedural` (portal flicker, drifting dust) and `portals` (portals drawn as procedural fire and
+smoke).
 
 | Feature | Off | Medium | High | Ultra |
 | --- | :-: | :-: | :-: | :-: |
@@ -34,6 +35,7 @@ Features: `lights`, `shadows`, `ao`, `ssr`, `wetness`, `fog` (haze), `volumetric
 | Volumetric light | | | 24 steps | 48 steps |
 | Screen-space reflections | | | | yes |
 | Bloom, tone curve, grade, emissive boost | | yes | yes | yes |
+| Fire portals | | yes | yes | yes |
 
 ## How it works
 
@@ -46,6 +48,7 @@ model material binds, with the shaders reading it.
 | --- | --- | --- |
 | Settings | `fx/mod.rs` | `FxSettings` from the cvars, extracted to the render world; `fx.cfg`; `--fx` |
 | Material variant | `fx/material.rs`, `portal2_render/src/fx.rs`, `source_material.rs` | the shared buffer (switches, lights, probes) and the `FX` shader variant, swapped in and out with the preset |
+| Fire portals | `fx/portal_look.rs`, `portals/mod.rs`, `shaders/portal.wesl`, `shaders/portal_fx.wesl`, `shaders/noise.wesl` | the opening as procedural fire and smoke instead of the game's noise texture and colour gradient: a white-hot edge with flames streaming outward and licking in (fractal gradient noise laid around the ellipse, scrolled outward and warped), a halo of the portal's colour on the wall, churning smoke-fire filling an unlinked portal, heat shimmer over the view through a linked one, static that burns away from the centre when the partner opens, and a rim that smears along itself and wobbles while the portal opens. The quad reaches up to 14 units past the portal's rectangle on each side where the surface goes on (traced at placement), drawn with premultiplied blending |
 | Lights | `fx/lights.rs`, `fx/portal_light.rs`, `shaders/fx.wesl` | portals as one-sided elliptical area lights, lasers as tube lights plus emitter and impact, the world-light lump's fixtures as highlights only; scored, budgeted, shaded with representative points and GGX |
 | Panel lamps | `fx/panel_lights.rs` | the self-lit lamps and strips on the panel arms, telescoping arms and shields (`models/anim_wp/`), found once per model and skin from the self-lit mask and the mesh, as small soft lights on their bones; a lamp hidden from the view behind walls or panels fades out |
 | Eye lights | `fx/eye_lights.rs` | Wheatley's (every core's) and GLaDOS's eyes as soft shadowed spot lights from the lens, following the eye's bones; a core's brightness follows its lids, iris and voice |
@@ -139,9 +142,10 @@ indicators glow without washing out.
 ![03](media/overhaul/03_blue_portal.webp)
 ![04](media/overhaul/04_orange_portal.webp)
 
-**05 Unlinked portal** (`sp_a1_intro2`). The game's own static fill (shown whenever a portal is
-unlinked or its partner has just moved) stays as it was; it is now brighter as a light source, so
-the wall and floor glow harder than for a clear portal. A linked portal is always see-through.
+**05 Unlinked portal** (`sp_a1_intro2`). The static fill (shown whenever a portal is unlinked or
+its partner has just moved) is churning procedural smoke-fire on the overhaul's presets and the
+game's own fill at off; it is brighter as a light source, so the wall and floor glow harder than
+for a clear portal. A linked portal is always see-through.
 
 ![05](media/overhaul/05_portal_transition.webp)
 
@@ -161,7 +165,8 @@ in how bright the projected texture is drawn, not something the overhaul adds or
 - **Off is the faithful picture.** Captures of the seven views with `--fx off` against captures
   from the build before the overhaul (`re/tools/imgdiff.py`): static views differ by 0.00 mean
   absolute error; views with portals by at most 0.21, within what two runs of the old build differ
-  by (up to 0.42: the rims animate).
+  by (up to 0.42: the rims animate). The fire portals kept that: the four portal views at off
+  against the build before them differ by at most 0.15.
 - **All single-player maps** load and run at high (`--smoke sp`): 63 maps, no script errors, no
   panics or GPU validation errors. Save round trips (`--save-test`) match on three maps; the
   overhaul adds nothing to saves (portal lights, laser lights, probes and fixtures are rebuilt from
@@ -236,6 +241,9 @@ on screen, about 1 ms more there.
 - Occlusion and screen-space reflections run on the main view only; through a portal the
   materials' effects and the volumetric light match, those two do not. The second, recursive
   portal view gets no volumetrics.
+- The fire portals' margins (how far flames and glow reach past each side) are traced when a
+  portal is placed; a surface that later moves away beside a portal leaves the glow where it was
+  until the portal is placed again.
 - Stepping through a portal shows one black frame at the crossing. That predates the overhaul (it
   happens identically with it off and in the build before it).
 
@@ -245,6 +253,7 @@ No original asset was modified, exported or replaced: maps, textures, materials 
 read from the installed game exactly as before, and the only file the overhaul writes is
 `fx.cfg` in portal2rust's own data folder (`r_fx_save`). Nothing in collision, movement, portal
 placement or traversal, lasers, puzzles or entity logic changed: the overhaul reads the portals'
-and lasers' state (`Portal`, `LaserEmitter::segments`) and the map's lights and probes, and only
-the portal shader gained a brightness multiplier that is 1 when the overhaul's emissive feature is
-off. The save round trips and the full smoke run above confirm the game behaves the same.
+and lasers' state (`Portal`, `LaserEmitter::segments`) and the map's lights and probes. The portal
+shader gained a brightness multiplier that is 1 when the overhaul's emissive feature is off, and
+the fire portals' variant, which only the `portals` feature selects (with it off the portals keep
+the game's quad, blending and shader path). The save round trips and the full smoke run above confirm the game behaves the same.

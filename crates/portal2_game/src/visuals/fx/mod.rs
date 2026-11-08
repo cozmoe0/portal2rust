@@ -18,6 +18,7 @@ pub mod lights;
 pub mod material;
 pub mod panel_lights;
 pub mod portal_light;
+pub mod portal_look;
 pub mod postfx;
 pub mod reflections;
 pub mod screen;
@@ -60,6 +61,9 @@ pub mod features {
     pub const REFLECTIONS: u32 = 1 << 11;
     /// Wind sway, light flicker and dust.
     pub const PROCEDURAL: u32 = 1 << 12;
+    /// Portals drawn as procedural fire and smoke (`portal_fx.wesl`)
+    /// instead of the game's noise texture and colour gradient.
+    pub const PORTALS: u32 = 1 << 13;
 }
 
 /// Override cvars and the feature each controls.
@@ -77,6 +81,7 @@ pub const FEATURE_CVARS: &[(&str, u32)] = &[
     ("r_fx_foliage", features::FOLIAGE),
     ("r_fx_reflections", features::REFLECTIONS),
     ("r_fx_procedural", features::PROCEDURAL),
+    ("r_fx_portals", features::PORTALS),
 ];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -157,7 +162,7 @@ impl FxSettings {
             volumetric_density: 0.0,
             ao_strength: 0.0,
         };
-        let medium = LIGHTS | WETNESS | FOG | BLOOM | GRADE | EMISSIVE | FOLIAGE | REFLECTIONS | PROCEDURAL;
+        let medium = LIGHTS | WETNESS | FOG | BLOOM | GRADE | EMISSIVE | FOLIAGE | REFLECTIONS | PROCEDURAL | PORTALS;
         match preset {
             FxPreset::Off => base,
             FxPreset::Medium => Self {
@@ -278,6 +283,7 @@ impl Plugin for VisualFxPlugin {
                 material::FxMaterialPlugin,
                 lights::FxLightsPlugin,
                 portal_light::PortalLightingPlugin,
+                portal_look::PortalLookPlugin,
                 eye_lights::EyeLightsPlugin,
                 panel_lights::PanelLightsPlugin,
                 shadows::FxShadowsPlugin,
@@ -341,6 +347,9 @@ mod tests {
         let high = FxSettings::for_preset(FxPreset::High);
         assert!(high.has(features::LIGHTS) && high.has(features::SHADOWS) && !high.has(features::SSR));
         assert!(FxSettings::for_preset(FxPreset::Ultra).has(features::SSR));
+        // The fire portals come with every overhaul preset, never with off.
+        assert!(FxSettings::for_preset(FxPreset::Medium).has(features::PORTALS));
+        assert!(!FxSettings::for_preset(FxPreset::Off).has(features::PORTALS));
         // An override turns a single feature off, or on over the off preset.
         let no_bloom = FxSettings::resolve(FxPreset::High, [(features::BLOOM, 0)].into_iter());
         assert!(!no_bloom.has(features::BLOOM) && no_bloom.has(features::LIGHTS));

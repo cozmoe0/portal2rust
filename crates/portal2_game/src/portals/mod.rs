@@ -8,9 +8,13 @@ pub mod projection;
 
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::{CameraProjection, Exposure, Hdr, RenderTarget, Viewport, visibility::RenderLayers};
-use bevy::mesh::{Indices, PrimitiveTopology};
+use bevy::mesh::{Indices, MeshVertexBufferLayoutRef, PrimitiveTopology};
+use bevy::pbr::{MaterialPipeline, MaterialPipelineKey};
 use bevy::prelude::*;
-use bevy::render::render_resource::{AsBindGroup, Extent3d, ShaderType, TextureDimension, TextureFormat, TextureUsages};
+use bevy::render::render_resource::{
+    AsBindGroup, Extent3d, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError, TextureDimension, TextureFormat,
+    TextureUsages,
+};
 use bevy::render::view::Tonemapping;
 use bevy::shader::ShaderRef;
 use bevy::window::PrimaryWindow;
@@ -27,6 +31,8 @@ use portal2_world::{CurrentMap, MapLoaded, MapObject};
 use projection::PortalProjection;
 
 pub const PORTAL_SHADER: &str = "embedded://portal2_render/shaders/portal.wesl";
+/// Modules `portal.wesl` imports for the visual overhaul's fire.
+const PORTAL_FX_MODULES: [&str; 2] = ["embedded://portal2_render/shaders/portal_fx.wesl", "embedded://portal2_render/shaders/noise.wesl"];
 
 pub struct PortalsPlugin;
 
@@ -47,6 +53,7 @@ impl Plugin for PortalsPlugin {
             .init_resource::<PortalColors>()
             .init_resource::<PortalEnvironment>()
             .init_resource::<RestingTests>()
+            .add_systems(Startup, load_fx_modules)
             .add_message::<PlacePortal>()
             .add_message::<FizzlePortals>()
             .add_message::<PortalFx>()
@@ -90,13 +97,33 @@ pub struct PortalParams {
     /// into, which the view texture covers at its own (possibly lower)
     /// resolution.
     pub glow: Vec4,
+    /// The overhaul's fire only: how far the quad reaches past the
+    /// portal's rectangle on the left, right, bottom and top, in texture
+    /// coordinates (see [`glow_margins`]).
+    pub shape: Vec4,
+}
+
+/// Pipeline state of a [`PortalMaterial`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PortalMaterialKey {
+    /// The visual overhaul's fire (`FX` shader def, premultiplied blending).
+    pub fx: bool,
+}
+
+impl From<&PortalMaterial> for PortalMaterialKey {
+    fn from(m: &PortalMaterial) -> Self {
+        Self { fx: m.fx }
+    }
 }
 
 /// A portal's opening and rim (the game's `PortalRefract` stages, see
 /// `docs/re/portals.md`): the linked view inside the hole, a fiery rim from
 /// the noise texture through the portal's colour gradient, and the same
-/// fire filling the hole while the portal shows static.
+/// fire filling the hole while the portal shows static. With the visual
+/// overhaul's `r_fx_portals` (`fx`), procedural fire and smoke instead
+/// (`portal_fx.wesl`).
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
+#[bind_group_data(PortalMaterialKey)]
 pub struct PortalMaterial {
     /// color: rgb fallback rim colour, a: `$PortalColorScale`;
     /// state: x linked, y time, z open amount, w clarity (1 - static).
@@ -113,6 +140,8 @@ pub struct PortalMaterial {
     #[texture(5)]
     #[sampler(6)]
     pub gradient: Option<Handle<Image>>,
+    /// Draw the visual overhaul's fire.
+    pub fx: bool,
 }
 
 impl Material for PortalMaterial {
@@ -121,7 +150,23 @@ impl Material for PortalMaterial {
     }
 
     fn alpha_mode(&self) -> AlphaMode {
-        AlphaMode::Blend
+        // The fire adds its light over the wall and hides it only where
+        // smoke or the hole covers it.
+        if self.fx { AlphaMode::Premultiplied } else { AlphaMode::Blend }
+    }
+
+    fn specialize(
+        _pipeline: &MaterialPipeline,
+        descriptor: &mut RenderPipelineDescriptor,
+        _layout: &MeshVertexBufferLayoutRef,
+        key: MaterialPipelineKey<Self>,
+    ) -> Result<(), SpecializedMeshPipelineError> {
+        if key.bind_group_data.fx
+            && let Some(fragment) = descriptor.fragment.as_mut()
+        {
+            fragment.shader_defs.push("FX".into());
+        }
+        Ok(())
     }
 
     fn enable_prepass() -> bool {
@@ -151,6 +196,14 @@ pub struct Portal {
     pub inner_texture: Handle<Image>,
     /// Past the last level the portal is drawn full of static.
     pub end_material: Handle<PortalMaterial>,
+    /// The opening's three surfaces (in the window, the outer view and the
+    /// inner view), drawn with the plain quad or, for the visual overhaul's
+    /// fire, `fx_quad`, which reaches past the rectangle by `margins` (the
+    /// flames and the glow around the hole lie there).
+    pub surfaces: [Entity; 3],
+    pub quad: Handle<Mesh>,
+    pub fx_quad: Handle<Mesh>,
+    pub margins: [f32; 4],
     /// Fills the part of the opening the main view's near plane cuts away
     /// (the game's render fix mesh), in the portal's own space.
     pub fix: Entity,
@@ -210,15 +263,79 @@ const QUAD_OFFSET: f32 = 0.4;
 pub const CLIP_BEHIND: f32 = QUAD_OFFSET + 0.1;
 
 fn portal_quad() -> Mesh {
+    portal_quad_with_margins([0.0; 4])
+}
+
+/// The portal's quad grown past its rectangle by `margins` units (left,
+/// right, bottom, top). Texture coordinates run 0..1 across the rectangle
+/// whatever the margins (as the render fix mesh's, `fix_mesh_from`), and on
+/// past it into them.
+fn portal_quad_with_margins(margins: [f32; 4]) -> Mesh {
     // In portal local space: X out of the surface, Y left, Z up.
-    let (w, h) = (HALF_WIDTH, HALF_HEIGHT);
+    let [left, right, bottom, top] = margins;
+    let (l, r, b, t) = (HALF_WIDTH + left, -(HALF_WIDTH + right), -(HALF_HEIGHT + bottom), HALF_HEIGHT + top);
     let x = QUAD_OFFSET;
+    let corners = [[x, l, b], [x, r, b], [x, r, t], [x, l, t]];
+    let uvs: Vec<[f32; 2]> = corners.iter().map(|c| quad_uv(c[1], c[2])).collect();
     Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vec![[x, w, -h], [x, -w, -h], [x, -w, h], [x, w, h]])
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, corners.to_vec())
         .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[1.0, 0.0, 0.0]; 4])
-        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, vec![[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]])
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
         // Counter-clockwise seen from the front (+X), where +Y is screen right.
         .with_inserted_indices(Indices::U32(vec![0, 2, 1, 0, 3, 2]))
+}
+
+/// The quad's texture coordinates at a point `left` and `up` of the centre.
+fn quad_uv(left: f32, up: f32) -> [f32; 2] {
+    [0.5 - left / (2.0 * HALF_WIDTH), 0.5 - up / (2.0 * HALF_HEIGHT)]
+}
+
+/// Most the overhaul's quad reaches past the portal's rectangle (units).
+pub const GLOW_MARGIN: f32 = 14.0;
+
+/// How far past each side of a portal (left, right, bottom, top) the
+/// surface it sits on goes on, up to [`GLOW_MARGIN`]: the overhaul's
+/// flames and glow reach that far. A side whose surface ends at the edge
+/// (the portal beside an outside corner) gets less, so nothing glows in
+/// the air past it; a wall standing at the edge (an inside corner) counts
+/// as surface, as the quad going into it is hidden behind it. Short traces
+/// through the plane at three points along each side, at the full margin
+/// and at half of it.
+fn glow_margins(physics: &portal2_world::collision::Physics, frame: &PortalFrame) -> [f32; 4] {
+    use source_formats::bsp::contents;
+    let mask = contents::SOLID | contents::WINDOW | contents::GRATE | contents::MOVEABLE;
+    let surface_at = |left: f32, up: f32| {
+        let start = frame.to_world(Vec3::new(1.0, left, up));
+        let end = frame.to_world(Vec3::new(-1.0, left, up));
+        let tr = physics.trace(start, end, Vec3::ZERO, Vec3::ZERO, mask, &[]);
+        tr.start_solid || tr.fraction < 1.0
+    };
+    margins_from(|side, along, out| {
+        let (w, h) = (HALF_WIDTH, HALF_HEIGHT);
+        match side {
+            0 => surface_at(w + out, along * h),
+            1 => surface_at(-(w + out), along * h),
+            2 => surface_at(along * w, -(h + out)),
+            _ => surface_at(along * w, h + out),
+        }
+    })
+}
+
+/// Each side's margin from `surface(side, along, out)`: whether there is
+/// surface `out` units past side `side` (left, right, bottom, top) at
+/// `along` (-1..1) of the way along it.
+fn margins_from(mut surface: impl FnMut(usize, f32, f32) -> bool) -> [f32; 4] {
+    std::array::from_fn(|side| {
+        [GLOW_MARGIN, GLOW_MARGIN * 0.5]
+            .into_iter()
+            .find(|&out| [-0.6, 0.0, 0.6].into_iter().all(|along| surface(side, along, out)))
+            .unwrap_or(0.0)
+    })
+}
+
+/// Margins in units as the quad's texture coordinates, for the shader.
+fn margins_uv(m: [f32; 4]) -> Vec4 {
+    Vec4::new(m[0] / (2.0 * HALF_WIDTH), m[1] / (2.0 * HALF_WIDTH), m[2] / (2.0 * HALF_HEIGHT), m[3] / (2.0 * HALF_HEIGHT))
 }
 
 fn view_texture(width: u32, height: u32) -> Image {
@@ -296,6 +413,15 @@ fn apply_placements(
             fx.write(PortalFx::Closed { slot: req.slot, frame: p.frame });
             p.frame = req.frame;
             p.opened_at = time.elapsed_secs_f64();
+            p.margins = glow_margins(&physics, &req.frame);
+            if let Some(mut mesh) = meshes.get_mut(&p.fx_quad) {
+                *mesh = portal_quad_with_margins(p.margins);
+            }
+            for handle in [&p.material, &p.inner_material, &p.end_material] {
+                if let Some(mut m) = materials.get_mut(handle) {
+                    m.params.shape = margins_uv(p.margins);
+                }
+            }
             if let Ok(mut t) = transforms.get_mut(e) {
                 *t = Transform::from_translation(req.frame.center).with_rotation(rotation);
             }
@@ -307,11 +433,14 @@ fn apply_placements(
         let color = colors.0[req.slot];
         let gradient = if req.slot == 0 { "portal-blue-color" } else { "portal-orange-color" };
         let gradient = format!("materials/models/portals/{gradient}.vtf");
+        let margins = glow_margins(&physics, &req.frame);
         let base_material = PortalMaterial {
-            params: PortalParams { color: color.extend(4.0), state: Vec4::ZERO, glow: Vec4::ONE },
+            params: PortalParams { color: color.extend(4.0), state: Vec4::ZERO, glow: Vec4::ONE, shape: margins_uv(margins) },
             view: Some(texture.clone()),
             noise: textures.load(&fs, &mut images, "materials/models/portals/noise-blur-256x256.vtf", false).map(|t| t.handle),
             gradient: textures.load(&fs, &mut images, &gradient, true).map(|t| t.handle),
+            // `visuals::fx::portal_look` turns it on with the overhaul.
+            fx: false,
         };
         let inner_material = materials.add(PortalMaterial { view: Some(inner_texture.clone()), ..base_material.clone() });
         let end_material = materials.add(PortalMaterial { view: None, ..base_material.clone() });
@@ -353,6 +482,7 @@ fn apply_placements(
         let inner_camera =
             view_camera(format!("portal {} inner view", req.slot), -20 + req.slot as isize, &inner_texture, PORTAL_END_LAYER);
         let quad = meshes.add(portal_quad());
+        let fx_quad = meshes.add(portal_quad_with_margins(margins));
         let mut surface_on = |layer: usize, material: &Handle<PortalMaterial>| {
             commands.spawn((Mesh3d(quad.clone()), MeshMaterial3d(material.clone()), RenderLayers::layer(layer), Transform::IDENTITY)).id()
         };
@@ -386,6 +516,10 @@ fn apply_placements(
                     inner_material,
                     inner_texture,
                     end_material,
+                    surfaces: [surface, inner_surface, end_surface],
+                    quad,
+                    fx_quad,
+                    margins,
                     fix,
                     fix_mesh,
                 },
@@ -471,6 +605,16 @@ fn fizzle_portals(
             }
         }
     }
+}
+
+/// Keeps the overhaul fire's shader modules loaded, so `portal.wesl`'s
+/// imports resolve.
+#[derive(Resource)]
+#[allow(dead_code)]
+struct PortalFxModules(Vec<Handle<Shader>>);
+
+fn load_fx_modules(mut commands: Commands, assets: Res<AssetServer>) {
+    commands.insert_resource(PortalFxModules(PORTAL_FX_MODULES.iter().map(|m| assets.load(*m)).collect()));
 }
 
 /// Portal entities are map objects and vanish with the map; forget them.
@@ -883,7 +1027,7 @@ fn clip_polygon(poly: &[Vec3], n: Vec3, d: f32) -> Vec<Vec3> {
 /// coordinates of each point projected onto the opening.
 fn fix_mesh_from(polygon: &[Vec3]) -> Mesh {
     let points: Vec<Vec3> = if polygon.len() >= 3 { polygon.to_vec() } else { vec![Vec3::ZERO; 3] };
-    let uvs: Vec<[f32; 2]> = points.iter().map(|p| [0.5 - p.y / (2.0 * HALF_WIDTH), 0.5 - p.z / (2.0 * HALF_HEIGHT)]).collect();
+    let uvs: Vec<[f32; 2]> = points.iter().map(|p| quad_uv(p.y, p.z)).collect();
     let mut indices = Vec::with_capacity((points.len() - 2) * 6);
     for i in 1..points.len() as u32 - 1 {
         // Both windings: the camera may see it from either side.
@@ -1136,6 +1280,51 @@ pub fn portals_enabled(args: &Args) -> bool {
 mod tests {
     use super::*;
 
+    fn mesh_uvs(mesh: &Mesh) -> Vec<[f32; 2]> {
+        match mesh.attribute(Mesh::ATTRIBUTE_UV_0) {
+            Some(bevy::mesh::VertexAttributeValues::Float32x2(v)) => v.clone(),
+            _ => panic!("no uvs"),
+        }
+    }
+
+    /// The plain quad keeps the game's corners and texture coordinates; the
+    /// grown one maps its corners as the render fix mesh maps points, so the
+    /// shaders see one coordinate system on both.
+    #[test]
+    fn grown_quad_shares_the_fix_mesh_coordinates() {
+        assert_eq!(mesh_uvs(&portal_quad()), vec![[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]]);
+        let margins = [14.0, 0.0, 7.0, 14.0];
+        let grown = mesh_uvs(&portal_quad_with_margins(margins));
+        let [left, right, bottom, top] = margins;
+        let corners = [
+            Vec3::new(QUAD_OFFSET, HALF_WIDTH + left, -(HALF_HEIGHT + bottom)),
+            Vec3::new(QUAD_OFFSET, -(HALF_WIDTH + right), -(HALF_HEIGHT + bottom)),
+            Vec3::new(QUAD_OFFSET, -(HALF_WIDTH + right), HALF_HEIGHT + top),
+        ];
+        let fix = mesh_uvs(&fix_mesh_from(&corners));
+        for (a, b) in grown.iter().zip(&fix) {
+            assert!((a[0] - b[0]).abs() < 1e-6 && (a[1] - b[1]).abs() < 1e-6, "{a:?} {b:?}");
+        }
+        // The shader's margins, in texture coordinates, reach the corners.
+        let uv = margins_uv(margins);
+        assert!((grown[0][0] + uv.x).abs() < 1e-6 && (grown[1][0] - 1.0 - uv.y).abs() < 1e-6);
+        assert!((grown[0][1] - 1.0 - uv.z).abs() < 1e-6 && (grown[2][1] + uv.w).abs() < 1e-6);
+    }
+
+    /// A side with surface all along it gets the whole margin, one whose
+    /// surface ends within half of it none, one in between half.
+    #[test]
+    fn glow_margins_stop_where_the_surface_does() {
+        let m = margins_from(|side, along, out| match side {
+            0 => true,
+            1 => out <= GLOW_MARGIN * 0.5,
+            2 => false,
+            // Ends short only near one end of the side.
+            _ => along < 0.5 || out < 1.0,
+        });
+        assert_eq!(m, [GLOW_MARGIN, GLOW_MARGIN * 0.5, 0.0, 0.0]);
+    }
+
     /// A portal ahead covers its own rectangle (with the margin), one behind
     /// the eye none, and one passing beside the eye the window's side.
     #[test]
@@ -1168,6 +1357,30 @@ mod tests {
     /// A portal on a brush entity is checked again while the brush is
     /// there, and closes once the brush stops colliding (disabled, moved
     /// away or removed).
+    /// Traced against a panel that ends two units past the portal's right
+    /// edge, that side gets no margin and the others the whole of it.
+    #[test]
+    fn glow_margins_traced_on_a_panel() {
+        use portal2_world::collision::volume::ConvexVolume;
+        use portal2_world::collision::{Collider, Physics, Shape};
+        use source_formats::bsp::contents;
+
+        #[derive(Resource, Default)]
+        struct Found([f32; 4]);
+        // Facing -X with Z up, the portal's left is -Y.
+        let frame = PortalFrame { center: Vec3::new(-1.0 / 32.0, 0.0, 0.0), forward: Vec3::NEG_X, up: Vec3::Z };
+        let mut app = App::new();
+        app.init_resource::<CollisionWorld>().init_resource::<Found>().add_systems(
+            Update,
+            move |physics: Physics, mut found: ResMut<Found>| found.0 = glow_margins(&physics, &frame),
+        );
+        let panel =
+            ConvexVolume::from_box(Vec3::new(0.0, -100.0, -100.0), Vec3::new(8.0, HALF_WIDTH + 2.0, 100.0), contents::SOLID, 0);
+        app.world_mut().spawn((Collider::new(std::sync::Arc::new(Shape::new(vec![panel])), true, true), GlobalTransform::IDENTITY));
+        app.update();
+        assert_eq!(app.world().resource::<Found>().0, [GLOW_MARGIN, 0.0, GLOW_MARGIN, GLOW_MARGIN]);
+    }
+
     #[test]
     fn portal_closes_when_its_brush_goes() {
         use portal2_world::collision::volume::ConvexVolume;
@@ -1200,6 +1413,10 @@ mod tests {
                 inner_material: Handle::default(),
                 inner_texture: Handle::default(),
                 end_material: Handle::default(),
+                surfaces: [Entity::PLACEHOLDER; 3],
+                quad: Handle::default(),
+                fx_quad: Handle::default(),
+                margins: [0.0; 4],
                 fix: Entity::PLACEHOLDER,
                 fix_mesh: Handle::default(),
             })

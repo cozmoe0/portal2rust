@@ -8,6 +8,12 @@
 //! unlinked portal (or one whose partner just moved), full of fire, is
 //! brighter than a clear one whose rim alone burns. A slow, smooth flicker
 //! keeps it alive without strobing.
+//!
+//! With the overhaul's fire portals (`r_fx_portals`) the thicker fire
+//! shines a little brighter and flickers a little more, flares up while
+//! the portal opens, and a second, highlight-only light of the same shape
+//! puts crisp streaks of the portal's colour on wet and glossy floors (as
+//! the light bridges' rails do).
 
 use bevy::prelude::*;
 use portal2_world::collision::portal::{HALF_HEIGHT, HALF_WIDTH};
@@ -26,6 +32,13 @@ const OFFSET: f32 = 0.5;
 /// The burning hole is a little smaller than the portal's quad (the rim's
 /// coordinates run 7.5% past it, see `portal.wesl`).
 const HOLE_SCALE: f32 = 1.0 / 1.075;
+/// With the fire portals: overall brightness, flicker depth, the flare
+/// while opening (at its start; it fades as the portal opens) and the
+/// highlight-only light's strength against the main one.
+const FIRE_INTENSITY: f32 = 1.2;
+const FIRE_FLICKER: f32 = 1.6;
+const FIRE_OPEN_FLARE: f32 = 1.2;
+const FIRE_HIGHLIGHT: f32 = 1.5;
 
 /// The light state of one portal.
 #[derive(Component, Clone, Copy, Debug)]
@@ -67,7 +80,20 @@ fn attach(mut commands: Commands, new: Query<(Entity, &Portal), Without<PortalLi
 
 /// A smooth flicker around 1 (three slow incommensurate sines).
 pub fn flicker(t: f32, phase: f32) -> f32 {
-    1.0 + 0.035 * (t * 7.1 + phase).sin() + 0.02 * (t * 12.7 + phase * 1.7).sin() + 0.015 * (t * 3.3 + phase * 0.6).sin()
+    flicker_by(t, phase, 1.0)
+}
+
+/// [`flicker`] with its depth scaled.
+pub fn flicker_by(t: f32, phase: f32, depth: f32) -> f32 {
+    1.0 + depth * (0.035 * (t * 7.1 + phase).sin() + 0.02 * (t * 12.7 + phase * 1.7).sin() + 0.015 * (t * 3.3 + phase * 0.6).sin())
+}
+
+/// The fire portals' flare while opening: `1 + FIRE_OPEN_FLARE` as the
+/// portal starts to open, back to 1 once open (as the shader's distortion,
+/// `(1 - open)^0.6`).
+pub fn open_flare(now: f64, opened_at: f64) -> f32 {
+    let open = ((now - opened_at) * 2.0).clamp(0.0, 1.0) as f32;
+    1.0 + FIRE_OPEN_FLARE * (1.0 - open).powf(0.6)
 }
 
 /// Brightness of a portal from its opening and static (as `animate_portals`).
@@ -92,10 +118,15 @@ fn portal_lights(
     let open: Vec<(&Portal, Option<&PortalLight>)> = portals.entities.iter().flatten().filter_map(|e| query.get(*e).ok()).collect();
     let linked = open.len() == 2;
     let last_opened = open.iter().map(|(p, _)| p.opened_at).fold(f64::MIN, f64::max);
+    let fire = settings.has(features::PORTALS);
     for (p, light) in &open {
         let mut energy = portal_energy(now, p.opened_at, last_opened, linked);
+        if fire {
+            energy *= FIRE_INTENSITY * open_flare(now, p.opened_at);
+        }
         if settings.has(features::PROCEDURAL) {
-            energy *= flicker(now as f32, light.map_or(0.0, |l| l.phase));
+            let depth = if fire { FIRE_FLICKER } else { 1.0 };
+            energy *= flicker_by(now as f32, light.map_or(0.0, |l| l.phase), depth);
         }
         if energy <= 0.0 {
             continue;
@@ -103,7 +134,7 @@ fn portal_lights(
         // Equal brightness for both colours, keeping their hue.
         let c = colors.0[p.slot.min(1)];
         let color = c / c.dot(Vec3::new(0.2126, 0.7152, 0.0722)).max(1e-3) * 0.5;
-        lights.frame.push(FxLightData {
+        let light = FxLightData {
             position: p.frame.center + p.frame.forward * OFFSET,
             shape: FxLightShape::Ellipse {
                 normal: p.frame.forward,
@@ -117,7 +148,19 @@ fn portal_lights(
             radius: HALF_WIDTH,
             priority: 3.0,
             shadow: true,
-        });
+        };
+        lights.frame.push(light);
+        if fire {
+            // Highlights only, unshadowed (the shadow maps stay with the
+            // main lights).
+            lights.frame.push(FxLightData {
+                color: light.color * FIRE_HIGHLIGHT,
+                flags: light_flags::SPECULAR,
+                priority: 2.5,
+                shadow: false,
+                ..light
+            });
+        }
     }
 }
 
@@ -138,6 +181,16 @@ mod tests {
         for i in 0..1000 {
             let f = flicker(i as f32 * 0.01, 1.0);
             assert!((0.9..=1.1).contains(&f));
+            let f = flicker_by(i as f32 * 0.01, 1.0, FIRE_FLICKER);
+            assert!((0.85..=1.15).contains(&f));
         }
+    }
+
+    #[test]
+    fn fire_flares_while_opening() {
+        assert!((open_flare(10.0, 10.0) - (1.0 + FIRE_OPEN_FLARE)).abs() < 1e-5);
+        assert!(open_flare(10.25, 10.0) > 1.0 && open_flare(10.25, 10.0) < 1.0 + FIRE_OPEN_FLARE);
+        assert_eq!(open_flare(10.5, 10.0), 1.0);
+        assert_eq!(open_flare(30.0, 10.0), 1.0);
     }
 }

@@ -21,6 +21,8 @@ impl Plugin for RenderSetupPlugin {
         embedded_asset!(app, "shaders/world.wesl");
         embedded_asset!(app, "shaders/model.wesl");
         embedded_asset!(app, "shaders/portal.wesl");
+        embedded_asset!(app, "shaders/portal_fx.wesl");
+        embedded_asset!(app, "shaders/noise.wesl");
         embedded_asset!(app, "shaders/effect.wesl");
         embedded_asset!(app, "shaders/refract.wesl");
         embedded_asset!(app, "shaders/sky.wesl");

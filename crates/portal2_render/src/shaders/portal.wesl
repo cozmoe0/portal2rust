@@ -6,10 +6,15 @@
 // where the fire burns, and the result looks up the portal's colour
 // gradient, times the colour scale. While the portal shows static the fire
 // fills the whole hole.
+//
+// With the visual overhaul's `r_fx_portals` (the `FX` shader def) the
+// opening is procedural fire and smoke instead (`portal_fx.wesl`), drawn
+// with premultiplied blending on a quad reaching past the rectangle.
 
 import bevy_pbr::render::forward_io::VertexOutput;
 import bevy_pbr::render::mesh_view_bindings::view;
 import bevy_pbr::render::mesh_view_bindings::globals;
+import portal2_render::shaders::portal_fx::{PortalFxIn, portal_fx};
 
 struct PortalParams {
     // rgb: fallback rim colour (linear), a: colour scale
@@ -18,6 +23,9 @@ struct PortalParams {
     state: vec4<f32>,
     // x: rim brightness multiplier (the visual overhaul's HDR glow, else 1)
     glow: vec4<f32>,
+    // The overhaul's fire: the quad's reach past the rectangle (left,
+    // right, bottom, top) in texture coordinates
+    shape: vec4<f32>,
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> portal: PortalParams;
@@ -37,6 +45,28 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     var uv = vec2<f32>(0.5);
     @if(VERTEX_UVS_A) {
         uv = in.uv;
+    }
+    @if(FX) {
+        var fx_in: PortalFxIn;
+        fx_in.uv = uv;
+        fx_in.uv_dx = dpdx(uv);
+        fx_in.uv_dy = dpdy(uv);
+        fx_in.color = portal.color.rgb;
+        fx_in.linked = portal.state.x;
+        fx_in.open = portal.state.z;
+        fx_in.clarity = portal.state.w;
+        fx_in.margins = portal.shape;
+        fx_in.time = globals.time;
+        fx_in.brightness = min(view.exposure, 1.0) * portal.glow.x;
+        // (WESL does not scope the names inside `@if`.)
+        let fx_out = portal_fx(fx_in);
+        var fx_rgb = fx_out.emit;
+        if fx_out.view > 0.0 {
+            let fx_size = select(vec2<f32>(textureDimensions(view_tex)), portal.glow.yz, portal.glow.y > 1.5);
+            let fx_through = textureSampleLevel(view_tex, view_samp, (in.position.xy + fx_out.view_offset) / fx_size, 0.0).rgb;
+            fx_rgb += fx_through * fx_out.view;
+        }
+        return vec4<f32>(fx_rgb, fx_out.alpha);
     }
     let open = clamp(portal.state.z, 0.0, 1.0);
     let clarity = clamp(portal.state.w, 0.0, 1.0);

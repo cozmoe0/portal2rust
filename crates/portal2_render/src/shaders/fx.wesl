@@ -65,6 +65,7 @@ const FX_EMISSIVE: u32 = 512u;
 const FX_FOLIAGE: u32 = 1024u;
 const FX_REFLECTIONS: u32 = 2048u;
 const FX_PROCEDURAL: u32 = 4096u;
+const FX_PORTALS: u32 = 8192u;
 
 fn fx_on(feature: u32) -> bool {
     return (u32(fx.header.x) & feature) != 0u;
