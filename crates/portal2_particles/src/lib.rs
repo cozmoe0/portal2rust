@@ -88,6 +88,10 @@ pub struct ParticleEffect {
     pub cp_names: Vec<(usize, String)>,
     /// Control points code sets directly (world positions).
     pub cp_values: Vec<(usize, Vec3)>,
+    /// Control points code sets with their orientation (world placement),
+    /// kept up to date by that code every frame.
+    #[serde(skip)]
+    pub cp_frames: Vec<(usize, Transform)>,
     /// Remove the entity once the effect has run its course.
     pub one_shot: bool,
     /// Start again whenever the effect has run its course.
@@ -135,6 +139,7 @@ impl ParticleEffect {
             active,
             cp_names: Vec::new(),
             cp_values: Vec::new(),
+            cp_frames: Vec::new(),
             one_shot: false,
             repeat: false,
             collection: None,
@@ -297,6 +302,11 @@ fn simulate(
             let mut cp = c.cps[*i];
             cp.prev_position = cp.position;
             cp.position = *p;
+            c.set_cp(*i, cp);
+        }
+        for (i, t) in &fx.cp_frames {
+            let mut cp = control_point(&GlobalTransform::from(*t));
+            cp.prev_position = c.cps[(*i).min(sim::MAX_CONTROL_POINTS - 1)].position;
             c.set_cp(*i, cp);
         }
         if fx.end_cap {

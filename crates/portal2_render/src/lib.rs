@@ -29,6 +29,7 @@ impl Plugin for RenderSetupPlugin {
         embedded_asset!(app, "shaders/sprite.wesl");
         embedded_asset!(app, "shaders/beam.wesl");
         embedded_asset!(app, "shaders/laser.wesl");
+        embedded_asset!(app, "shaders/bridge.wesl");
         embedded_asset!(app, "shaders/tonemap_histogram.wesl");
         embedded_asset!(app, "shaders/particle.wesl");
         embedded_asset!(app, "shaders/fx.wesl");

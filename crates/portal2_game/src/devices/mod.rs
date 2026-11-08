@@ -3,6 +3,7 @@
 //! through linked portals, and the glowing effect material.
 
 pub mod bridge;
+pub mod bridge_visual;
 pub mod catapult;
 pub mod func_tank;
 pub mod funnel;

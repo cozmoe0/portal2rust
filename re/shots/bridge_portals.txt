@@ -1,0 +1,6 @@
+# Light bridge through a portal pair: the sp_a2_bridge_intro projector's
+# beam enters a portal at its far end and leaves one on the side wall.
+# Ours only (portal_place is our cheat command).
+bridge_portal_far sp_a2_bridge_intro -60 -720 60 15 -20 0 portal_place 0 0 302 -768 64 0 180 0; portal_place 0 1 0 -897 64 0 90 0
+bridge_portal_side sp_a2_bridge_intro 150 -600 60 25 -140 0
+bridge_portal_end sp_a2_bridge_intro 180 -790 40 15 0 0

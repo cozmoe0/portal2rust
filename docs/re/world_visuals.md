@@ -1,4 +1,4 @@
-# World visuals: overlays, sky, ropes, lights, sprites, water, screens
+# World visuals: overlays, sky, ropes, lights, sprites, water, screens, bridges
 
 Facts gathered from the installed binaries (`engine.dll`, `client.dll`,
 `server.dll`, `materialsystem.dll`, `shaderapidx9.dll`, `stdshader_dx9.dll`)
@@ -239,6 +239,39 @@ descriptions are our own; the code in `crates/portal2` is written from them.
   scale; it is not fogged.
 - The server's beam trace starts inside the emitter's housing; as with any
   engine trace a solid it starts inside and leaves does not stop it.
+
+## Light bridges (`prop_wall_projector`)
+
+- Server (`CProjectedWallEntity`, server.dll `sub_103D7D90`): every
+  bridge is 64 units wide and 1/64 thick, whatever the projector model.
+- Client (`C_ProjectedWallEntity`, client.dll `sub_103AADB0`, unpainted
+  path): one quad on the top face (centre + up × thickness / 2) with
+  `effects/projected_wall`, U 0 at the right edge to 1 at the left, V from
+  0 at the far end to length / 128 at the projector; then two quads with
+  `effects/projected_wall_rail` standing on the side edges, ±6 units about
+  the bridge's centre line, U down their height, same V.
+- The drawn length grows by `cl_projected_wall_projection_speed` (150)
+  each client think, 16 ms apart (`sub_103A4800`), up to the full length;
+  the quad (and its V) follow the drawn length.
+- `projected_wall_impact` (`sub_103A3A80`): at the start when the piece
+  leaves a portal and at the end, 3.125 units in from it, turned like the
+  bridge, control point 1 on the portal or 512 units above a wall end. Its
+  continuous emitter has `emission_duration` -1, so it is a burst of 24
+  sprites on (re)projection.
+- `effects/projected_wall` is `SolidEnergy` static combo 15 of
+  `solidenergy_ps30` (additive, both details, detail 1 blend mode 1,
+  stdshader_dx9 `sub_10030AD0` gives the combo index). All three
+  textures are read as sRGB and share the mesh's texture coordinate, each
+  through its own texture transform (`solidenergy_vs30` static 259):
+  `base * d1 + base.a * base * (1 - d1) + d2 * d1`, times a smoothstep over
+  the first 40 units of clip depth. The output is that colour times the
+  saturated light scale (c30.x) and `$outputintensity` (1) in rgb, and the
+  same product in alpha, blended `SRC_ALPHA, ONE`: the scale counts twice.
+  Captures at `mat_force_tonemap_scale` 0.25, 0.5, 0.7, 1 and 2 match
+  2.25 × colour × min(scale, 1)² within a few percent (the 2.25 is not
+  explained by the shader alone).
+- The rail is UnlitGeneric, additive, unfogged, `$alpha` from a 10 Hz Sine
+  between 0.8 and 1 (`"!srgb?$color"` does not apply on PC).
 
 ## Dynamic tone mapping (auto exposure)
 

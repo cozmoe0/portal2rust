@@ -137,8 +137,9 @@ fn spawn_personality_core(world: &mut World, e: Entity) {
 pub const SF_PREVENT_PICKUP: u32 = 512;
 
 /// Personality core inputs: pickup switched on and off, `ForcePickup` (into
-/// the player's hands, as `sp_a1_wakeup` starts) and the scenes it plays
-/// going into a socket (`PlayAttach`, `PlayLock`).
+/// the player's hands, as `sp_a1_wakeup` starts), the scenes it plays
+/// going into a socket (`PlayAttach`, `PlayLock`) and Wheatley's flashlight
+/// (see `core_flashlight`).
 fn personality_core_input(world: &mut World, call: &InputCall) -> bool {
     let e = call.target;
     match call.input.as_str() {
@@ -156,6 +157,7 @@ fn personality_core_input(world: &mut World, call: &InputCall) -> bool {
         }
         // No detach scene is among the game's scene names.
         "playdetach" => {}
+        "enableflashlight" | "disableflashlight" => super::core_flashlight::switch(world, e, call.input == "enableflashlight"),
         _ => return false,
     }
     true

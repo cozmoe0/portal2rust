@@ -432,6 +432,9 @@ fn update_lights(
     }
     active.sort_by(|a, b| a.distance.total_cmp(&b.distance));
     active.truncate(MAX_LIGHTS);
+    if (time.elapsed_secs() % 1.0) < dt {
+        info!("DBGTMP lit {:?}", active.iter().map(|a| (a.position, a.color, a.light.cookie.clone())).collect::<Vec<_>>());
+    }
     if active.len() != *last_count {
         *last_count = active.len();
         debug!("{} projected textures lit: {:?}", active.len(), active.iter().map(|a| (a.position, a.color)).collect::<Vec<_>>());

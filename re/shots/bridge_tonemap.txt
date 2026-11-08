@@ -1,0 +1,7 @@
+# Light bridge brightness against the tone map scale (SolidEnergy squares
+# it): the same view at two forced scales.
+bridge_ts1 sp_a2_bridge_intro -770 -768 18 25 0 0 mat_force_tonemap_scale 1
+bridge_ts05 sp_a2_bridge_intro -770 -768 18 25 0 0 mat_force_tonemap_scale 0.5
+bridge_ts025 sp_a2_bridge_intro -770 -768 18 25 0 0 mat_force_tonemap_scale 0.25
+bridge_ts07 sp_a2_bridge_intro -770 -768 18 25 0 0 mat_force_tonemap_scale 0.7
+bridge_ts2 sp_a2_bridge_intro -770 -768 18 25 0 0 mat_force_tonemap_scale 2

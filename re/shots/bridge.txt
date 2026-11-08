@@ -1,0 +1,9 @@
+# Light bridges: the projector in sp_a2_bridge_intro at (-800 -768 16)
+# casting along +X down a corridor. name map x y z pitch yaw roll (feet
+# origin, as setpos) [console commands]. Capture with --map-settle 10
+# --settle 3; ours with --shot-settle-time 3 --shot-map-settle 10.
+bridge_back sp_a2_bridge_intro -420 -768 60 20 180 0
+bridge_on sp_a2_bridge_intro -770 -768 18 25 0 0
+bridge_under sp_a2_bridge_intro -520 -740 -150 -30 180 0
+bridge_angle sp_a2_bridge_intro -460 -720 70 32 205 0
+bridge_close sp_a2_bridge_intro -700 -740 20 60 -20 0

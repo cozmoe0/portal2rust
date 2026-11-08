@@ -11,3 +11,4 @@
 *.nam
 *.til
 __pycache__/
+/target-trace

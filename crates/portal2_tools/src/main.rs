@@ -76,6 +76,7 @@ mod cmd {
     pub mod vmtparams;
     pub mod vpkgrep;
     pub mod vtfinfo;
+    pub mod vtftga;
     pub mod wavinfo;
 }
 
@@ -202,6 +203,7 @@ const COMMANDS: &[(&str, &str, fn())] = &[
         cmd::vpkgrep::main,
     ),
     ("vtfinfo", "Prints the header of textures from the installed game", cmd::vtfinfo::main),
+    ("vtftga", "Writes the first mip of a game texture to an uncompressed TGA", cmd::vtftga::main),
     ("wavinfo", "Prints format, length, loop points and metadata of sound files.", cmd::wavinfo::main),
 ];
 

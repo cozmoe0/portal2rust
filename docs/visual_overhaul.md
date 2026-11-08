@@ -54,6 +54,7 @@ model material binds, with the shaders reading it.
 | Atmosphere | `fx/atmosphere.rs`, `shaders/fx_volumetric.wesl` | haze coloured by the map's ambient light; volumetric scattering from projected textures, volumetric lights and ambient haze, on the main view and the portals' views, softly limited so no room fills with smoke |
 | Screen-space reflections | `fx/ssr.rs`, `shaders/fx_ssr.wesl` | puddles reflect the scene, portals and beams included (ultra) |
 | Post | `fx/postfx.rs`, `shaders/fx_post.wesl` | bloom, identity-below-the-knee tone curve, grade, dither |
+| Light bridges | `devices/bridge_visual.rs`, `shaders/bridge.wesl` | over the game's own bridge surface: HDR edges for the bloom, a grazing sheen, pulses running out along the strands, glows at the emitter and the wall, a bright projection front, ripples under the player's feet and resting props, and a tube light along each piece |
 
 Design decisions worth knowing:
 
@@ -91,6 +92,12 @@ Design decisions worth knowing:
   measures for lip sync). GLaDOS's switches with a glow sprite on her model, so her eye in
   `sp_a1_wakeup` flickers on as she wakes. A core held as a view model shines from where the
   view reaches, never from inside the wall in front of the player.
+- **Light bridges keep the game's look underneath.** With the preset off a bridge is drawn as
+  `C_ProjectedWallEntity` draws it (one quad on its top face with the `SolidEnergy`
+  `effects/projected_wall` material, rails on its edges, the drawn length growing at 150 units
+  per 16 ms think, `projected_wall_impact` sparks where it lands), at the brightness the game
+  shows for each tone map scale. The overhaul only adds on top of that surface, all in the one
+  draw per piece, plus one tube light.
 - **No temporal filter.** Noise in the occlusion and volumetrics uses a fixed per-pixel pattern
   and spatial filtering; the 4× MSAA stays, and highlights get specular antialiasing. Nothing can
   ghost behind moving objects or portal crossings.
