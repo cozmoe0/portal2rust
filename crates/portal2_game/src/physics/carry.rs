@@ -18,6 +18,14 @@ use portal2_world::collision::{Collider as TraceCollider, Physics, mask};
 const PLAYER_RADIUS: f32 = 22.627_417;
 /// Reach for picking up and using.
 const REACH: f32 = 80.0;
+/// Maps whose puzzle is catching a flung prop in mid-air, made easier than
+/// the original: while the player is airborne, a prop within this reach
+/// (to its bounding sphere) and this aim cone (cosine of the angle off the
+/// view, about 25 degrees) can be picked up. In `sp_a2_catapult_intro` the
+/// centre plate throws the cube straight up and the player toward the
+/// entrance at 450 units a second, so the plain reach left a fifth of a
+/// second to grab it.
+const CATCH_MAPS: [(&str, f32, f32); 1] = [("sp_a2_catapult_intro", 260.0, 0.9)];
 /// Top speed of the hold controller; larger implied speeds count half
 /// toward the drop error.
 const HOLD_MAX_SPEED: f32 = 1000.0;
@@ -167,6 +175,8 @@ fn use_or_grab(
     mut events: MessageWriter<GameEvent>,
     mut forced: ResMut<ForcedPickup>,
     console: Res<portal2_core::console::Console>,
+    map: Res<portal2_core::LoadedMap>,
+    candidates: Query<Entity, With<PhysicsProp>>,
 ) {
     let pressed = buttons.just_pressed("use") || std::mem::take(&mut auto.0);
     let Ok((pe, p)) = players.single() else { return };
@@ -213,7 +223,16 @@ fn use_or_grab(
         tr.entity,
         tr.entity.map(|e| props.get(e).map(|p| *p.2))
     );
-    let Some(target) = tr.entity else {
+    let pickable = |e: Entity| {
+        props.get(e).is_ok_and(|(_, _, body, me)| *body == RigidBody::Dynamic && !me.has_flag(crate::entities::props::SF_PREVENT_PICKUP))
+    };
+    let caught = match CATCH_MAPS.iter().find(|(name, ..)| *name == map.name) {
+        Some(&(_, reach, cone)) if !p.state.on_ground && !tr.entity.is_some_and(pickable) => {
+            catch_target(&physics, &props, candidates.iter().filter(|&e| pickable(e)), pe, eye, dir, reach, cone)
+        }
+        _ => None,
+    };
+    let Some(target) = caught.or(tr.entity) else {
         sounds.write(portal2_audio::SoundRequest::on("PortalPlayer.UseDeny", pe));
         return;
     };
@@ -225,6 +244,40 @@ fn use_or_grab(
         }
         _ => queue.push(0.0, EventTarget::Entity(target), "use", "", Some(pe), Some(pe)),
     }
+}
+
+/// The prop among `candidates` nearest the middle of the view whose
+/// bounding sphere lies within `reach` of the eye, `cone` (cosine) of the
+/// view direction and in plain sight; for catching props in mid-air.
+#[allow(clippy::too_many_arguments)]
+fn catch_target(
+    physics: &Physics,
+    props: &Query<(&TraceCollider, &GlobalTransform, &RigidBody, &portal2_core::entity::MapEntity), With<PhysicsProp>>,
+    candidates: impl Iterator<Item = Entity>,
+    pe: Entity,
+    eye: Vec3,
+    dir: Vec3,
+    reach: f32,
+    cone: f32,
+) -> Option<Entity> {
+    candidates
+        .filter_map(|e| {
+            let (col, gt, ..) = props.get(e).ok()?;
+            let centre = gt.transform_point((col.shape.mins + col.shape.maxs) * 0.5);
+            let to = centre - eye;
+            let (distance, radius) = (to.length(), prop_radius(col));
+            if distance - radius > reach {
+                return None;
+            }
+            let aim = if distance > radius { dir.dot(to / distance) } else { 1.0 };
+            if aim < cone || physics.trace(eye, centre, -SIGHT_BOX, SIGHT_BOX, mask::SOLID_BRUSH_ONLY, &[pe, e]).fraction < 1.0 {
+                return None;
+            }
+            debug!("use: catching {e:?} {distance:.0} units away, {:.0} degrees off the view", aim.acos().to_degrees());
+            Some((e, aim))
+        })
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(e, _)| e)
 }
 
 /// Takes `target` into the player's hands, turned `yaw_offset` from their view.
