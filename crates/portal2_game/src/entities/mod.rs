@@ -12,6 +12,7 @@ pub mod lights;
 pub mod linked_portals;
 pub mod logic;
 pub mod movers;
+pub mod portal_volumes;
 pub mod props;
 pub mod scenes;
 pub mod script_conditions;
@@ -70,6 +71,7 @@ impl Plugin for EntitiesPlugin {
         core_flashlight::register(app);
         triggers::register(app);
         areaportal::register(app);
+        portal_volumes::register(app);
         lights::register(app);
         linked_portals::register(app);
     }

@@ -42,8 +42,6 @@ pub fn register(app: &mut App) {
             "filter_multi",
             "filter_player_held",
             "filter_damage_type",
-            "func_noportal_volume",
-            "func_portal_bumper",
             "func_illusionary",
             "func_areaportal",
             "info_lighting_relative",

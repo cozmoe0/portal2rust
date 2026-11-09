@@ -256,7 +256,7 @@ fn fire_gun(
     map: Option<Res<CurrentMap>>,
     fs: Res<GameFs>,
     mut cache: ResMut<PortalableCache>,
-    entities: Query<(Entity, &MapEntity, &GlobalTransform)>,
+    entities: Query<(Entity, &MapEntity, &GlobalTransform, Option<&crate::entities::portal_volumes::PortalVolume>)>,
     portals: Res<super::Portals>,
     portal_query: Query<&super::Portal>,
     (mut place, mut sounds, mut fx): (
@@ -304,14 +304,15 @@ fn fire_gun(
     let mut helpers = Vec::new();
     let mut refused = Vec::new();
     let mut ignore = vec![pe];
-    for (e, me, gt) in &entities {
+    for (e, me, gt, volume) in &entities {
         if super::placement::shot_ignores(&me.classname) {
             ignore.push(e);
         }
+        let active = volume.is_some_and(|v| v.active);
         match me.classname.as_str() {
             "func_door" => refused.push(e),
-            "func_noportal_volume" if me.get_i32("startactive").unwrap_or(1) != 0 => noportal.push(e),
-            "func_portal_bumper" => bumpers.push(e),
+            "func_noportal_volume" if active => noportal.push(e),
+            "func_portal_bumper" if active => bumpers.push(e),
             "trigger_portal_cleanser" if !me.get_bool("startdisabled") => cleansers.push(e),
             "info_placement_helper" => helpers.push(Helper {
                 origin: gt.translation(),

@@ -30,6 +30,7 @@ pub fn register_all(r: &mut SaveRegistry) {
     props::register_save(r);
     r.component::<crate::entities::cubes::WeightedCube>("weighted_cube");
     crate::entities::areaportal::register_save(r);
+    crate::entities::portal_volumes::register_save(r);
     crate::entities::lights::register_save(r);
     buttons::register_save(r);
     r.component::<detectors::PortalDetector>("portal_detector");
