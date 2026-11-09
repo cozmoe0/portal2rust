@@ -78,7 +78,7 @@ pub fn register(vm: &mut Vm) -> ScriptClasses {
         ("DebugDrawLine", ignore, -1),
         ("DebugDrawBox", ignore, -1),
         ("LoopSinglePlayerMaps", false_fn, 1),
-        ("GetMapIndexInPlayOrder", minus_one, 1),
+        ("GetMapIndexInPlayOrder", not_community_map, 1),
         ("GetNumMapsPlayed", zero, 1),
         ("SetMapAsPlayed", ignore, -1),
         ("RequestMapRating", ignore, -1),
@@ -142,8 +142,12 @@ fn two(_ctx: &mut Ctx, _args: &[Value]) -> Result<Value> {
     Ok(Value::Int(2))
 }
 
-fn minus_one(_ctx: &mut Ctx, _args: &[Value]) -> Result<Value> {
-    Ok(Value::Int(-1))
+/// `GetMapIndexInPlayOrder`: -2 for a map that is not a community map
+/// (every campaign map). The elevator video script reads anything else as
+/// a workshop map and plays a video by play count instead of the map's own
+/// (`animalking.bik` in every elevator).
+fn not_community_map(_ctx: &mut Ctx, _args: &[Value]) -> Result<Value> {
+    Ok(Value::Int(-2))
 }
 
 fn zero_float(_ctx: &mut Ctx, _args: &[Value]) -> Result<Value> {
