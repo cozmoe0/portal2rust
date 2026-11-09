@@ -356,6 +356,9 @@ fn projected_input(world: &mut World, call: &InputCall) -> bool {
         "fov" | "setfov" => l.fov = f.clamp(1.0, 179.0),
         "enableshadows" => l.shadows = f != 0.0,
         "lightcolor" => l.color = parse_color(&call.param),
+        // Not one of its inputs: `sp_a2_bts4`'s scanner sends it to the
+        // spotlight sharing this light's name, and the engine ignores it here.
+        "setcolor" => {}
         "spotlighttexture" => l.cookie = call.param.trim().to_owned(),
         "setnearz" => l.near = f.max(0.1),
         "setfarz" => l.far = f.max(1.0),

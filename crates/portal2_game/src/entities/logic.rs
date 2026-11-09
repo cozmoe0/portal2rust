@@ -66,8 +66,19 @@ pub fn register(app: &mut App) {
     h.register("logic_random_outputs", random_outputs_input);
     h.register("logic_register_activator", register_activator_input);
     // Classes whose effects are not simulated yet; their inputs are accepted
-    // so I/O chains continue.
-    for class in ["logic_achievement", "env_spark", "info_overlay_accessor", "move_rope", "keyframe_rope"] {
+    // so I/O chains continue. Area portals only cull drawing in the engine
+    // (everything is drawn here); AI relationships only aim turrets at
+    // things other than the player (`sp_a2_bts4`'s test dummy).
+    for class in [
+        "logic_achievement",
+        "env_spark",
+        "info_overlay_accessor",
+        "move_rope",
+        "keyframe_rope",
+        "func_areaportal",
+        "ai_relationship",
+        "npc_enemyfinder",
+    ] {
         h.accept_rest(class);
     }
 }

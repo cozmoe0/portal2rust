@@ -231,6 +231,14 @@ fn spotlight_input(world: &mut World, call: &InputCall) -> bool {
         "setspeed" => s.speed = source_formats::kv::parse_f32_lenient(&call.param) * s.speed.signum(),
         // Dynamic light from the beam's end is not drawn.
         "forcerelink" => {}
+        // A new colour for beam and halo (`sp_a2_bts4`'s scanner light goes
+        // red, yellow or white with the scan result), kept as `rendercolor`
+        // so a save brings it back.
+        "setcolor" | "lightcolor" => {
+            let (beam, halo) = (s.beam, s.halo);
+            set_color(world, call.target, call.param.trim(), beam, halo);
+            return true;
+        }
         _ => return false,
     }
     let (on, beam, halo) = (s.on, s.beam, s.halo);
@@ -243,6 +251,28 @@ fn spotlight_input(world: &mut World, call: &InputCall) -> bool {
         }
     }
     true
+}
+
+fn set_color(world: &mut World, e: Entity, param: &str, beam: Option<Entity>, halo: Option<Entity>) {
+    let v: Vec<f32> = param.split_whitespace().filter_map(|p| p.parse().ok()).collect();
+    if v.len() < 3 {
+        return;
+    }
+    let Some(mut me) = world.get_mut::<MapEntity>(e) else { return };
+    me.set("rendercolor", param);
+    let scale = me.get_f32("hdrcolorscale").unwrap_or(1.0);
+    let c = Vec3::new(v[0], v[1], v[2]) / 255.0;
+    let color = (Vec3::new(srgb_to_linear(c.x), srgb_to_linear(c.y), srgb_to_linear(c.z)) * scale).extend(1.0);
+    if let Some(handle) = beam.and_then(|b| world.get::<MeshMaterial3d<BeamMaterial>>(b)).map(|m| m.0.clone())
+        && let Some(mut m) = world.resource_mut::<Assets<BeamMaterial>>().get_mut(&handle)
+    {
+        m.params.color = color;
+    }
+    if let Some(handle) = halo.and_then(|h| world.get::<MeshMaterial3d<SpriteMaterial>>(h)).map(|m| m.0.clone())
+        && let Some(mut m) = world.resource_mut::<Assets<SpriteMaterial>>().get_mut(&handle)
+    {
+        m.params.color = color;
+    }
 }
 
 fn rotate_spotlights(time: Res<Time>, mut lights: Query<(&Spotlight, &mut Transform)>) {

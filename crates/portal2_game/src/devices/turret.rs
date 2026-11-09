@@ -262,7 +262,15 @@ pub struct Turret {
     pub burn_until: f64,
     #[serde(default)]
     next_burn_talk: f64,
+    /// Out of ammo (spawnflag 256, `DepleteAmmo`): it still turns and
+    /// "fires", but only clicks. `sp_a2_bts4`'s scanner empties the turrets
+    /// it flings off the line towards the player.
+    #[serde(default)]
+    pub out_of_ammo: bool,
 }
+
+/// spawnflags: out of ammo.
+const SF_OUT_OF_AMMO: u32 = 256;
 
 fn spawn_turret(world: &mut World, e: Entity) {
     let Some(me) = world.get_mut::<MapEntity>(e).map(|mut me| {
@@ -314,6 +322,7 @@ fn spawn_turret(world: &mut World, e: Entity) {
             eye_blink: false,
             burn_until: 0.0,
             next_burn_talk: 0.0,
+            out_of_ammo: me.has_flag(SF_OUT_OF_AMMO),
         },
     ));
     // Placed in the map (spawned as it loads), it stands where it was put
@@ -330,18 +339,18 @@ fn turret_input(world: &mut World, call: &InputCall) -> bool {
     // `SetModel <index>`: one of the models `ModelIndex` picks from
     // (`sp_a2_bts4`'s conveyor makes malfunctioning turrets of some as they
     // pass its reject trigger). The turret is set up again on the new model,
-    // keeping whether it is enabled and gagged.
+    // keeping whether it is enabled, gagged and out of ammo.
     if call.input == "setmodel" {
         let e = call.target;
         let Ok(index) = call.param.trim().parse::<i32>() else { return true };
-        let Some(kept) = world.get::<Turret>(e).map(|t| (t.enabled, t.gagged)) else { return false };
+        let Some(kept) = world.get::<Turret>(e).map(|t| (t.enabled, t.gagged, t.out_of_ammo)) else { return false };
         if let Some(mut me) = world.get_mut::<MapEntity>(e) {
             me.set("modelindex", &index.to_string());
         }
         crate::entities::spawner::clear_render_children(world, e);
         spawn_turret(world, e);
         if let Some(mut t) = world.get_mut::<Turret>(e) {
-            (t.enabled, t.gagged) = kept;
+            (t.enabled, t.gagged, t.out_of_ammo) = kept;
         }
         return true;
     }
@@ -363,6 +372,8 @@ fn turret_input(world: &mut World, call: &InputCall) -> bool {
             t.state = TurretState::Dead;
             t.eye_state = EyeState::Dead;
         }
+        "depleteammo" => t.out_of_ammo = true,
+        "restoreammo" => t.out_of_ammo = false,
         "firebullet" | "enablepickup" | "disablepickup" => {}
         _ => return false,
     }
@@ -786,6 +797,10 @@ fn fire(
     materials: &mut Assets<EffectMaterial>,
     shared: &mut Option<(Handle<Mesh>, Handle<EffectMaterial>)>,
 ) {
+    if t.out_of_ammo {
+        fx.sounds.push(SoundRequest::on("NPC_FloorTurret.DryFire", e));
+        return;
+    }
     t.muzzle = (t.muzzle + 1) % 4;
     fx.sequences.push((if t.muzzle < 2 { "fire" } else { "fire2" }, "idlealert"));
     let mut path = trace_beam(physics, frames, start, dir, mask::SOLID_ALL, &[e], 4, |_| None);
@@ -1064,6 +1079,7 @@ mod tests {
             eye_blink: false,
             burn_until: 0.0,
             next_burn_talk: 0.0,
+            out_of_ammo: false,
         };
         t.turn_toward(Vec2::new(90.0, -40.0));
         assert_eq!(t.aim, Vec2::new(12.0, -12.0));

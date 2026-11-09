@@ -50,7 +50,9 @@ pub fn register(app: &mut App) {
         }
     }
     let mut h = world.resource_mut::<InputHandlers>();
-    for class in ["prop_dynamic", "prop_dynamic_override", "prop_dynamic_ornament"] {
+    // A ragdoll shows and hides like a dynamic prop (`sp_a2_bts4`'s test
+    // dummy appears with the first turret).
+    for class in ["prop_dynamic", "prop_dynamic_override", "prop_dynamic_ornament", "prop_ragdoll"] {
         h.register(class, dynamic_input);
     }
     h.register("prop_testchamber_door", chamber_door_input);
@@ -158,6 +160,17 @@ fn personality_core_input(world: &mut World, call: &InputCall) -> bool {
         // No detach scene is among the game's scene names.
         "playdetach" => {}
         "enableflashlight" | "disableflashlight" => super::core_flashlight::switch(world, e, call.input == "enableflashlight"),
+        // The pose the core idles in between scenes (Wheatley glancing
+        // around in `sp_a2_bts1`'s jailbreak, dangling in `sp_a2_core`).
+        "setidlesequence" => {
+            if let Some(mut anim) = world.get_mut::<StudioAnimator>(e)
+                && anim.set_default_sequence(call.param.trim())
+                && (anim.finished || anim.looping)
+            {
+                let name = call.param.trim().to_owned();
+                anim.set_sequence(&name);
+            }
+        }
         _ => return false,
     }
     true
