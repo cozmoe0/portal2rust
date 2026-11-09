@@ -260,7 +260,10 @@ pub fn place_camera(
                 _ => (4.0, Vec2::new(4.0, 3.0)),
             };
             let rot = portal2_core::coords::angles_to_quat(view.angles);
-            let (eye, rot) = portal2_world::collision::portal::view_through_portals(frames, view.origin, rot, near, near_half);
+            let (mins, maxs) = p.state.hull();
+            let (body_center, body_half) = (origin + (mins + maxs) * 0.5, (maxs - mins) * 0.5);
+            let (eye, rot) =
+                portal2_world::collision::portal::view_through_portals(frames, view.origin, rot, near, near_half, body_center, body_half);
             if eye != view.origin {
                 view.origin = eye;
                 view.angles = portal2_core::coords::quat_to_angles(rot);

@@ -56,6 +56,15 @@ impl PortalFrame {
         let z = local.z / (HALF_HEIGHT - margin).max(1.0);
         y * y + z * z <= 1.0
     }
+
+    /// Whether an axis-aligned box at `center` with half-size `half`
+    /// straddles the portal's plane within reach of its rectangle: the box
+    /// is passing through the opening (the game's portal environment).
+    pub fn touches_box(&self, center: Vec3, half: Vec3) -> bool {
+        let l = self.to_local(center);
+        let extent = |axis: Vec3| axis.x.abs() * half.x + axis.y.abs() * half.y + axis.z.abs() * half.z;
+        l.x.abs() <= extent(self.forward) && l.y.abs() <= HALF_WIDTH + extent(self.left()) && l.z.abs() <= HALF_HEIGHT + extent(self.up)
+    }
 }
 
 /// Maps space in front of `from` to space in front of `to` (entering one
@@ -197,13 +206,27 @@ pub fn carved_statics(frame: &PortalFrame, world: &CollisionWorld) -> Vec<u32> {
 /// straddles the portal and the eye itself is inside the wall behind the
 /// opening (it went through ahead of the body or is trailing it). A near
 /// plane wholly in front of the portal needs nothing, even from an eye just
-/// behind it: that view looks back out of the opening.
-pub fn view_through_portals(frames: &[PortalFrame; 2], eye: Vec3, rot: Quat, near: f32, near_half: Vec2) -> (Vec3, Quat) {
+/// behind it: that view looks back out of the opening. Only a portal whose
+/// opening the body (box at `body_center`, half-size `body_half`) is
+/// passing through carries the view: an eye behind a thin wall with the
+/// body there too sees what is behind the wall, not the other side.
+pub fn view_through_portals(
+    frames: &[PortalFrame; 2],
+    eye: Vec3,
+    rot: Quat,
+    near: f32,
+    near_half: Vec2,
+    body_center: Vec3,
+    body_half: Vec3,
+) -> (Vec3, Quat) {
     let (f, r, u) = (rot * Vec3::X, rot * Vec3::NEG_Y, rot * Vec3::Z);
     let corners = [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)]
         .map(|(sx, sy)| eye + f * near + r * (near_half.x * sx) + u * (near_half.y * sy));
     for slot in 0..2 {
         let (from, to) = (frames[slot], frames[1 - slot]);
+        if !from.touches_box(body_center, body_half) {
+            continue;
+        }
         let in_tube = |l: Vec3| l.x < 0.0 && l.x > -CARVE_DEPTH && l.y.abs() <= HALF_WIDTH && l.z.abs() <= HALF_HEIGHT;
         let local = corners.map(|c| from.to_local(c));
         let through = if local.iter().all(|&l| in_tube(l)) {
@@ -243,27 +266,55 @@ mod tests {
         assert_eq!(carved_statics(&frame, &world), vec![0]);
     }
 
+    /// The player's box below an eye at `eye` (standing: the eye 28 units
+    /// above the box's centre).
+    fn body_below(eye: Vec3) -> (Vec3, Vec3) {
+        (eye - Vec3::Z * 28.0, Vec3::new(16.0, 16.0, 36.0))
+    }
+
+    fn view(frames: &[PortalFrame; 2], eye: Vec3, rot: Quat) -> (Vec3, Quat) {
+        let (body_center, body_half) = body_below(eye);
+        view_through_portals(frames, eye, rot, 4.0, Vec2::new(4.0, 2.25), body_center, body_half)
+    }
+
     #[test]
     fn eye_behind_the_entry_looks_out_of_the_exit() {
         let a = PortalFrame { center: Vec3::ZERO, forward: Vec3::X, up: Vec3::Z };
         let b = PortalFrame { center: Vec3::new(500.0, 0.0, 0.0), forward: Vec3::Y, up: Vec3::Z };
-        let near_half = Vec2::new(4.0, 2.25);
         // Looking along the wall from inside it, just behind A.
-        let (eye, rot) = view_through_portals(&[a, b], Vec3::new(-2.0, 0.0, 10.0), Quat::from_rotation_z(1.0), 4.0, near_half);
+        let (eye, rot) = view(&[a, b], Vec3::new(-2.0, 0.0, 10.0), Quat::from_rotation_z(1.0));
         assert!(b.to_local(eye).x > 1.9 && (b.to_local(eye).z - 10.0).abs() < 1e-3);
         assert!(rot.angle_between(Quat::from_mat3a(&transfer(&a, &b).matrix3) * Quat::from_rotation_z(1.0)) < 1e-3);
         // Walking straight in, a few units out: the whole near plane is past the opening.
         let into_a = Quat::from_rotation_z(std::f32::consts::PI);
-        let (eye, _) = view_through_portals(&[a, b], Vec3::new(3.0, 0.0, 10.0), into_a, 4.0, near_half);
+        let (eye, _) = view(&[a, b], Vec3::new(3.0, 0.0, 10.0), into_a);
         assert!(b.to_local(eye).x < 0.0);
         // Trailing just behind the exit, looking out of it: the view is fine as it is.
         let out_of_b = Quat::from_rotation_z(std::f32::consts::FRAC_PI_2);
         let behind_b = b.to_world(Vec3::new(-2.0, 0.0, 10.0));
-        assert_eq!(view_through_portals(&[a, b], behind_b, out_of_b, 4.0, near_half).0, behind_b);
+        assert_eq!(view(&[a, b], behind_b, out_of_b).0, behind_b);
         // Looking along the wall from in front of it: no change.
-        let (eye, _) =
-            view_through_portals(&[a, b], Vec3::new(3.0, 0.0, 10.0), Quat::from_rotation_z(std::f32::consts::FRAC_PI_2), 4.0, near_half);
+        let (eye, _) = view(&[a, b], Vec3::new(3.0, 0.0, 10.0), Quat::from_rotation_z(std::f32::consts::FRAC_PI_2));
         assert_eq!(eye, Vec3::new(3.0, 0.0, 10.0));
+    }
+
+    /// Standing behind a thin wall, lined up with the portal on its other
+    /// face, the eye is inside the opening's tube but the body is nowhere
+    /// near the opening: the view stays where it is. Jumping up into a
+    /// ceiling portal, the eye is as far past the opening with the body
+    /// still in it, and goes through.
+    #[test]
+    fn eye_behind_a_thin_wall_stays_put() {
+        let a = PortalFrame { center: Vec3::ZERO, forward: Vec3::X, up: Vec3::Z };
+        let b = PortalFrame { center: Vec3::new(500.0, 0.0, 0.0), forward: Vec3::Y, up: Vec3::Z };
+        // The wall runs from x = 0 back to x = -8; the player stands against its back.
+        let eye = Vec3::new(-30.0, 0.0, 10.0);
+        let toward_wall = Quat::IDENTITY;
+        assert_eq!(view(&[a, b], eye, toward_wall).0, eye);
+        let ceiling = PortalFrame { center: Vec3::new(0.0, 0.0, 100.0), forward: Vec3::NEG_Z, up: Vec3::X };
+        let eye = Vec3::new(0.0, 0.0, 110.0);
+        let up = Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2);
+        assert_ne!(view(&[ceiling, b], eye, up).0, eye);
     }
 
     #[test]

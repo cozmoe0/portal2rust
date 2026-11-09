@@ -984,7 +984,10 @@ fn update_fix_meshes(
 }
 
 /// The part of the camera's near plane (pushed a hair further out) behind
-/// the portal's quad and inside its opening, in the portal's space.
+/// the portal's quad and inside its opening, in the portal's space. Empty
+/// unless the eye or its near plane reaches in front of the quad: a camera
+/// wholly behind it (one the view was not carried through for) is behind
+/// the wall, however it lines up with the opening.
 fn near_plane_behind(frame: &PortalFrame, camera: &Transform, pp: &PerspectiveProjection) -> Vec<Vec3> {
     let near = pp.near * 1.01;
     let hy = near * (pp.fov * 0.5).tan();
@@ -995,6 +998,9 @@ fn near_plane_behind(frame: &PortalFrame, camera: &Transform, pp: &PerspectivePr
         .iter()
         .map(|(sx, sy)| frame.to_local(centre + right * (hx * sx) + up * (hy * sy)))
         .collect();
+    if frame.to_local(camera.translation).x <= QUAD_OFFSET && poly.iter().all(|l| l.x <= QUAD_OFFSET) {
+        return Vec::new();
+    }
     // Keep x <= the quad's plane and |y|, |z| within the opening.
     let planes =
         [(Vec3::X, QUAD_OFFSET), (Vec3::Y, HALF_WIDTH), (Vec3::NEG_Y, HALF_WIDTH), (Vec3::Z, HALF_HEIGHT), (Vec3::NEG_Z, HALF_HEIGHT)];
@@ -1223,14 +1229,6 @@ pub struct PortalEnvironment {
     sounding: bool,
 }
 
-/// Whether a box at `center` with half-size `half` touches a portal's
-/// rectangle.
-fn box_touches_portal(frame: &PortalFrame, center: Vec3, half: Vec3) -> bool {
-    let l = frame.to_local(center);
-    let extent = |axis: Vec3| axis.x.abs() * half.x + axis.y.abs() * half.y + axis.z.abs() * half.z;
-    l.x.abs() <= extent(frame.forward) && l.y.abs() <= HALF_WIDTH + extent(frame.left()) && l.z.abs() <= HALF_HEIGHT + extent(frame.up)
-}
-
 /// `PortalPlayer.EnterPortal` as the player's core (a quarter of their box)
 /// touches the opening, `ExitPortal` once a slightly bigger core (0.3) no
 /// longer touches the portal they are in; louder and higher the faster
@@ -1249,9 +1247,8 @@ fn portal_sounds(
     let half = (maxs - mins) * 0.5;
     // Keep the portal the player is in while they touch it, else take one
     // they touch.
-    env.slot = frames.and_then(|f| {
-        env.slot.filter(|&s| box_touches_portal(&f[s], center, half)).or_else(|| (0..2).find(|&s| box_touches_portal(&f[s], center, half)))
-    });
+    env.slot = frames
+        .and_then(|f| env.slot.filter(|&s| f[s].touches_box(center, half)).or_else(|| (0..2).find(|&s| f[s].touches_box(center, half))));
     let speed = p.state.velocity.length();
     let mut play = |name: &str| {
         let mut r = portal2_audio::SoundRequest::on(name, pe);
@@ -1259,7 +1256,7 @@ fn portal_sounds(
         r.params.pitch = Some((80.0 + speed * 0.03).trunc());
         sounds.write(r);
     };
-    let touching = |scale: f32| frames.zip(env.slot).is_some_and(|(f, s)| box_touches_portal(&f[s], center, half * scale));
+    let touching = |scale: f32| frames.zip(env.slot).is_some_and(|(f, s)| f[s].touches_box(center, half * scale));
     if !env.sounding {
         if touching(0.25) {
             env.sounding = true;
@@ -1344,6 +1341,23 @@ mod tests {
         let beside = PortalFrame { center: Vec3::new(20.0, 0.0, -10.0), forward: Vec3::NEG_X, up: Vec3::Y };
         let rect = pixel_rect(&clip_to_front(&quad_corners(&beside), clip_from_world), screen).unwrap();
         assert_eq!(rect.max.x, 1600);
+    }
+
+    /// Walking into a portal, the near plane passing the quad gets the fix
+    /// where it is inside the opening. Standing behind the wall, lined up
+    /// with the opening, gets none, however far back.
+    #[test]
+    fn near_plane_fix_only_from_in_front() {
+        let pp = PerspectiveProjection { fov: 1.2, aspect_ratio: 16.0 / 9.0, near: 4.0, ..default() };
+        let frame = PortalFrame { center: Vec3::ZERO, forward: Vec3::X, up: Vec3::Z };
+        let into = Transform::from_xyz(2.0, 0.0, 10.0).looking_to(Vec3::NEG_X, Vec3::Z);
+        assert!(near_plane_behind(&frame, &into, &pp).len() >= 3);
+        for depth in [20.0, 60.0, 150.0] {
+            for dir in [Vec3::X, Vec3::NEG_X, Vec3::Y] {
+                let behind = Transform::from_xyz(-depth, 0.0, 10.0).looking_to(dir, Vec3::Z);
+                assert!(near_plane_behind(&frame, &behind, &pp).is_empty(), "{depth} {dir}");
+            }
+        }
     }
 
     #[test]
