@@ -32,6 +32,9 @@ pub fn register_all(r: &mut SaveRegistry) {
     crate::entities::areaportal::register_save(r);
     crate::entities::portal_volumes::register_save(r);
     crate::entities::constraints::register_save(r);
+    crate::entities::breakables::register_save(r);
+    crate::entities::angle_sensor::register_save(r);
+    crate::entities::point_push::register_save(r);
     crate::entities::lights::register_save(r);
     buttons::register_save(r);
     r.component::<detectors::PortalDetector>("portal_detector");

@@ -1,7 +1,9 @@
 //! Map entities: spawning, naming, parenting and the shared input handlers.
 //! Class behaviour lives in the submodules.
 
+pub mod angle_sensor;
 pub mod areaportal;
+pub mod breakables;
 pub mod buttons;
 pub mod constraints;
 pub mod core_flashlight;
@@ -13,10 +15,12 @@ pub mod lights;
 pub mod linked_portals;
 pub mod logic;
 pub mod movers;
+pub mod point_push;
 pub mod portal_volumes;
 pub mod props;
 pub mod scenes;
 pub mod script_conditions;
+pub mod scripted_sequence;
 pub mod spawner;
 pub mod templates;
 pub mod texturetoggle;
@@ -74,6 +78,10 @@ impl Plugin for EntitiesPlugin {
         areaportal::register(app);
         portal_volumes::register(app);
         constraints::register(app);
+        breakables::register(app);
+        angle_sensor::register(app);
+        point_push::register(app);
+        scripted_sequence::register(app);
         lights::register(app);
         linked_portals::register(app);
     }

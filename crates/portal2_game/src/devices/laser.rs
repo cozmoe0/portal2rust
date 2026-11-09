@@ -275,7 +275,11 @@ fn update_lasers(
     mut damage: MessageWriter<DamagePlayer>,
     mut turret_hits: MessageWriter<LaserHitTurret>,
     mut out: MessageWriter<FireOutput>,
-    (mut sounds, mut queue): (MessageWriter<SoundRequest>, ResMut<crate::entities::io::EventQueue>),
+    (mut sounds, mut queue, mut breakables): (
+        MessageWriter<SoundRequest>,
+        ResMut<crate::entities::io::EventQueue>,
+        MessageWriter<crate::entities::breakables::BreakableDamage>,
+    ),
 ) {
     let frames = linked_frames(&portals, &portal_query);
     let dt = time.delta_secs();
@@ -317,6 +321,12 @@ fn update_lasers(
                 && cubes.get(hit).is_ok_and(|(m, _, _)| m.classname == "npc_portal_turret_floor")
             {
                 turret_hits.write(LaserHitTurret(hit));
+            }
+            // Breakables in the beam's way wear down (`sp_a2_bts5`'s pipes).
+            if let Some(hit) = seg.hit_entity
+                && cubes.get(hit).is_ok_and(|(m, _, _)| m.classname == "func_breakable")
+            {
+                breakables.write(crate::entities::breakables::BreakableDamage { entity: hit, amount: BURN_DPS * dt, attacker: Some(e) });
             }
             for (_, mut r, rt, _, target) in &mut receivers {
                 if let Some(target) = target {
