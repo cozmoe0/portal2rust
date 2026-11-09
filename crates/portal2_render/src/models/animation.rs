@@ -58,6 +58,12 @@ pub struct StudioAnimator {
     pub finished: bool,
     /// Sequence to return to after a non-looping one finishes.
     pub default_sequence: Option<usize>,
+    /// The default sequence starts over each time it finishes too, as a
+    /// `prop_dynamic`'s think does (`CDynamicProp::AnimThink` sets the
+    /// default animation again whenever a sequence that does not loop
+    /// ends): `sp_a2_bts3`'s vactube objects ride their tubes on and on.
+    /// Other models stay on the default's last frame.
+    pub restart_default: bool,
     /// A finished sequence stays on its last frame instead of going back
     /// to the default one (`prop_dynamic`'s `HoldAnimation`).
     pub hold: bool,
@@ -91,6 +97,7 @@ impl StudioAnimator {
             looping: false,
             finished: false,
             default_sequence: None,
+            restart_default: false,
             hold: false,
             playing: true,
             layers: Vec::new(),
@@ -262,7 +269,7 @@ pub fn animate_models(
                 match anim.default_sequence {
                     // Starting the default sequence plays it forwards at
                     // the normal rate, whatever the last one ran at.
-                    Some(default) if default != anim.sequence => {
+                    Some(default) if default != anim.sequence || anim.restart_default => {
                         anim.set_sequence_index(default);
                         anim.rate = 1.0;
                     }

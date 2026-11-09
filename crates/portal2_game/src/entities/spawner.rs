@@ -203,13 +203,14 @@ pub fn attach_bone_followers(world: &mut World, e: Entity) -> bool {
         }
     };
     let Some(solids) = solids else { return false };
+    let enabled = !world.get::<MapEntity>(e).is_some_and(|me| me.get_bool(super::props::NO_COLLISION_KEY));
     for (bone, shape) in solids.iter() {
         let Some(&joint) = joints.get(*bone) else { continue };
         let follower = world
             .spawn((
                 Name::new("bone follower"),
                 BoneFollower { owner: e },
-                Collider::new(shape.clone(), true, true),
+                Collider::new(shape.clone(), enabled, true),
                 Transform::IDENTITY,
                 Visibility::Inherited,
             ))
@@ -278,6 +279,7 @@ pub fn attach_collider(world: &mut World, e: Entity) {
         }
     };
     if let Some(shape) = shape {
-        world.entity_mut(e).insert(Collider::new(shape, true, true));
+        let enabled = !me.get_bool(super::props::NO_COLLISION_KEY);
+        world.entity_mut(e).insert(Collider::new(shape, enabled, true));
     }
 }

@@ -212,6 +212,7 @@ fn spawn_dynamic(world: &mut World, e: Entity) {
         // starts at the keyvalue's, 0 without one, so `sp_a1_intro6`'s
         // `SetPlaybackRate 1` counts as a change and starts its ramps.
         anim.playing = me.get_bool("randomanimation");
+        anim.restart_default = true;
         anim.rate = me.get_f32("playbackrate").unwrap_or(if anim.playing { 1.0 } else { 0.0 });
         if let Some(default) = me.get("defaultanim").filter(|s| !s.is_empty()) {
             anim.set_default_sequence(default);
@@ -237,10 +238,35 @@ fn dynamic_input(world: &mut World, call: &InputCall) -> bool {
     match call.input.as_str() {
         "enable" | "turnon" => set_visible(world, e, true),
         "disable" | "turnoff" => set_visible(world, e, false),
-        "enablecollision" | "disablecollision" | "becomeragdoll" | "fadeanddelete" => {}
+        "enablecollision" | "disablecollision" => set_collision(world, e, call.input == "enablecollision"),
+        "becomeragdoll" | "fadeanddelete" => {}
         _ => return false,
     }
     true
+}
+
+/// Keyvalue marking a model whose collision `DisableCollision` turned off,
+/// kept on the entity so a save brings it back that way.
+pub const NO_COLLISION_KEY: &str = "p2r_nocollision";
+
+/// `EnableCollision` / `DisableCollision`: whether the model (and its bone
+/// followers) blocks anything, as the engine's not-solid flag. `TurnOff`
+/// alone only hides it: `sp_a2_bts4`'s `blocking_doors` are hidden and made
+/// passable at map spawn, and shut the doorway later with both inputs.
+fn set_collision(world: &mut World, e: Entity, on: bool) {
+    use portal2_world::collision::{BoneFollower, Collider};
+    if let Some(mut me) = world.get_mut::<MapEntity>(e) {
+        me.set(NO_COLLISION_KEY, if on { "0" } else { "1" });
+    }
+    let mut colliders: Vec<Entity> = vec![e];
+    colliders.extend(world.query::<(Entity, &BoneFollower)>().iter(world).filter(|(_, f)| f.owner == e).map(|(f, _)| f));
+    for c in colliders {
+        if let Some(mut col) = world.get_mut::<Collider>(c)
+            && col.enabled != on
+        {
+            col.enabled = on;
+        }
+    }
 }
 
 fn set_visible(world: &mut World, e: Entity, visible: bool) {
