@@ -3,6 +3,7 @@
 
 pub mod areaportal;
 pub mod buttons;
+pub mod constraints;
 pub mod core_flashlight;
 pub mod cubes;
 pub mod detectors;
@@ -72,6 +73,7 @@ impl Plugin for EntitiesPlugin {
         triggers::register(app);
         areaportal::register(app);
         portal_volumes::register(app);
+        constraints::register(app);
         lights::register(app);
         linked_portals::register(app);
     }
@@ -408,6 +410,15 @@ pub fn set_parent(world: &mut World, child: Entity, parent: &str) {
     crate::physics::on_parented(world, child);
 }
 
+/// Takes `e` off its parent where it stands; a physics prop falls free.
+pub fn clear_parent(world: &mut World, e: Entity) {
+    let old_parent = parent_placement(world, e);
+    let t = world_transform(world, e).compute_transform();
+    world.entity_mut(e).remove::<ChildOf>().insert(t);
+    movers::rebase(world, e, old_parent, bevy::math::Affine3A::IDENTITY);
+    crate::physics::on_unparented(world, e);
+}
+
 /// World placement of an entity's current parent (identity when unparented).
 fn parent_placement(world: &World, e: Entity) -> bevy::math::Affine3A {
     world.get::<ChildOf>(e).map(|c| world_transform(world, c.parent()).affine()).unwrap_or(bevy::math::Affine3A::IDENTITY)
@@ -534,11 +545,7 @@ fn generic_inputs(world: &mut World, call: &InputCall) -> bool {
             true
         }
         "clearparent" => {
-            let old_parent = parent_placement(world, e);
-            let t = world_transform(world, e).compute_transform();
-            world.entity_mut(e).remove::<ChildOf>().insert(t);
-            movers::rebase(world, e, old_parent, bevy::math::Affine3A::IDENTITY);
-            crate::physics::on_unparented(world, e);
+            clear_parent(world, e);
             true
         }
         _ => false,

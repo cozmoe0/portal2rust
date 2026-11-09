@@ -327,6 +327,24 @@ fn spawn_turret(world: &mut World, e: Entity) {
 const MAP_START_SPAWN: f64 = 0.05;
 
 fn turret_input(world: &mut World, call: &InputCall) -> bool {
+    // `SetModel <index>`: one of the models `ModelIndex` picks from
+    // (`sp_a2_bts4`'s conveyor makes malfunctioning turrets of some as they
+    // pass its reject trigger). The turret is set up again on the new model,
+    // keeping whether it is enabled and gagged.
+    if call.input == "setmodel" {
+        let e = call.target;
+        let Ok(index) = call.param.trim().parse::<i32>() else { return true };
+        let Some(kept) = world.get::<Turret>(e).map(|t| (t.enabled, t.gagged)) else { return false };
+        if let Some(mut me) = world.get_mut::<MapEntity>(e) {
+            me.set("modelindex", &index.to_string());
+        }
+        crate::entities::spawner::clear_render_children(world, e);
+        spawn_turret(world, e);
+        if let Some(mut t) = world.get_mut::<Turret>(e) {
+            (t.enabled, t.gagged) = kept;
+        }
+        return true;
+    }
     let now = world.resource::<GameClock>().curtime;
     let Some(mut t) = world.get_mut::<Turret>(call.target) else { return false };
     match call.input.as_str() {

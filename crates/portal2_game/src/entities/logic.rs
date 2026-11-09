@@ -757,15 +757,59 @@ fn case_input(world: &mut World, call: &InputCall) -> bool {
             }
             true
         }
-        "pickrandom" | "pickrandomshuffle" => {
-            let filled: Vec<usize> = cases.iter().filter(|(_, v)| !v.is_empty()).map(|(i, _)| *i).collect();
-            let pool: Vec<usize> = if filled.is_empty() { (1..=16).collect() } else { filled };
-            let i = pool[((rand_unit() * pool.len() as f32) as usize).min(pool.len() - 1)];
+        // Random picks choose among the cases with an output connected
+        // (`CLogicCase::BuildCaseMap`), whatever their values: most cases
+        // in `sp_a2_bts4`'s turret lines have no value at all.
+        "pickrandom" => {
+            let pool = connected_cases(world, e);
+            if !pool.is_empty() {
+                let i = pool[pick(pool.len())];
+                fire_output(world, e, &format!("OnCase{i:02}"), call.activator, None);
+            }
+            true
+        }
+        // Every connected case once, in random order, before any repeats;
+        // a new round does not open with the case that closed the last.
+        "pickrandomshuffle" => {
+            let mut shuffle = world.get::<CaseShuffle>(e).cloned().unwrap_or_default();
+            if shuffle.left.is_empty() {
+                shuffle.left = connected_cases(world, e);
+                if shuffle.left.is_empty() {
+                    return true;
+                }
+            }
+            let mut index = pick(shuffle.left.len());
+            if shuffle.left.len() > 1 && Some(shuffle.left[index]) == shuffle.last {
+                index = (index + 1) % shuffle.left.len();
+            }
+            let i = shuffle.left.swap_remove(index);
+            shuffle.last = Some(i);
+            world.entity_mut(e).insert(shuffle);
             fire_output(world, e, &format!("OnCase{i:02}"), call.activator, None);
             true
         }
         _ => false,
     }
+}
+
+/// What is left of a `logic_case`'s shuffled round.
+#[derive(Component, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct CaseShuffle {
+    left: Vec<u8>,
+    last: Option<u8>,
+}
+
+impl portal2_core::save::Restore for CaseShuffle {}
+
+/// Cases (1 to 16) of a `logic_case` with an `OnCaseNN` output connected.
+fn connected_cases(world: &World, e: Entity) -> Vec<u8> {
+    let Some(outputs) = world.get::<super::io::Outputs>(e) else { return Vec::new() };
+    (1..=16u8).filter(|i| outputs.connections.iter().any(|c| c.output.eq_ignore_ascii_case(&format!("oncase{i:02}")))).collect()
+}
+
+/// A random index below `n` (non-zero).
+fn pick(n: usize) -> usize {
+    ((rand_unit() * n as f32) as usize).min(n - 1)
 }
 
 // ------------------------------------------------------ func_instance_io_proxy
@@ -860,4 +904,5 @@ pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
     r.component::<RandomOutputs>("logic_random_outputs");
     r.component::<RegisterActivator>("logic_register_activator");
     r.component::<TeleportHome>("teleport_home");
+    r.component::<CaseShuffle>("case_shuffle");
 }
