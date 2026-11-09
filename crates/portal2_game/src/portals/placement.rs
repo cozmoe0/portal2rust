@@ -12,6 +12,11 @@ pub const MAX_SHOT_DISTANCE: f32 = 32768.0;
 /// How far inside the opening's rectangle its corners are checked for a
 /// surface behind them.
 pub const CORNER_INSET: f32 = 2.2;
+/// Fitting pushes the opening this far at first, halving each time it
+/// turns back, down to the smallest step, over at most this many tries.
+const FIT_STEP: f32 = 4.0;
+const FIT_MIN_STEP: f32 = 0.125;
+const FIT_TRIES: usize = 48;
 /// Shots pass through grates and player clips but stop at glass.
 pub const SHOT_MASK: u32 = contents::SOLID | contents::MOVEABLE | contents::WINDOW | contents::MONSTER;
 
@@ -223,7 +228,15 @@ impl PlacementContext<'_, '_, '_> {
         }
 
         let shot_at = frame.center;
-        for _ in 0..24 {
+        // Each push moves `step` units; when it turns back on the last one
+        // the portal has overshot a tight spot (a slot just as wide as the
+        // opening, as on `sp_a2_laser_vs_turret`'s low wall), so the step
+        // halves and it closes in, where fixed steps would bounce across
+        // the gap until the fit gave up. (The game's fit, `sub_10356F90`,
+        // moves exactly as far as each blocked corner needs.)
+        let mut step = FIT_STEP;
+        let mut last_push = Vec2::ZERO;
+        for _ in 0..FIT_TRIES {
             let fails = self.failures(&frame);
             let overlap = self.overlap_push(&frame);
             if fails.is_empty() && overlap.is_none() {
@@ -244,11 +257,16 @@ impl PlacementContext<'_, '_, '_> {
                     // Failures all around the centre: nothing to bump toward.
                     return Err(PlacementFail::NoFit);
                 }
-                push -= avg.normalize() * 4.0;
+                push -= avg.normalize() * step;
             }
             if let Some(o) = overlap {
                 push += o;
             }
+            if push.dot(last_push) < 0.0 {
+                step = (step * 0.5).max(FIT_MIN_STEP);
+                push = push.normalize_or_zero() * push.length().min(step);
+            }
+            last_push = push;
             frame.center += frame.left() * push.x + frame.up * push.y;
         }
         Err(PlacementFail::NoFit)
