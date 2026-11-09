@@ -352,6 +352,7 @@ pub fn set_parent_attachment(world: &mut World, child: Entity, attachment: &str,
         Transform::from_matrix(a.local)
     };
     world.entity_mut(child).insert((ChildOf(joint), local));
+    reset_easing(world, child);
     movers::rebase(world, child, old_parent, joint_world.affine());
     crate::physics::on_parented(world, child);
     true
@@ -406,8 +407,27 @@ pub fn set_parent(world: &mut World, child: Entity, parent: &str) {
     let local = parent_world.affine().inverse() * child_world.affine();
     let local = Transform::from_matrix(local.into());
     world.entity_mut(child).insert((ChildOf(p), local));
+    reset_easing(world, child);
     movers::rebase(world, child, old_parent, parent_world.affine());
     crate::physics::on_parented(world, child);
+}
+
+/// Forgets a physics prop's drawn-between-ticks easing. Its transform has
+/// just switched between world space and a parent's space, and easing from
+/// the old values would write world positions into a local transform (a
+/// turret welded to `sp_a2_bts4`'s conveyor cart was flung thousands of
+/// units off it, stalling the line, whenever a frame fell between the weld
+/// and the next physics tick).
+fn reset_easing(world: &mut World, e: Entity) {
+    use bevy_transform_interpolation::{RotationEasingState, TranslationEasingState};
+    if let Some(mut s) = world.get_mut::<TranslationEasingState>(e) {
+        s.start = None;
+        s.end = None;
+    }
+    if let Some(mut s) = world.get_mut::<RotationEasingState>(e) {
+        s.start = None;
+        s.end = None;
+    }
 }
 
 /// Takes `e` off its parent where it stands; a physics prop falls free.
@@ -415,6 +435,7 @@ pub fn clear_parent(world: &mut World, e: Entity) {
     let old_parent = parent_placement(world, e);
     let t = world_transform(world, e).compute_transform();
     world.entity_mut(e).remove::<ChildOf>().insert(t);
+    reset_easing(world, e);
     movers::rebase(world, e, old_parent, bevy::math::Affine3A::IDENTITY);
     crate::physics::on_unparented(world, e);
 }
