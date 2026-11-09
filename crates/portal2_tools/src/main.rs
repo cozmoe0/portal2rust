@@ -12,6 +12,7 @@ use source_formats::fs::GameFileSystem;
 
 mod cmd {
     pub mod actorscan;
+    pub mod brushcenters;
     pub mod brushesat;
     pub mod bspcheck;
     pub mod bspphys;
@@ -83,6 +84,7 @@ mod cmd {
 /// Every command: name, what it does, entry point.
 const COMMANDS: &[(&str, &str, fn())] = &[
     ("actorscan", "Survey for actor animation (names and counts only)", cmd::actorscan::main),
+    ("brushcenters", "Lists brush entities of a class prefix (default trigger_) with name, centre and size.", cmd::brushcenters::main),
     ("brushesat", "Lists brush entities whose model bounds contain a point, with their class, name and bounds.", cmd::brushesat::main),
     ("bspcheck", "Winding and lightmap brightness diagnostics.", cmd::bspcheck::main),
     ("bspphys", "Lists the physics collision pieces of a brush model from the map's physics lump", cmd::bspphys::main),
