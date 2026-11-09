@@ -35,7 +35,10 @@ pub fn main() {
                     m.mdl.pose_parameters.len(),
                     m.anim_block_data.as_ref().map(|d| d.len())
                 );
-                println!("   illum position {:?} hull {:?}..{:?}", m.mdl.illum_position, m.mdl.hull_min, m.mdl.hull_max);
+                println!(
+                    "   illum position {:?} hull {:?}..{:?} contents {:#x} surfaceprop {}",
+                    m.mdl.illum_position, m.mdl.hull_min, m.mdl.hull_max, m.mdl.contents, m.mdl.surface_prop
+                );
                 for t in 0..m.mdl.textures.len() {
                     println!("   material[{t}] -> {:?}", m.resolve_material(&fs, t));
                 }

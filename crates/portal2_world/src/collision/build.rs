@@ -160,6 +160,15 @@ pub fn displacement_volumes(bsp: &Bsp) -> Vec<ConvexVolume> {
 /// `solid` keyvalue: collide with the model's hull box.
 pub const SOLID_BBOX: i32 = 2;
 
+/// The contents a studio model collides as (its `$contents`, solid when
+/// unset). Traces only hit a model whose contents are in their mask, as the
+/// engine's static prop and entity traces check: railings and catwalks are
+/// grates, so portal shots, bullets and lasers pass through them while
+/// players and props are stopped.
+pub fn model_contents(fs: &GameFileSystem, path: &str) -> u32 {
+    fs.read(path).and_then(|b| Mdl::parse(b).ok()).map(|m| m.contents as u32).filter(|&c| c != 0).unwrap_or(contents::SOLID)
+}
+
 /// Collision for a studio model in model space. Physics-solid models
 /// (`solid` 6) use their `.phy` hulls and do not collide without one, as in
 /// the original; box-solid models (`solid` 2) use the model's hull box.
@@ -168,6 +177,7 @@ pub fn studio_volumes(fs: &GameFileSystem, path: &str, solid: i32) -> Option<Vec
         return hull_box(fs, path);
     }
     let base = strip_extension(path);
+    let contents = model_contents(fs, path);
     if let Some(bytes) = fs.read(&format!("{base}.phy"))
         && let Ok(phy) = Phy::parse(&bytes)
     {
@@ -183,7 +193,7 @@ pub fn studio_volumes(fs: &GameFileSystem, path: &str, solid: i32) -> Option<Vec
                 let m = poses.get(&i).copied().unwrap_or(Mat4::IDENTITY);
                 s.pieces.iter().filter_map(move |p| {
                     let pts: Vec<Vec3> = p.points.iter().map(|q| m.transform_point3(*q)).collect();
-                    ConvexVolume::from_hull(&pts, &p.triangles, contents::SOLID, -1)
+                    ConvexVolume::from_hull(&pts, &p.triangles, contents, -1)
                 })
             })
             .collect();
@@ -227,6 +237,7 @@ pub fn studio_bone_solids(fs: &GameFileSystem, path: &str) -> Option<Vec<(usize,
     if listed.is_empty() && phy.solids.len() < 2 {
         return None;
     }
+    let contents = if model.mdl.contents != 0 { model.mdl.contents as u32 } else { contents::SOLID };
     let out: Vec<(usize, Vec<ConvexVolume>)> = phy
         .solids
         .iter()
@@ -237,7 +248,7 @@ pub fn studio_bone_solids(fs: &GameFileSystem, path: &str) -> Option<Vec<(usize,
                 return None;
             }
             let vols: Vec<ConvexVolume> =
-                s.pieces.iter().filter_map(|p| ConvexVolume::from_hull(&p.points, &p.triangles, contents::SOLID, -1)).collect();
+                s.pieces.iter().filter_map(|p| ConvexVolume::from_hull(&p.points, &p.triangles, contents, -1)).collect();
             (!vols.is_empty()).then_some((bone, vols))
         })
         .collect();
@@ -250,7 +261,8 @@ fn hull_box(fs: &GameFileSystem, path: &str) -> Option<Vec<ConvexVolume>> {
     if (maxs - mins).min_element() <= 0.0 {
         return None;
     }
-    Some(vec![ConvexVolume::from_box(mins, maxs, contents::SOLID, -1)])
+    let contents = if mdl.contents != 0 { mdl.contents as u32 } else { contents::SOLID };
+    Some(vec![ConvexVolume::from_box(mins, maxs, contents, -1)])
 }
 
 /// Default-pose transform of the bone each collision solid belongs to.
