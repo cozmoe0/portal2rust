@@ -585,8 +585,9 @@ fn build_face(bsp: &Bsp, face: &Face, m: &FaceMapping, batch: &mut MeshBatch) {
     // Source polygons wind clockwise seen from the front; Bevy front faces are CCW.
     if face.num_prims > 0 && !bsp.primitives.is_empty() {
         let mut used = false;
-        for pi in face.first_prim..face.first_prim + face.num_prims {
-            let Some(prim) = bsp.primitives.get(pi as usize) else { continue };
+        let first = face.first_prim as usize;
+        for pi in first..first + face.num_prims as usize {
+            let Some(prim) = bsp.primitives.get(pi) else { continue };
             if prim.vert_count != 0 {
                 continue; // extra vertices are not used by Portal 2 maps
             }

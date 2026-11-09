@@ -138,6 +138,9 @@ pub struct TexInfo {
     pub texdata: i32,
 }
 
+/// Top bit of a face's stored primitive count: no dynamic shadows on it.
+pub const NO_DYNAMIC_SHADOWS: u16 = 0x8000;
+
 #[derive(Clone, Copy, Debug)]
 pub struct Face {
     pub plane: u16,
@@ -154,9 +157,15 @@ pub struct Face {
     pub lightmap_mins: [i32; 2],
     pub lightmap_size: [i32; 2],
     pub orig_face: i32,
+    /// Primitives (the compiler's triangle lists for the face) from
+    /// `first_prim`. The file keeps a flag in the count's top bit, split
+    /// off into `no_dynamic_shadows`.
     pub num_prims: u16,
     pub first_prim: u16,
     pub smoothing_groups: u32,
+    /// The face takes no dynamic (projected texture) shadows: the top bit
+    /// of the stored primitive count (`dface_t::AreDynamicShadowsEnabled`).
+    pub no_dynamic_shadows: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -598,7 +607,7 @@ impl Bsp {
 
         let parse_faces = |bytes: &[u8]| {
             read_records(bytes, 56, |r| {
-                Ok(Face {
+                let mut face = Face {
                     plane: r.u16()?,
                     side: r.u8()?,
                     on_node: r.u8()?,
@@ -616,7 +625,14 @@ impl Bsp {
                     num_prims: r.u16()?,
                     first_prim: r.u16()?,
                     smoothing_groups: r.u32()?,
-                })
+                    no_dynamic_shadows: false,
+                };
+                // The count's top bit is a flag (`sp_a2_triple_laser` sets it
+                // on 32 faces); read as part of the count, those faces drew
+                // thousands of other faces' triangles.
+                face.no_dynamic_shadows = face.num_prims & NO_DYNAMIC_SHADOWS != 0;
+                face.num_prims &= !NO_DYNAMIC_SHADOWS;
+                Ok(face)
             })
         };
         let hdr_lighting = lump_data(lump::LIGHTING_HDR)?;
