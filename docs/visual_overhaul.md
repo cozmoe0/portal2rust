@@ -23,8 +23,9 @@ matches captures taken before the overhaul (see [Verification](#verification)).
 
 Features: `lights`, `shadows`, `ao`, `ssr`, `wetness`, `fog` (haze), `volumetrics`, `bloom`,
 `grade` (tone curve and grade), `emissive`, `foliage`, `reflections` (probe reflections),
-`procedural` (portal flicker, drifting dust) and `portals` (portals drawn as procedural fire and
-smoke).
+`procedural` (portal flicker, drifting dust), `portals` (portals drawn as procedural fire and
+smoke) and `portal_heat` (the fire portals' heat: the view through refracts near the rim and the
+wall around shimmers).
 
 | Feature | Off | Medium | High | Ultra |
 | --- | :-: | :-: | :-: | :-: |
@@ -36,6 +37,7 @@ smoke).
 | Screen-space reflections | | | | yes |
 | Bloom, tone curve, grade, emissive boost | | yes | yes | yes |
 | Fire portals | | yes | yes | yes |
+| Fire portals' heat (rim refraction, heat haze) | | | | yes |
 
 ## How it works
 
@@ -49,6 +51,7 @@ model material binds, with the shaders reading it.
 | Settings | `fx/mod.rs` | `FxSettings` from the cvars, extracted to the render world; `fx.cfg`; `--fx` |
 | Material variant | `fx/material.rs`, `portal2_render/src/fx.rs`, `source_material.rs` | the shared buffer (switches, lights, probes) and the `FX` shader variant, swapped in and out with the preset |
 | Fire portals | `fx/portal_look.rs`, `portals/mod.rs`, `shaders/portal.wesl`, `shaders/portal_fx.wesl`, `shaders/noise.wesl` | the opening as procedural fire and smoke instead of the game's noise texture and colour gradient: a white-hot edge with flames streaming outward and licking in (fractal gradient noise laid around the ellipse, scrolled outward and warped), a halo of the portal's colour on the wall, churning smoke-fire filling an unlinked portal, heat shimmer over the view through a linked one, static that burns away from the centre when the partner opens, and a rim that smears along itself and wobbles while the portal opens. The quad reaches up to 14 units past the portal's rectangle on each side where the surface goes on (traced at placement), drawn with premultiplied blending |
+| Fire portals' heat | `fx/portal_look.rs`, `portals/mod.rs`, `shaders/portal_fx.wesl`, `shaders/portal_haze.wesl` | one field of rising heat around the rim (fine cells a few units across flowing outward over broad, slow swells), applied as a refraction: its slope bends what is seen through it, so features swell and shrink as the cells pass rather than jitter. Inside the hole the view through bends near the edge at all times, pulled in toward the centre as through the rounded edge of a thick lens, rippling, with a faint colour fringe (red and blue read short of and past green); the middle of the opening stays lined up with the room. Outside, a second surface on the fire's quad, drawn in the transmissive pass, redraws the wall around the rim from Bevy's copy of the opaque scene, shifted by the same field and softened slightly where it shifts most; it fades out before the quad's edges, and the fire and decals draw over it in their own order. Both run stronger while the portal opens |
 | Lights | `fx/lights.rs`, `fx/portal_light.rs`, `shaders/fx.wesl` | portals as one-sided elliptical area lights, lasers as tube lights plus emitter and impact, the world-light lump's fixtures as highlights only; scored, budgeted, shaded with representative points and GGX |
 | Panel lamps | `fx/panel_lights.rs` | the self-lit lamps and strips on the panel arms, telescoping arms and shields (`models/anim_wp/`), found once per model and skin from the self-lit mask and the mesh, as small soft lights on their bones; a lamp hidden from the view behind walls or panels fades out |
 | Turret lights | `devices/turret_visual.rs`, `effects/muzzle_flash.rs`, `devices/turret.rs` | each floor turret's red eye glows on what is around it, its laser sight casts a thin red light along its length (a faint red line in the air with the volumetrics, and a soft HDR halo along the beam) and a brighter spot where it lands, and every muzzle flash lights its surroundings for a moment |

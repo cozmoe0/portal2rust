@@ -1,0 +1,16 @@
+# The fire portals' heat (r_fx_portal_heat, ultra; docs/visual_overhaul.md):
+# the view through refracting near the rim and the wall around shimmering.
+# name map x y z pitch yaw roll (feet origin, as setpos) [console commands].
+#
+# The first shot after a map load comes out black (the load's fade), so a
+# throwaway view leads. Compare against the same views without the heat:
+#   cargo run --profile fast -p portal2 -- --shots re/shots/portal_heat.txt --shots-out re/out/heat/on --shot-settle-time 4 --shot-map-settle 12 --fx ultra
+#   cargo run --profile fast -p portal2 -- --shots re/shots/portal_heat.txt --shots-out re/out/heat/off --shot-settle-time 4 --shot-map-settle 12 --fx ultra +r_fx_portal_heat 0
+# Heat shows best in motion. To record a clip of one view, give it alone
+# with a long settle so the recording (game time) ends the run first:
+#   cargo run --profile fast -p portal2 -- --shots <one view> --shots-out re/out/heat/tmp --shot-settle-time 300 --shot-map-settle 5 --fx ultra --record re/out/heat/rec --record-start 40 --record-seconds 3
+#   python -I docs/assets/make_clip.py re/out/heat/rec re/out/heat/clip.webp --fps 30
+warm sp_a1_intro2 -319.8 -180.0 -8.0 40.0 270.0 0 ent_fire portal_red_1 SetActivatedState 1; ent_fire portal_blue_1 SetActivatedState 1
+orange_close sp_a1_intro2 -319.8 -180.0 -8.0 40.0 270.0 0
+blue_wall sp_a1_intro2 -576.0 96.0 0.0 26.0 180.0 0
+pair_far sp_a1_intro2 -319.8 60.0 -8.0 12.0 270.0 0

@@ -17,6 +17,12 @@
 //   lines up exactly with the room around the portal (a light bridge or a
 //   floor running through reads as one). When the partner (re)opens, the static
 //   burns away from the centre outward behind a bright front.
+// - With the heat feature (`r_fx_portal_heat`) the view also refracts near
+//   the rim at all times, as if seen through a hot, thick lens: pulled in
+//   toward the centre close to the edge, rippling with rising heat and split
+//   into a faint colour fringe. The middle of the opening stays lined up.
+//   The same heat field shimmers over the wall around the portal
+//   (`portal_haze.wesl`), so the distortion runs on across the rim.
 // - While it opens (half a second), the fire around the rim smears along
 //   it, the edge wobbles and the flames run taller and faster; all of it
 //   settles as the portal finishes opening.
@@ -30,6 +36,16 @@ import portal2_render::shaders::noise::{noise_fbm3, noise_gradient3};
 const HALF_SIZE: vec2<f32> = vec2<f32>(32.0, 56.0);
 // The hole at full size is the game's: 1 / 1.075 of the portal's rectangle.
 const HOLE_SCALE: f32 = 0.930233;
+
+// The heat refraction of the view through, near the rim: how far in from
+// the edge it reaches (units, an exponential falloff), how far the view is
+// pulled in toward the centre at the edge, how far the rising heat moves it,
+// and the colour fringe (the share of the displacement the red and blue
+// channels go short of and past the green one).
+const HEAT_BAND: f32 = 4.5;
+const HEAT_LENS: f32 = 1.3;
+const HEAT_RIPPLE: f32 = 0.65;
+const HEAT_FRINGE: f32 = 0.3;
 
 struct PortalFxIn {
     // The quad's texture coordinates: 0..1 across the portal's rectangle,
@@ -50,6 +66,8 @@ struct PortalFxIn {
     time: f32,
     // Multiplier on everything emitted (exposure and the overhaul's glow).
     brightness: f32,
+    // The heat refraction of the view through near the rim (0..1).
+    heat: f32,
 }
 
 struct PortalFxOut {
@@ -58,9 +76,57 @@ struct PortalFxOut {
     // How much of what lies behind the quad is hidden.
     alpha: f32,
     // Weight of the view through the portal, and the pixel offset to read
-    // it at.
+    // it at. With a colour fringe (`view_split` > 0) the red and blue
+    // channels are read at their own offsets.
     view: f32,
     view_offset: vec2<f32>,
+    view_split: f32,
+    view_offset_r: vec2<f32>,
+    view_offset_b: vec2<f32>,
+}
+
+// Where a point of the quad lies relative to the opening.
+struct PortalFxSpace {
+    // Smoothstepped open amount, and how far the opening still has to go
+    // (drives its distortion).
+    s: f32,
+    k: f32,
+    // Portal space: q -1..1 across the rectangle (down as the texture
+    // coordinates), p in units with y up.
+    q: vec2<f32>,
+    p: vec2<f32>,
+    rho: f32,
+    // Outward direction around the ellipse (in q, so its angle runs evenly
+    // around the rim), the length of rho's gradient in units and the
+    // outward normal it points along (units, y up).
+    dir: vec2<f32>,
+    glen: f32,
+    normal: vec2<f32>,
+    // The hole's radius (in rho, its edge wobbling while it opens), the
+    // signed distance to its edge in units (positive outside the hole) and
+    // rho over the radius.
+    radius: f32,
+    sd: f32,
+    rn: f32,
+}
+
+fn portal_fx_space(uv: vec2<f32>, open_amount: f32, t: f32) -> PortalFxSpace {
+    var o: PortalFxSpace;
+    let open = clamp(open_amount, 0.0, 1.0);
+    o.s = open * open * (3.0 - 2.0 * open);
+    o.k = pow(1.0 - open, 0.6);
+    o.q = (uv - vec2<f32>(0.5)) * 2.0;
+    o.p = vec2<f32>(o.q.x, -o.q.y) * HALF_SIZE;
+    o.rho = max(length(o.q), 1e-4);
+    o.dir = o.q / o.rho;
+    let grad = vec2<f32>(o.p.x / (HALF_SIZE.x * HALF_SIZE.x), o.p.y / (HALF_SIZE.y * HALF_SIZE.y)) / o.rho;
+    o.glen = max(length(grad), 1e-5);
+    o.normal = grad / o.glen;
+    let wobble = noise_gradient3(vec3<f32>(o.dir * 2.2, t * 7.0 + 3.1));
+    o.radius = o.s * o.s * HOLE_SCALE * (1.0 + 0.14 * o.k * wobble);
+    o.sd = (o.rho - o.radius) / o.glen;
+    o.rn = o.rho / max(o.radius, 1e-4);
+    return o;
 }
 
 // The fire's colour at temperature `t` (0..1): smoke, a deep saturated
@@ -89,30 +155,68 @@ fn portal_fx_rotate(v: vec2<f32>, a: f32) -> vec2<f32> {
     return vec2<f32>(c * v.x - s * v.y, s * v.x + c * v.y);
 }
 
+// The heat over and around the rim as a height: fine cells a few units
+// across rising fast over broad, slower swells. Laid out like the flames,
+// on a circle around the ellipse (`around`, unit length, y up) and by the
+// distance from the edge, flowing outward.
+fn portal_fx_heat_height(around: vec2<f32>, sd: f32, t: f32) -> f32 {
+    let fine = noise_fbm3(vec3<f32>(around * 9.0, sd * 0.24 - t * 2.3), 3);
+    let broad = noise_gradient3(vec3<f32>(around * 3.2 + vec2<f32>(7.1, 3.3), sd * 0.075 - t * 0.6));
+    return fine + broad * 0.8;
+}
+
+// How far the heat bends what is seen through it at a point (units, y up):
+// the height's slope, along the rim and outward (a lens-like refraction,
+// not a random shove, so features magnify and shrink as the cells pass).
+// Mostly within a unit or two.
+fn portal_fx_heat(sp: PortalFxSpace, t: f32) -> vec2<f32> {
+    // The physical direction around the rim (y up), and the noise's, which
+    // turns slowly as the flames do.
+    let a = vec2<f32>(sp.dir.x, -sp.dir.y);
+    let around = portal_fx_rotate(a, t * 0.07);
+    // A step along the rim in units, its angle, and the rim's direction in
+    // units at this point (the ellipse's tangent).
+    let tangent_raw = vec2<f32>(-a.y * HALF_SIZE.x, a.x * HALF_SIZE.y) * sp.rho;
+    let per_radian = max(length(tangent_raw), 1e-3);
+    let tangent = tangent_raw / per_radian;
+    let du = 0.35;
+    let h0 = portal_fx_heat_height(around, sp.sd, t);
+    let h_along = portal_fx_heat_height(portal_fx_rotate(around, du / per_radian), sp.sd, t);
+    let h_out = portal_fx_heat_height(around, sp.sd + du, t);
+    return (tangent * (h_along - h0) + sp.normal * (h_out - h0)) * (3.0 / du);
+}
+
+// A displacement of the view through (units, y up) as a pixel offset to
+// read the view at, kept inside `limit` of the hole (in rho): the view only
+// covers the opening.
+fn portal_fx_view_pixels(i: PortalFxIn, offset: vec2<f32>, limit: f32) -> vec2<f32> {
+    var duv = vec2<f32>(offset.x, -offset.y) / (2.0 * HALF_SIZE);
+    var q2 = (i.uv + duv - vec2<f32>(0.5)) * 2.0;
+    let r2 = length(q2);
+    if r2 > limit {
+        q2 *= limit / r2;
+    }
+    duv = q2 * 0.5 + vec2<f32>(0.5) - i.uv;
+    // Texture coordinates to pixels (the inverse of their derivatives).
+    let det = i.uv_dx.x * i.uv_dy.y - i.uv_dy.x * i.uv_dx.y;
+    if abs(det) > 1e-12 {
+        return vec2<f32>(duv.x * i.uv_dy.y - i.uv_dy.x * duv.y, i.uv_dx.x * duv.y - duv.x * i.uv_dx.y) / det;
+    }
+    return vec2<f32>(0.0);
+}
+
 fn portal_fx(i: PortalFxIn) -> PortalFxOut {
     let t = i.time;
     let open = clamp(i.open, 0.0, 1.0);
-    let s = open * open * (3.0 - 2.0 * open);
-    // How far the opening still has to go: drives its distortion.
-    let k = pow(1.0 - open, 0.6);
-
-    // Portal space: q -1..1 across the rectangle, p in units with y up.
-    let q = (i.uv - vec2<f32>(0.5)) * 2.0;
-    let p = vec2<f32>(q.x, -q.y) * HALF_SIZE;
-    let rho = max(length(q), 1e-4);
-    // Outward direction around the ellipse (in q, so its angle runs evenly
-    // around the rim) and the gradient of rho in units.
-    let dir = q / rho;
-    let grad = vec2<f32>(p.x / (HALF_SIZE.x * HALF_SIZE.x), p.y / (HALF_SIZE.y * HALF_SIZE.y)) / rho;
-    let glen = max(length(grad), 1e-5);
-    let normal = grad / glen;
-
-    // The hole, its edge wobbling while it opens.
-    let wobble = noise_gradient3(vec3<f32>(dir * 2.2, t * 7.0 + 3.1));
-    let radius = s * s * HOLE_SCALE * (1.0 + 0.14 * k * wobble);
-    // Signed distance to the edge in units (positive outside the hole).
-    let sd = (rho - radius) / glen;
-    let rn = rho / max(radius, 1e-4);
+    let sp = portal_fx_space(i.uv, i.open, t);
+    let s = sp.s;
+    let k = sp.k;
+    let p = sp.p;
+    let dir = sp.dir;
+    let normal = sp.normal;
+    let radius = sp.radius;
+    let sd = sp.sd;
+    let rn = sp.rn;
 
     // Fire around the rim: noise on a circle (the direction) times the
     // distance from the edge flowing outward. While opening it smears along
@@ -150,6 +254,9 @@ fn portal_fx(i: PortalFxIn) -> PortalFxOut {
     var out: PortalFxOut;
     out.view = 0.0;
     out.view_offset = vec2<f32>(0.0);
+    out.view_split = 0.0;
+    out.view_offset_r = vec2<f32>(0.0);
+    out.view_offset_b = vec2<f32>(0.0);
     // What lies outside the hole: flames over the wall, a little smoky.
     let outside_emit = (rim + halo) * fade;
     let smoke = dens_out * 0.25 * fade * appear;
@@ -212,22 +319,61 @@ fn portal_fx(i: PortalFxIn) -> PortalFxOut {
             ) * 1.4 - normal * 0.5;
             offset = d * shimmer;
         }
-        var duv = vec2<f32>(offset.x, -offset.y) / (2.0 * HALF_SIZE);
-        var q2 = (i.uv + duv - vec2<f32>(0.5)) * 2.0;
-        let limit = radius * 0.96;
-        let r2 = length(q2);
-        if r2 > limit {
-            q2 *= limit / r2;
+        // The heat's refraction near the rim, at rest too: the view pulled
+        // in toward the centre close to the edge (as through the rounded
+        // edge of a thick lens), rippling with the rising heat, and a colour
+        // fringe where it bends most. Gone a couple of bands in, so the
+        // middle of the opening stays lined up with the room around it.
+        var split = 0.0;
+        if i.heat > 0.0 {
+            let band = exp(min(sd, 0.0) / HEAT_BAND) * appear * i.heat;
+            if band > 0.01 {
+                let lens = -normal * (band * band * HEAT_LENS);
+                let ripple = portal_fx_heat(sp, t) * (band * HEAT_RIPPLE * (1.0 + 1.5 * k));
+                offset += lens + ripple;
+                split = band * HEAT_FRINGE;
+            }
         }
-        duv = q2 * 0.5 + vec2<f32>(0.5) - i.uv;
-        // Texture coordinates to pixels (the inverse of their derivatives).
-        let det = i.uv_dx.x * i.uv_dy.y - i.uv_dy.x * i.uv_dx.y;
-        if abs(det) > 1e-12 {
-            out.view_offset = vec2<f32>(duv.x * i.uv_dy.y - i.uv_dy.x * duv.y, i.uv_dx.x * duv.y - duv.x * i.uv_dx.y) / det;
+        let limit = radius * 0.96;
+        out.view_offset = portal_fx_view_pixels(i, offset, limit);
+        out.view_offset_r = out.view_offset;
+        out.view_offset_b = out.view_offset;
+        if split > 0.0 {
+            out.view_split = split;
+            out.view_offset_r = portal_fx_view_pixels(i, offset * (1.0 - split), limit);
+            out.view_offset_b = portal_fx_view_pixels(i, offset * (1.0 + split), limit);
         }
     }
     // Inside, the hole's own light; across the softened edge, the wall's.
     out.emit = mix(outside_emit, emit, cover) * i.brightness;
     out.alpha = mix(smoke, 1.0, cover);
     return out;
+}
+
+// The heat haze over the wall around the rim (`portal_haze.wesl`): how far
+// to shift what lies behind (pixels), from the same heat field as the
+// view's refraction. Zero inside the hole (the opening covers it) and
+// toward the quad's edges, so the shifted picture meets the unshifted one
+// without a seam.
+fn portal_fx_haze(i: PortalFxIn) -> vec2<f32> {
+    let t = i.time;
+    let sp = portal_fx_space(i.uv, i.open, t);
+    if sp.sd < -1.5 {
+        return vec2<f32>(0.0);
+    }
+    let appear = smoothstep(0.0, 0.12, clamp(i.open, 0.0, 1.0)) * sp.s;
+    let edge_uv = min(i.uv + i.margins.xw, vec2<f32>(1.0) + i.margins.yz - i.uv);
+    let fade = smoothstep(0.0, 7.0 / (2.0 * HALF_SIZE.x), edge_uv.x) * smoothstep(0.0, 7.0 / (2.0 * HALF_SIZE.y), edge_uv.y);
+    // Strongest at the edge, a few units out; stronger while opening.
+    let amount = exp(-max(sp.sd, 0.0) / 6.0) * fade * appear * (1.0 + 1.5 * sp.k) * i.heat;
+    if amount < 0.002 {
+        return vec2<f32>(0.0);
+    }
+    let offset = portal_fx_heat(sp, t) * (amount * 1.4);
+    let duv = vec2<f32>(offset.x, -offset.y) / (2.0 * HALF_SIZE);
+    let det = i.uv_dx.x * i.uv_dy.y - i.uv_dy.x * i.uv_dx.y;
+    if abs(det) > 1e-12 {
+        return vec2<f32>(duv.x * i.uv_dy.y - i.uv_dy.x * duv.y, i.uv_dx.x * duv.y - duv.x * i.uv_dx.y) / det;
+    }
+    return vec2<f32>(0.0);
 }

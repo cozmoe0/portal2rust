@@ -31,6 +31,7 @@ use portal2_world::{CurrentMap, MapLoaded, MapObject};
 use projection::PortalProjection;
 
 pub const PORTAL_SHADER: &str = "embedded://portal2_render/shaders/portal.wesl";
+pub const PORTAL_HAZE_SHADER: &str = "embedded://portal2_render/shaders/portal_haze.wesl";
 /// Modules `portal.wesl` imports for the visual overhaul's fire.
 const PORTAL_FX_MODULES: [&str; 2] = ["embedded://portal2_render/shaders/portal_fx.wesl", "embedded://portal2_render/shaders/noise.wesl"];
 
@@ -47,7 +48,7 @@ impl Plugin for PortalsPlugin {
             console.register_cvar("r_portal_scale", "1", 0);
             console.register_cvar("r_portal_depth", "2", 0);
         }
-        app.add_plugins(MaterialPlugin::<PortalMaterial>::default())
+        app.add_plugins((MaterialPlugin::<PortalMaterial>::default(), MaterialPlugin::<PortalHazeMaterial>::default()))
             .init_resource::<Portals>()
             .init_resource::<PortalHoles>()
             .init_resource::<PortalColors>()
@@ -95,7 +96,8 @@ pub struct PortalParams {
     /// x: rim brightness multiplier (the visual overhaul's HDR glow, 1
     /// otherwise); yz: the pixel size of the target the surface is drawn
     /// into, which the view texture covers at its own (possibly lower)
-    /// resolution.
+    /// resolution; w: the overhaul's heat refraction of the view near the
+    /// rim (0..1, `r_fx_portal_heat`).
     pub glow: Vec4,
     /// The overhaul's fire only: how far the quad reaches past the
     /// portal's rectangle on the left, right, bottom and top, in texture
@@ -178,6 +180,47 @@ impl Material for PortalMaterial {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, ShaderType)]
+pub struct PortalHazeParams {
+    /// x: open amount (0..1), y: strength (0..1).
+    pub state: Vec4,
+    /// As [`PortalParams::shape`].
+    pub shape: Vec4,
+}
+
+/// The visual overhaul's heat haze around a portal (`r_fx_portal_heat`,
+/// `portal_haze.wesl`): the wall around the rim redrawn from Bevy's copy of
+/// the opaque scene, shifted by the heat over it. Reading that copy puts it
+/// in the transmissive pass, before the transparent one where the fire and
+/// the decals around it draw.
+#[derive(Asset, TypePath, AsBindGroup, Clone, Debug, Default)]
+pub struct PortalHazeMaterial {
+    #[uniform(0)]
+    pub params: PortalHazeParams,
+}
+
+impl Material for PortalHazeMaterial {
+    fn fragment_shader() -> ShaderRef {
+        PORTAL_HAZE_SHADER.into()
+    }
+
+    fn alpha_mode(&self) -> AlphaMode {
+        AlphaMode::Premultiplied
+    }
+
+    fn reads_view_transmission_texture(&self) -> bool {
+        true
+    }
+
+    fn enable_prepass() -> bool {
+        false
+    }
+
+    fn enable_shadows() -> bool {
+        false
+    }
+}
+
 /// One placed portal.
 #[derive(Component)]
 pub struct Portal {
@@ -208,6 +251,10 @@ pub struct Portal {
     /// (the game's render fix mesh), in the portal's own space.
     pub fix: Entity,
     pub fix_mesh: Handle<Mesh>,
+    /// The overhaul's heat haze over the wall around the opening, one per
+    /// surface (on the fire's quad, hidden unless `r_fx_portal_heat` is on).
+    pub haze: [Entity; 3],
+    pub haze_material: Handle<PortalHazeMaterial>,
 }
 
 /// The pair of portals (slot 0 and 1).
@@ -387,12 +434,13 @@ fn apply_placements(
     mut materials: ResMut<Assets<PortalMaterial>>,
     mut sounds: MessageWriter<portal2_audio::SoundRequest>,
     mut fx: MessageWriter<PortalFx>,
-    (fs, mut textures, physics, entities, mut resting): (
+    (fs, mut textures, physics, entities, mut resting, mut haze_materials): (
         Res<portal2_core::vfs::GameFs>,
         ResMut<portal2_render::textures::TextureCache>,
         portal2_world::collision::Physics,
         Query<(Entity, &portal2_core::entity::MapEntity)>,
         ResMut<RestingTests>,
+        ResMut<Assets<PortalHazeMaterial>>,
     ),
 ) {
     for req in requests.read() {
@@ -421,6 +469,9 @@ fn apply_placements(
                 if let Some(mut m) = materials.get_mut(handle) {
                     m.params.shape = margins_uv(p.margins);
                 }
+            }
+            if let Some(mut m) = haze_materials.get_mut(&p.haze_material) {
+                m.params.shape = margins_uv(p.margins);
             }
             if let Ok(mut t) = transforms.get_mut(e) {
                 *t = Transform::from_translation(req.frame.center).with_rotation(rotation);
@@ -489,6 +540,20 @@ fn apply_placements(
         let surface = surface_on(PORTAL_LAYER, &material);
         let inner_surface = surface_on(PORTAL_INNER_LAYER, &inner_material);
         let end_surface = surface_on(PORTAL_END_LAYER, &end_material);
+        // `visuals::fx::portal_look` shows the haze with the overhaul.
+        let haze_material =
+            haze_materials.add(PortalHazeMaterial { params: PortalHazeParams { state: Vec4::ZERO, shape: margins_uv(margins) } });
+        let haze = [PORTAL_LAYER, PORTAL_INNER_LAYER, PORTAL_END_LAYER].map(|layer| {
+            commands
+                .spawn((
+                    Mesh3d(fx_quad.clone()),
+                    MeshMaterial3d(haze_material.clone()),
+                    RenderLayers::layer(layer),
+                    Transform::IDENTITY,
+                    Visibility::Hidden,
+                ))
+                .id()
+        });
         let fix_mesh = meshes.add(fix_mesh_from(&[]));
         let fix = commands
             .spawn((
@@ -522,11 +587,14 @@ fn apply_placements(
                     margins,
                     fix,
                     fix_mesh,
+                    haze,
+                    haze_material,
                 },
                 Transform::from_translation(req.frame.center).with_rotation(rotation),
                 Visibility::Visible,
             ))
             .add_children(&[surface, inner_surface, end_surface, fix])
+            .add_children(&haze)
             .id();
         portals.entities[req.slot] = Some(e);
         sounds.write(portal2_audio::SoundRequest::on("Portal.ambient_loop", e));
@@ -640,6 +708,7 @@ fn animate_portals(
     portals: Res<Portals>,
     query: Query<&Portal>,
     mut materials: ResMut<Assets<PortalMaterial>>,
+    mut haze_materials: ResMut<Assets<PortalHazeMaterial>>,
     mut cameras: Query<&mut Camera>,
     console: Res<portal2_core::console::Console>,
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -676,6 +745,11 @@ fn animate_portals(
                 m.params.glow.y = target.x;
                 m.params.glow.z = target.y;
             }
+        }
+        if haze_materials.get(&p.haze_material).is_some_and(|m| m.params.state.x != open)
+            && let Some(mut m) = haze_materials.get_mut(&p.haze_material)
+        {
+            m.params.state.x = open;
         }
         for camera in [p.camera, p.inner_camera] {
             if let Ok(mut c) = cameras.get_mut(camera)
@@ -1433,6 +1507,8 @@ mod tests {
                 margins: [0.0; 4],
                 fix: Entity::PLACEHOLDER,
                 fix_mesh: Handle::default(),
+                haze: [Entity::PLACEHOLDER; 3],
+                haze_material: Handle::default(),
             })
             .id();
         app.world_mut().resource_mut::<Portals>().entities[0] = Some(portal);

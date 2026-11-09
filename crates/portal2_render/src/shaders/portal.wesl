@@ -21,7 +21,8 @@ struct PortalParams {
     color: vec4<f32>,
     // x: linked (0/1), y: unused, z: open amount (0..1), w: clarity (1 - static)
     state: vec4<f32>,
-    // x: rim brightness multiplier (the visual overhaul's HDR glow, else 1)
+    // x: rim brightness multiplier (the visual overhaul's HDR glow, else 1),
+    // yz: the target's pixel size, w: the overhaul's heat refraction (0..1)
     glow: vec4<f32>,
     // The overhaul's fire: the quad's reach past the rectangle (left,
     // right, bottom, top) in texture coordinates
@@ -58,12 +59,18 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         fx_in.margins = portal.shape;
         fx_in.time = globals.time;
         fx_in.brightness = min(view.exposure, 1.0) * portal.glow.x;
+        fx_in.heat = portal.glow.w;
         // (WESL does not scope the names inside `@if`.)
         let fx_out = portal_fx(fx_in);
         var fx_rgb = fx_out.emit;
         if fx_out.view > 0.0 {
             let fx_size = select(vec2<f32>(textureDimensions(view_tex)), portal.glow.yz, portal.glow.y > 1.5);
-            let fx_through = textureSampleLevel(view_tex, view_samp, (in.position.xy + fx_out.view_offset) / fx_size, 0.0).rgb;
+            var fx_through = textureSampleLevel(view_tex, view_samp, (in.position.xy + fx_out.view_offset) / fx_size, 0.0).rgb;
+            // The heat's colour fringe near the rim.
+            if fx_out.view_split > 0.0 {
+                fx_through.r = textureSampleLevel(view_tex, view_samp, (in.position.xy + fx_out.view_offset_r) / fx_size, 0.0).r;
+                fx_through.b = textureSampleLevel(view_tex, view_samp, (in.position.xy + fx_out.view_offset_b) / fx_size, 0.0).b;
+            }
             fx_rgb += fx_through * fx_out.view;
         }
         return vec4<f32>(fx_rgb, fx_out.alpha);

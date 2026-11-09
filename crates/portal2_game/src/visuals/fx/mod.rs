@@ -64,6 +64,9 @@ pub mod features {
     /// Portals drawn as procedural fire and smoke (`portal_fx.wesl`)
     /// instead of the game's noise texture and colour gradient.
     pub const PORTALS: u32 = 1 << 13;
+    /// Heat around the fire portals: the view through refracts near the
+    /// rim and the wall around them shimmers (needs [`PORTALS`]).
+    pub const PORTAL_HEAT: u32 = 1 << 14;
 }
 
 /// Override cvars and the feature each controls.
@@ -82,6 +85,7 @@ pub const FEATURE_CVARS: &[(&str, u32)] = &[
     ("r_fx_reflections", features::REFLECTIONS),
     ("r_fx_procedural", features::PROCEDURAL),
     ("r_fx_portals", features::PORTALS),
+    ("r_fx_portal_heat", features::PORTAL_HEAT),
 ];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -189,7 +193,7 @@ impl FxSettings {
                 ..base
             },
             FxPreset::Ultra => Self {
-                features: medium | SHADOWS | AO | VOLUMETRICS | SSR,
+                features: medium | SHADOWS | AO | VOLUMETRICS | SSR | PORTAL_HEAT,
                 light_budget: 64,
                 shadow_slots: 4,
                 shadow_size: 2048,
@@ -350,6 +354,9 @@ mod tests {
         // The fire portals come with every overhaul preset, never with off.
         assert!(FxSettings::for_preset(FxPreset::Medium).has(features::PORTALS));
         assert!(!FxSettings::for_preset(FxPreset::Off).has(features::PORTALS));
+        // Their heat only on ultra.
+        assert!(FxSettings::for_preset(FxPreset::Ultra).has(features::PORTAL_HEAT));
+        assert!(!FxSettings::for_preset(FxPreset::High).has(features::PORTAL_HEAT));
         // An override turns a single feature off, or on over the off preset.
         let no_bloom = FxSettings::resolve(FxPreset::High, [(features::BLOOM, 0)].into_iter());
         assert!(!no_bloom.has(features::BLOOM) && no_bloom.has(features::LIGHTS));
