@@ -47,9 +47,24 @@ impl Plugin for ShadowCastersPlugin {
 /// beyond them.
 const SKIN_MARGIN: f32 = 48.0;
 
-/// How far a written transform may differ from the drawn one and still
-/// count as the same.
+/// How far a written transform's rotation and scale may differ from the
+/// drawn one's and still count as the same.
 const SAME_EPSILON: f32 = 1e-4;
+
+/// How far a written position may differ from the drawn one and still count
+/// as the same, in units. Models resting in place (floor turrets, cubes) get
+/// their transforms and poses rewritten every frame with the last bit or two
+/// rounded differently, and past 1024 units from the origin one bit is
+/// already more than [`SAME_EPSILON`]. This is far below a shadow texel (a
+/// fiftieth of a unit 10 units from a portal's light, more further out), and
+/// a caster creeping by less than it per frame is still redrawn once it has
+/// crept this far, since changes are measured from where it was last noted.
+const POSITION_EPSILON: f32 = 1e-2;
+
+/// Whether two transforms draw a caster in the same place.
+fn same_affine(a: &Affine3A, b: &Affine3A) -> bool {
+    a.matrix3.abs_diff_eq(b.matrix3, SAME_EPSILON) && a.translation.abs_diff_eq(b.translation, POSITION_EPSILON)
+}
 
 /// Meshes that draw into the shadow maps (opaque world and model meshes in
 /// the shadow views' layer) as last seen, and the bounds of what changed
@@ -83,6 +98,13 @@ pub struct CasterBounds {
 }
 
 impl CasterBounds {
+    /// Whether the change comes within `range` of `point` (a light whose
+    /// light ends there: past it, a caster only ever stands in front of
+    /// places the light does not reach).
+    pub fn within(&self, point: Vec3, range: f32) -> bool {
+        self.center.distance_squared(point) < (range + self.radius) * (range + self.radius)
+    }
+
     /// Whether the change can show in a view with this frustum. Views cull
     /// meshes as Bevy does, by the frustum's sides and near plane (meshes
     /// past the far plane still draw).
@@ -119,9 +141,9 @@ impl Caster {
         self.mesh == other.mesh
             && self.material == other.material
             && self.look == other.look
-            && self.transform.abs_diff_eq(other.transform, SAME_EPSILON)
-            && self.center.abs_diff_eq(other.center, SAME_EPSILON)
-            && (self.radius - other.radius).abs() <= SAME_EPSILON
+            && same_affine(&self.transform, &other.transform)
+            && self.center.abs_diff_eq(other.center, POSITION_EPSILON)
+            && (self.radius - other.radius).abs() <= POSITION_EPSILON
     }
 
     fn bounds(&self) -> CasterBounds {
@@ -317,7 +339,7 @@ fn track_casters(
         }
         let pose: Vec<Affine3A> = skin.joints.iter().map(|j| joints.get(*j).map_or(Affine3A::IDENTITY, |t| t.affine())).collect();
         let old = state.poses.get(&e);
-        if old.is_some_and(|old| old.len() == pose.len() && old.iter().zip(&pose).all(|(a, b)| a.abs_diff_eq(*b, SAME_EPSILON))) {
+        if old.is_some_and(|old| old.len() == pose.len() && old.iter().zip(&pose).all(|(a, b)| same_affine(a, b))) {
             continue;
         }
         // The vertices may stray from the box, but the box decides whether
@@ -392,6 +414,29 @@ pub(crate) mod tests {
         app.world_mut().despawn(e);
         app.update();
         assert_eq!(changed(&app), 1, "gone from its place");
+    }
+
+    /// Far from the origin, a model rewritten in place every frame comes
+    /// back with its last bits rounded differently; that is no change. A
+    /// creep too small to notice per frame adds up to one.
+    #[test]
+    fn rounding_far_out_is_no_change() {
+        let mut app = app();
+        let at = Vec3::new(1875.4061, -885.27783, -122.554474);
+        let e = spawn_caster(&mut app, at, Vec3::splat(8.0));
+        app.update();
+        assert_eq!(changed(&app), 1);
+        let ulp = |x: f32| f32::from_bits(x.to_bits() + 2);
+        let rotation = Quat::from_rotation_z(1e-7);
+        *app.world_mut().get_mut::<GlobalTransform>(e).unwrap() =
+            GlobalTransform::from(Transform::from_translation(Vec3::new(ulp(at.x), ulp(at.y), at.z)).with_rotation(rotation));
+        app.update();
+        assert_eq!(changed(&app), 0, "two bits off, rotated by rounding");
+        for step in 1..=4 {
+            *app.world_mut().get_mut::<GlobalTransform>(e).unwrap() = GlobalTransform::from_translation(at + Vec3::X * 0.004 * step as f32);
+            app.update();
+            assert_eq!(changed(&app), if step == 3 { 2 } else { 0 }, "crept {step} times");
+        }
     }
 
     /// A frame with pipelines still compiling makes every map stale once.

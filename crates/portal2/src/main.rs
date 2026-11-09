@@ -42,7 +42,7 @@ fn primary_window(args: &portal2_core::args::Args) -> Window {
         // Physical pixels, so screenshots match the reference captures.
         resolution: WindowResolution::new(args.width, args.height).with_scale_factor_override(1.0),
         // Benchmarks measure frame times without waiting for the display.
-        present_mode: if args.bench.is_some() { PresentMode::AutoNoVsync } else { PresentMode::AutoVsync },
+        present_mode: if args.bench.is_some() || args.novsync { PresentMode::AutoNoVsync } else { PresentMode::AutoVsync },
         ..default()
     }
 }

@@ -487,7 +487,10 @@ fn aim_shadow_cameras(
         let p = view.projection();
         let moved = views.drawn[slot] != Some(view);
         let frustum = p.compute_frustum(&GlobalTransform::from(view.transform));
-        let touched = casters.stale(|c| c.in_frustum(&frustum));
+        // The light ends at the far distance, so changes wholly past it
+        // (an arrival elevator's blades spinning across the map) leave
+        // what it lights as it was.
+        let touched = casters.stale(|c| c.within(view.transform.translation, view.far) && c.in_frustum(&frustum));
         if !moved && !touched {
             if camera.is_active {
                 camera.is_active = false;
@@ -521,7 +524,8 @@ mod tests {
     }
 
     /// A shadow map is drawn when its light takes the slot, and after that
-    /// only when its light moves or a caster within its frustum changes.
+    /// only when its light moves or a caster within its frustum and reach
+    /// changes.
     #[test]
     fn shadow_maps_redraw_on_change() {
         let mut app = app();
@@ -537,6 +541,8 @@ mod tests {
         let ahead = spawn_caster(&mut app, Vec3::new(100.0, 0.0, 0.0), cube);
         let behind = spawn_caster(&mut app, Vec3::new(-300.0, 0.0, 0.0), cube);
         let far = spawn_caster(&mut app, Vec3::new(1000.0, 0.0, 0.0), cube);
+        // Straddling the light's far distance (750).
+        let edge = spawn_caster(&mut app, Vec3::new(755.0, 0.0, 0.0), cube);
         // A wide panel just behind the light: its bounding sphere reaches in
         // front, but its box is culled.
         let panel = spawn_caster(&mut app, Vec3::new(-20.0, 0.0, 0.0), Vec3::new(2.0, 200.0, 200.0));
@@ -560,7 +566,10 @@ mod tests {
         assert!(!active(&mut app), "a caster behind the light moved");
         place(&mut app, far, Vec3::new(1010.0, 0.0, 0.0));
         app.update();
-        assert!(active(&mut app), "past the far plane, but drawn");
+        assert!(!active(&mut app), "drawn, but wholly past where the light ends");
+        place(&mut app, edge, Vec3::new(758.0, 0.0, 0.0));
+        app.update();
+        assert!(active(&mut app), "partly within the light's reach");
         place(&mut app, panel, Vec3::new(-30.0, 0.0, 0.0));
         app.update();
         assert!(!active(&mut app), "a panel behind the light moved");

@@ -223,6 +223,7 @@ with a WebGPU browser. The game runs in the visiting browser; its files stream f
 | `--portalgun none\|blue\|both` | Override the portal gun |
 | `+command args` | Console command run once the first map has loaded, e.g. `+sv_cheats 1 +setpos 0 0 64` |
 | `--nosound` | No audio output |
+| `--novsync` | Present frames without waiting for the display, so frame times above the refresh rate show (`--autopilot` logs them) |
 | `--snd-record <file.wav> [--snd-seconds n]` | Also write the first `n` seconds of the mix to a WAV file |
 | `--screenshot <file> --frames <n>` | Capture a screenshot after `n` frames and exit |
 | `--shots <file>` | Visit each view of a shot list and save `re/out/ours/<name>.png` |

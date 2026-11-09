@@ -263,6 +263,22 @@ fn fx_lighting(s: FxSurface) -> FxLit {
         }
         let kind = u32(l.position.w);
         let range = l.color.w;
+        // Nothing past the range is lit (`fx_window` below), so skip lights
+        // whose emitter is wholly out of reach before shading: a sphere
+        // round the emitter (a tube's segment, an ellipse's disc), grown by
+        // the range.
+        var reach_center = l.position.xyz;
+        var reach = max(range, 1.0);
+        if kind == 2u {
+            reach_center = (l.position.xyz + l.axis.xyz) * 0.5;
+            reach += 0.5 * distance(l.position.xyz, l.axis.xyz);
+        } else if kind == 3u {
+            reach += max(l.axis.w, l.params.x);
+        }
+        let to_reach = s.pos - reach_center;
+        if dot(to_reach, to_reach) >= reach * reach {
+            continue;
+        }
         var lp = l.position.xyz;
         var sp = l.position.xyz;
         var atten = 1.0;

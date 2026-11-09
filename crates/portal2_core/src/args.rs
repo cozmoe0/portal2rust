@@ -31,6 +31,9 @@ pub struct Args {
     pub fullbright: bool,
     /// No audio output (`--nosound`, also implied by the batch modes).
     pub nosound: bool,
+    /// Present frames without waiting for the display (`--novsync`), to see
+    /// frame times above the refresh rate.
+    pub novsync: bool,
     /// `--snd-record <file.wav>`: write the first `snd_seconds` of the mix.
     pub snd_record: Option<String>,
     pub snd_seconds: f32,
@@ -114,6 +117,7 @@ impl Default for Args {
             fixed_exposure: false,
             fullbright: false,
             nosound: false,
+            novsync: false,
             snd_record: None,
             snd_seconds: 10.0,
             strip_flags: 0,
@@ -191,6 +195,7 @@ impl Args {
                 "--noclip" => args.noclip = true,
                 "--fullbright" => args.fullbright = true,
                 "--nosound" | "-nosound" => args.nosound = true,
+                "--novsync" => args.novsync = true,
                 "--novid" | "-novid" => args.novid = true,
                 "--nomenuvid" | "-nomenuvid" => args.nomenuvid = true,
                 "--background" | "-background" => args.background = it.next().and_then(|s| s.parse().ok()),
