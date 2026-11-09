@@ -462,7 +462,9 @@ impl MaterialCache {
                 p.color = Vec4::new(0.0, 0.0, 0.0, 1.0);
             }
             Some(vmt) => {
-                m.base = ctx.tex(vmt, "$basetexture", true).map(|t| t.handle).or_else(|| Some(ctx.missing()));
+                let base = ctx.tex(vmt, "$basetexture", true);
+                let base_translucent = base.as_ref().is_some_and(translucent);
+                m.base = base.map(|t| t.handle).or_else(|| Some(ctx.missing()));
                 if let Some(t) = ctx.tex(vmt, "$bumpmap", false) {
                     m.bump = Some(t.handle);
                     p.flags |= model_flags::BUMP;
@@ -539,10 +541,11 @@ impl MaterialCache {
                 } else if vmt.get_bool("$halflambert") {
                     p.flags |= model_flags::HALF_LAMBERT;
                 }
-                if vmt.get_bool("$selfillum") {
+                let selfillum_mask = vmt.get_bool("$selfillum").then(|| ctx.tex(vmt, "$selfillummask", false)).flatten();
+                if vmt.get_bool("$selfillum") && (selfillum_mask.is_some() || base_translucent) {
                     p.flags |= model_flags::SELFILLUM;
                     p.selfillum_tint = vmt.get_vec3("$selfillumtint").unwrap_or(Vec3::ONE).extend(1.0);
-                    if let Some(t) = ctx.tex(vmt, "$selfillummask", false) {
+                    if let Some(t) = selfillum_mask {
                         m.selfillum_mask = Some(t.handle);
                         p.flags |= model_flags::SELFILLUM_MASK;
                     }
@@ -701,4 +704,14 @@ fn gamma_to_linear(c: Vec3) -> Vec3 {
         }
     };
     Vec3::new(f(c.x), f(c.y), f(c.z))
+}
+
+/// Whether a texture has real alpha (`ITexture::IsTranslucent`: one- or
+/// eight-bit alpha flagged). Without it `VertexLitGeneric` drops a
+/// `$selfillum` that would read its mask from the base alpha, so
+/// `turret_01.vmt` on a plain DXT1 texture (`sp_a2_bts3`'s laser-burnt
+/// turret wrecks) is lit like any model instead of glowing white.
+fn translucent(t: &TextureInfo) -> bool {
+    use source_formats::vtf::flags;
+    t.flags & (flags::ONEBITALPHA | flags::EIGHTBITALPHA) != 0
 }
