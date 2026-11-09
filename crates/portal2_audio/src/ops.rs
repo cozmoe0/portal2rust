@@ -821,7 +821,11 @@ impl Stack {
                 }
                 Kind::Platform => out[0][0] = op.flag("pc", false) as u8 as f32,
                 Kind::Accumulate => out[0][0] = f("input", 0.0, inst),
-                Kind::PrintFloat | Kind::Dashboard | Kind::PosVec8 | Kind::Unknown => {}
+                // The engine's music level under a console dashboard or
+                // overlay; full while the game has the screen. Both music
+                // stacks scale their volume by it.
+                Kind::Dashboard => out[0][0] = 1.0,
+                Kind::PrintFloat | Kind::PosVec8 | Kind::Unknown => {}
             }
             if op.kind != Kind::Output {
                 inst.outputs[i] = out;
@@ -1024,5 +1028,42 @@ mod install_tests {
             println!("{} inputs {:?} strings {:?}", op.name, op.inputs, op.strings);
         }
         assert!(chan.speakers.is_some_and(|s| s[0] > 0.5), "{:?}", chan.speakers);
+    }
+
+    /// Music on the stereo music stack (`sp_a2_bts1`'s escape) is heard:
+    /// the stack scales its volume by `get_dashboard`, which must read full
+    /// (skipped without an install).
+    #[test]
+    fn stereo_music_is_heard() {
+        let Some(root) = GameFileSystem::find_install() else { return };
+        let Ok(fs) = GameFileSystem::portal2(root) else { return };
+        let scripts = SoundScripts::load(&fs).unwrap();
+        let lib = Library::load(&fs);
+        let mut mix = MixData::load(&fs);
+        mix.update_layers(false);
+        let entry = scripts.get("music.sp_a2_bts1_b1").unwrap();
+        let stack = lib.compile(StackKind::Update, entry.operator_stacks.as_ref(), Some("update_default")).unwrap();
+        let mut inst = stack.instance();
+        let mut chan = Chan { entry: entry.name.clone(), volume: 1.0, level: 0.0, pitch: 1.0, ..Default::default() };
+        let listener = Listener { origin: Vec3::ZERO, forward: Vec3::X, right: Vec3::NEG_Y, velocity: Vec3::ZERO };
+        let cvar = |n: &str| match n {
+            "snd_gain" | "snd_musicvolume" | "snd_mixer_master_level" | "snd_gain_max" => 1.0,
+            "snd_refdist" => 36.0,
+            _ => 0.0,
+        };
+        let opvars = HashMap::new();
+        let mut env = Env {
+            listener: &listener,
+            mix: &mix,
+            cvar: &cvar,
+            opvars: &opvars,
+            others: &[],
+            now: 1.0,
+            map: "",
+            speaker_mode: 0,
+            effects: Vec::new(),
+        };
+        stack.run(&mut inst, &mut chan, &mut env);
+        assert!(chan.speakers.is_some_and(|s| s[0] > 0.1 && s[1] > 0.1), "{:?}", chan.speakers);
     }
 }
