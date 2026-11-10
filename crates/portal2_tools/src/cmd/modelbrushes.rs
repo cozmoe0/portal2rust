@@ -43,7 +43,10 @@ pub fn main() {
                 for s in brush.first_side..brush.first_side + brush.num_sides {
                     let side = &bsp.brush_sides[s as usize];
                     let p = &bsp.planes[side.plane as usize];
-                    println!("  plane {:?} dist {} bevel {}", p.normal, p.dist, side.bevel);
+                    let tex = usize::try_from(side.texinfo)
+                        .ok()
+                        .and_then(|t| bsp.texinfo_material(t).map(|m| (m.to_owned(), bsp.texinfo[t].flags)));
+                    println!("  plane {:?} dist {} bevel {} texture {tex:?}", p.normal, p.dist, side.bevel);
                 }
             }
         }
