@@ -53,10 +53,10 @@ const LASER_SHADER: &str = "embedded://portal2_render/shaders/laser.wesl";
 /// Beam material and width of ordinary lasers (`C_PortalLaser`).
 const BEAM_MATERIAL: &str = "sprites/purplelaser1";
 const BEAM_WIDTH: f32 = 32.0;
-/// Lethal lasers draw a thin green beam instead.
-const LETHAL_BEAM_MATERIAL: &str = "sprites/laserbeam";
-const LETHAL_BEAM_WIDTH: f32 = 2.0;
-const LETHAL_BEAM_COLOR: [f32; 3] = [100.0, 255.0, 100.0];
+/// Lethal lasers (`sp_a2_bts5`'s pipe cutter) draw the same red beam, half
+/// as wide: a white-hot core in a red glow about 16 units across, as the
+/// installed game shows it (`re/shots/bts5_laser.txt`).
+const LETHAL_BEAM_WIDTH: f32 = 16.0;
 /// Beam damage per second while it touches the player.
 const BURN_DPS: f32 = 60.0;
 /// How strongly the beam pushes the player away (units/s added per hit).
@@ -555,13 +555,10 @@ fn draw_beams(
     fs: Res<GameFs>,
     mut shared: Local<Option<BeamAssets>>,
 ) {
-    let assets = shared.get_or_insert_with(|| {
-        let lethal_color = Vec3::from_array(LETHAL_BEAM_COLOR.map(|c| srgb_to_linear(c / 255.0)));
-        BeamAssets {
-            mesh: meshes.add(beam_quad()),
-            normal: materials.add(beam_material(&fs, &mut textures, &mut images, BEAM_MATERIAL, BEAM_WIDTH, Vec3::ONE)),
-            lethal: materials.add(beam_material(&fs, &mut textures, &mut images, LETHAL_BEAM_MATERIAL, LETHAL_BEAM_WIDTH, lethal_color)),
-        }
+    let assets = shared.get_or_insert_with(|| BeamAssets {
+        mesh: meshes.add(beam_quad()),
+        normal: materials.add(beam_material(&fs, &mut textures, &mut images, BEAM_MATERIAL, BEAM_WIDTH, Vec3::ONE)),
+        lethal: materials.add(beam_material(&fs, &mut textures, &mut images, BEAM_MATERIAL, LETHAL_BEAM_WIDTH, Vec3::ONE)),
     });
     for mut laser in &mut emitters {
         let material = if laser.lethal { assets.lethal.clone() } else { assets.normal.clone() };

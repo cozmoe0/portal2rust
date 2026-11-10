@@ -1,0 +1,3 @@
+# sp_a2_bts5's lethal laser (env_portal_laser LethalDamage 1), seen side on.
+bts5_laser_a sp_a2_bts5 2920 1150 4430 2 0 0
+bts5_laser_b sp_a2_bts5 2920 1150 4430 2 0 0
