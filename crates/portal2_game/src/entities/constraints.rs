@@ -122,3 +122,68 @@ fn release(world: &mut World, e: Entity) {
         crate::physics::on_unparented(world, held);
     }
 }
+
+/// A stopped train that carried a stranded object rolls the second half
+/// of its last leg again, so the triggers on the way meet the object too:
+/// `sp_a2_bts4`'s scan only goes on once the turret has passed the trigger
+/// before the scanner. (From the very start it would pass the trigger that
+/// sets up a new turret a second time, and run the scan twice.)
+fn replay_train_leg(world: &mut World, train: Entity) {
+    let Some(t) = world.get::<super::trains::Train>(train) else { return };
+    if t.moving {
+        return;
+    }
+    let (Some(first), Some(last)) = (t.first.clone(), t.last) else { return };
+    let Some(start) = world.resource::<EntityRegistry>().first_named(&first) else { return };
+    let Some(stop) = world.get::<MapEntity>(last).and_then(|m| m.targetname.clone()) else { return };
+    if start == last {
+        return;
+    }
+    let from = super::world_transform(world, start).translation();
+    let to = super::world_transform(world, last).translation();
+    let at = from.lerp(to, 0.5) + Vec3::Z * t.height;
+    if let Some(mut tr) = world.get_mut::<Transform>(train) {
+        tr.translation = at;
+    }
+    if let Some(mut t) = world.get_mut::<super::trains::Train>(train) {
+        t.last = Some(start);
+        t.toward = None;
+        t.destination = None;
+    }
+    world.resource_mut::<EventQueue>().push(0.0, EventTarget::Entity(train), "movetopathnode", &stop, None, None);
+}
+
+/// Farther than this from what it is welded to, a held object has come
+/// loose: weld partners are placed together.
+const STRANDED_DISTANCE: f32 = 2048.0;
+
+/// Puts welded objects found far from their anchor back where they were
+/// welded on, as their spawn placements put them. Saves written while
+/// re-parenting could ease world positions into a local transform (fixed
+/// since) hold a `sp_a2_bts4` turret thousands of units off its cart, its
+/// cart waiting at the scanner for it for good.
+pub fn repair_welds(world: &mut World) {
+    let welds: Vec<Entity> = world.query::<(Entity, &Weld)>().iter(world).filter(|(_, w)| w.active && w.parented).map(|(e, _)| e).collect();
+    for e in welds {
+        let Some((held, Some(anchor_name))) = objects(world, e) else { continue };
+        let Some(anchor) = world.resource::<EntityRegistry>().first_named(&anchor_name) else { continue };
+        if world.get::<ChildOf>(held).map(|c| c.parent()) != Some(anchor) {
+            continue;
+        }
+        let Some(local) = world.get::<Transform>(held).copied() else { continue };
+        if local.translation.length() <= STRANDED_DISTANCE {
+            continue;
+        }
+        let placement = |e: Entity| {
+            world
+                .get::<MapEntity>(e)
+                .map(|m| Transform::from_translation(m.origin()).with_rotation(portal2_core::coords::angles_to_quat(m.angles())))
+        };
+        let (Some(a), Some(h)) = (placement(anchor), placement(held)) else { continue };
+        let fixed = Transform::from_matrix((a.compute_affine().inverse() * h.compute_affine()).into());
+        warn!("weld {e}: {held} was {:.0} units off {anchor}; put back", local.translation.length());
+        world.entity_mut(held).insert(fixed);
+        super::reset_easing(world, held);
+        replay_train_leg(world, anchor);
+    }
+}

@@ -426,7 +426,7 @@ pub fn set_parent(world: &mut World, child: Entity, parent: &str) {
 /// turret welded to `sp_a2_bts4`'s conveyor cart was flung thousands of
 /// units off it, stalling the line, whenever a frame fell between the weld
 /// and the next physics tick).
-fn reset_easing(world: &mut World, e: Entity) {
+pub(crate) fn reset_easing(world: &mut World, e: Entity) {
     use bevy_transform_interpolation::{RotationEasingState, TranslationEasingState};
     if let Some(mut s) = world.get_mut::<TranslationEasingState>(e) {
         s.start = None;

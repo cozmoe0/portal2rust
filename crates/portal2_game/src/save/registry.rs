@@ -199,10 +199,16 @@ fn save_physics(world: &World, e: Entity) -> Option<Result<Vec<u8>, String>> {
 fn load_physics(world: &mut World, e: Entity, bytes: &[u8]) -> Result<(), String> {
     use avian3d::prelude::{AngularVelocity, LinearVelocity, Position, Rotation};
     let s: PhysicsSave = decode(bytes)?;
-    // Bodies are not parented, so their transform is their world placement.
-    let t = world.get::<Transform>(e).copied().unwrap_or_default();
     let mut em = world.entity_mut(e);
-    em.insert((LinearVelocity(s.linear), AngularVelocity(s.angular), Position(t.translation), Rotation(t.rotation)));
+    em.insert((LinearVelocity(s.linear), AngularVelocity(s.angular)));
+    // A body riding a parent (welded to a cart, carried on a rail) keeps
+    // its transform in the parent's space and takes its physics position
+    // from the transforms: set by hand, the physics position would be
+    // written back over the local transform as if it were a world one.
+    if !em.contains::<ChildOf>() {
+        let t = em.get::<Transform>().copied().unwrap_or_default();
+        em.insert((Position(t.translation), Rotation(t.rotation)));
+    }
     Ok(())
 }
 
@@ -210,6 +216,7 @@ fn load_physics(world: &mut World, e: Entity, bytes: &[u8]) -> Result<(), String
 /// every load (its spawn scheduled that, but the saved event queue replaced
 /// the spawn-time one).
 pub fn after_restore(world: &mut World) {
+    crate::entities::constraints::repair_welds(world);
     crate::entities::scenes::resume_speech(world);
     crate::entities::movers::restore_brush_collision(world);
     crate::entities::movers::restore_mover_positions(world);
