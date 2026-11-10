@@ -60,7 +60,17 @@ impl Plugin for PortalsPlugin {
             .add_message::<PortalFx>()
             .add_systems(
                 Update,
-                (apply_placements, test_resting_surfaces, fizzle_portals, clear_on_map_load, animate_portals, update_holes).chain(),
+                (
+                    apply_placements,
+                    anchor_portals,
+                    follow_portal_surfaces,
+                    test_resting_surfaces,
+                    fizzle_portals,
+                    clear_on_map_load,
+                    animate_portals,
+                    update_holes,
+                )
+                    .chain(),
             )
             .add_systems(FixedUpdate, (teleport_player, portal_sounds).chain().after(PlayerMoveSet))
             .add_systems(
@@ -598,6 +608,88 @@ fn apply_placements(
             .id();
         portals.entities[req.slot] = Some(e);
         sounds.write(portal2_audio::SoundRequest::on("Portal.ambient_loop", e));
+    }
+}
+
+/// The entity a portal was placed on and the portal's placement in its
+/// space, worked out for `frame` (a new placement looks again). Portals on
+/// brush entities ride them: `sp_a2_bts5`'s panels carry a portal across
+/// the room, sweeping the laser that comes out of it over the neurotoxin
+/// pipes.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct PortalAnchor {
+    entity: Option<Entity>,
+    local: bevy::math::Affine3A,
+    frame: PortalFrame,
+}
+
+/// An entity's placement from its own and its parents' current transforms
+/// (moved this frame, not yet propagated).
+fn fresh_affine(e: Entity, transforms: &Query<(&Transform, Option<&ChildOf>), Without<Portal>>) -> Option<bevy::math::Affine3A> {
+    let (t, parent) = transforms.get(e).ok()?;
+    let mut affine = t.compute_affine();
+    let mut up = parent.map(|p| p.parent());
+    for _ in 0..32 {
+        let Some(p) = up else { break };
+        let Ok((pt, next)) = transforms.get(p) else { break };
+        affine = pt.compute_affine() * affine;
+        up = next.map(|n| n.parent());
+    }
+    Some(affine)
+}
+
+/// Finds what each newly placed portal rests on: the entity behind its
+/// centre, if any.
+fn anchor_portals(
+    mut commands: Commands,
+    physics: portal2_world::collision::Physics,
+    portals: Query<(Entity, &Portal, Option<&PortalAnchor>)>,
+    transforms: Query<(&Transform, Option<&ChildOf>), Without<Portal>>,
+) {
+    use source_formats::bsp::contents;
+    let mask = contents::SOLID | contents::WINDOW | contents::GRATE | contents::MOVEABLE;
+    for (e, p, anchor) in &portals {
+        if anchor.is_some_and(|a| a.frame == p.frame) {
+            continue;
+        }
+        let f = p.frame;
+        let tr = physics.trace(f.center + f.forward, f.center - f.forward * 2.0, Vec3::ZERO, Vec3::ZERO, mask, &[]);
+        let base = tr.entity.filter(|_| tr.fraction < 1.0).and_then(|s| fresh_affine(s, &transforms).map(|a| (s, a)));
+        let anchor = match base {
+            Some((surface, affine)) => PortalAnchor { entity: Some(surface), local: affine.inverse() * f.affine(), frame: f },
+            None => PortalAnchor { entity: None, local: bevy::math::Affine3A::IDENTITY, frame: f },
+        };
+        commands.entity(e).insert(anchor);
+    }
+}
+
+/// Moves portals with the entities they were placed on; one whose entity
+/// is gone closes.
+fn follow_portal_surfaces(
+    portals_res: Res<Portals>,
+    mut portals: Query<(&mut Portal, &mut PortalAnchor, &mut Transform)>,
+    transforms: Query<(&Transform, Option<&ChildOf>), Without<Portal>>,
+    mut fizzle: MessageWriter<FizzlePortals>,
+) {
+    for (mut p, mut anchor, mut t) in &mut portals {
+        let Some(surface) = anchor.entity else { continue };
+        let Some(affine) = fresh_affine(surface, &transforms) else {
+            if portals_res.entities[p.slot].is_some() {
+                info!("portal {}: the entity it was on is gone", p.slot);
+                fizzle.write(FizzlePortals { slot: Some(p.slot) });
+            }
+            anchor.entity = None;
+            continue;
+        };
+        let placed = affine * anchor.local;
+        let (_, rotation, center) = placed.to_scale_rotation_translation();
+        let frame = PortalFrame { center, forward: rotation * Vec3::X, up: rotation * Vec3::Z };
+        if frame.center.distance_squared(p.frame.center) < 1e-6 && frame.forward.dot(p.frame.forward) > 0.999_999 {
+            continue;
+        }
+        p.frame = frame;
+        anchor.frame = frame;
+        *t = Transform::from_translation(center).with_rotation(rotation);
     }
 }
 

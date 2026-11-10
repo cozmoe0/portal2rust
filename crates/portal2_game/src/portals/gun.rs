@@ -228,19 +228,24 @@ type SurfaceMotion = (
     Option<&'static ChildOf>,
 );
 
-/// Whether `e` or anything it is parented to is being moved by a mover
-/// (the game's check is the entity's velocity and the angular velocity
-/// along its parent chain; a panel an animation carries counts as still).
+/// Whether a surface on `e` is moving as the game counts it: the entity's
+/// own velocity, and the angular velocity of anything along its parent
+/// chain. A panel an animation carries counts as still, and so does one a
+/// train or sliding door carries in a straight line (`sp_a2_bts5`'s panels
+/// take portals as they cross the room, and the portals ride them).
 fn surface_moving(motion: &Query<SurfaceMotion>, e: Entity) -> bool {
     let mut cur = Some(e);
+    let mut own = true;
     while let Some(c) = cur {
         let Ok((mover, rotating, train, parent)) = motion.get(c) else { return false };
-        let moving = mover.is_some_and(|m| matches!(m.state, MoverState::Opening | MoverState::Closing))
-            || rotating.is_some_and(|r| r.speed != 0.0)
-            || train.is_some_and(|t| t.moving && t.speed != 0.0);
-        if moving {
+        let mover_moving = mover.filter(|m| matches!(m.state, MoverState::Opening | MoverState::Closing));
+        let turning = rotating.is_some_and(|r| r.speed != 0.0)
+            || mover_moving.is_some_and(|m| m.closed.rotation.angle_between(m.open.rotation) > 1e-3);
+        let sliding = mover_moving.is_some() || train.is_some_and(|t| t.moving && t.speed != 0.0);
+        if turning || (own && sliding) {
             return true;
         }
+        own = false;
         cur = parent.map(|p| p.parent());
     }
     false
