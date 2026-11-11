@@ -252,7 +252,15 @@ fn dynamic_input(world: &mut World, call: &InputCall) -> bool {
         "enable" | "turnon" => set_visible(world, e, true),
         "disable" | "turnoff" => set_visible(world, e, false),
         "enablecollision" | "disablecollision" => set_collision(world, e, call.input == "enablecollision"),
-        "becomeragdoll" | "fadeanddelete" => {}
+        "becomeragdoll" => {}
+        // The engine's `SUB_StartFadeOut(0, true)`: not solid at once, the
+        // alpha falls 256 a second and the prop is removed once it is gone
+        // (`sp_a4_finale4`'s debris). Models are not drawn see-through
+        // here, so the prop goes when its fade would end.
+        "fadeandkill" | "fadeanddelete" => {
+            set_collision(world, e, false);
+            world.resource_mut::<super::io::EventQueue>().push(1.0, super::io::EventTarget::Entity(e), "kill", "", None, None);
+        }
         _ => return false,
     }
     true

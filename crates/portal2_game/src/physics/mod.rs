@@ -58,6 +58,10 @@ impl Plugin for GamePhysicsPlugin {
             .add_plugins((carry::CarryPlugin, held_clone::HeldClonePlugin, portal_travel::PortalTravelPlugin));
         inputs::register(app);
         constraints::register(app);
+        app.init_resource::<DisabledPairs>().add_systems(FixedUpdate, gather_collision_pairs);
+        let world = app.world_mut();
+        world.resource_mut::<crate::entities::SpawnHandlers>().register("logic_collision_pair", spawn_collision_pair);
+        world.resource_mut::<crate::entities::io::InputHandlers>().register("logic_collision_pair", collision_pair_input);
     }
 }
 
@@ -610,6 +614,7 @@ pub struct PortalContactHooks<'w, 's> {
     props: Query<'w, 's, (), With<PhysicsProp>>,
     shapes: Query<'w, 's, (&'static TraceCollider, &'static Position, &'static Rotation)>,
     parents: Query<'w, 's, &'static ChildOf>,
+    pairs: Res<'w, DisabledPairs>,
 }
 
 impl PortalContactHooks<'_, '_> {
@@ -632,7 +637,8 @@ impl CollisionHooks for PortalContactHooks<'_, '_> {
     /// carries its handle (a rotating brush inside it), which otherwise
     /// threw the door about the room the moment it could move.
     fn filter_pairs(&self, collider1: Entity, collider2: Entity, _commands: &mut Commands) -> bool {
-        !(self.descends_from(collider1, collider2) || self.descends_from(collider2, collider1))
+        let key = if collider1 < collider2 { (collider1, collider2) } else { (collider2, collider1) };
+        !(self.pairs.0.contains(&key) || self.descends_from(collider1, collider2) || self.descends_from(collider2, collider1))
     }
 
     fn modify_contacts(&self, contacts: &mut ContactPair, _commands: &mut Commands) -> bool {
@@ -711,4 +717,64 @@ pub fn world_bounds(shape: &Arc<Shape>, pos: Vec3, rot: Quat) -> (Vec3, Vec3) {
         m.x_axis.z.abs() * e.x + m.y_axis.z.abs() * e.y + m.z_axis.z.abs() * e.z,
     );
     (wc - we, wc + we)
+}
+
+/// `logic_collision_pair`: two objects (`attach1`, `attach2`) that do not
+/// collide with each other while disabled (`startdisabled` 1 starts so;
+/// `DisableCollisions` / `EnableCollisions`). `sp_a2_core`'s closing
+/// blockers pass through the fake vault door this way.
+#[derive(Component, serde::Serialize, serde::Deserialize)]
+pub struct CollisionPair {
+    attach1: String,
+    attach2: String,
+    pub disabled: bool,
+}
+
+impl portal2_core::save::Restore for CollisionPair {}
+
+/// The object pairs that do not collide now, ordered.
+#[derive(Resource, Default)]
+pub struct DisabledPairs(pub bevy::platform::collections::HashSet<(Entity, Entity)>);
+
+fn spawn_collision_pair(world: &mut World, e: Entity) {
+    let Some(me) = world.get::<MapEntity>(e) else { return };
+    let name = |k: &str| me.get(k).unwrap_or("").trim().to_ascii_lowercase();
+    let pair = CollisionPair { attach1: name("attach1"), attach2: name("attach2"), disabled: me.get_bool("startdisabled") };
+    world.entity_mut(e).insert(pair);
+}
+
+fn collision_pair_input(world: &mut World, call: &crate::entities::io::InputCall) -> bool {
+    let Some(mut pair) = world.get_mut::<CollisionPair>(call.target) else { return false };
+    match call.input.as_str() {
+        "disablecollisions" => pair.disabled = true,
+        "enablecollisions" => pair.disabled = false,
+        _ => return false,
+    }
+    true
+}
+
+/// The pair filter runs for a pair once either object asks for it.
+fn gather_collision_pairs(
+    mut commands: Commands,
+    pairs: Query<&CollisionPair>,
+    registry: Res<portal2_core::entity::EntityRegistry>,
+    hooks: Query<Option<&ActiveCollisionHooks>, With<RigidBody>>,
+    mut disabled: ResMut<DisabledPairs>,
+) {
+    let mut now = bevy::platform::collections::HashSet::new();
+    for pair in pairs.iter().filter(|p| p.disabled) {
+        let (Some(a), Some(b)) = (registry.first_named(&pair.attach1), registry.first_named(&pair.attach2)) else { continue };
+        now.insert(if a < b { (a, b) } else { (b, a) });
+        for e in [a, b] {
+            if let Ok(current) = hooks.get(e) {
+                let current = current.copied().unwrap_or(ActiveCollisionHooks::empty());
+                if !current.contains(ActiveCollisionHooks::FILTER_PAIRS) {
+                    commands.entity(e).insert(current | ActiveCollisionHooks::FILTER_PAIRS);
+                }
+            }
+        }
+    }
+    if disabled.0 != now {
+        disabled.0 = now;
+    }
 }

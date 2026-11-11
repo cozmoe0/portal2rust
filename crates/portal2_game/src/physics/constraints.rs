@@ -289,10 +289,15 @@ fn drive_motors(
         if masses.get(object).is_ok_and(|(mass, c)| !mass_settled(mass, c)) {
             continue;
         }
-        // The joint turns its object the other way round from the engine's
-        // motor about the same axis: negated, `sp_a2_core`'s door (-100
-        // about +Y) tips towards -X, away from the wall behind it.
-        let target = -m.speed.to_radians();
+        // The joint drives its second body (the object) relative to the
+        // first (the anchor), right-handed about the axis as the engine's
+        // motor turns: `sp_a2_core`'s door, -100 about +Y, tips towards -X,
+        // away from the wall behind it.
+        let target = m.speed.to_radians();
+        // A body at rest is put to sleep, which a joint motor does not wake.
+        if m.on {
+            commands.entity(object).remove::<Sleeping>();
+        }
         if m.hinge {
             match m.joint.and_then(|j| joints.get_mut(j).ok()) {
                 Some(mut joint) => {

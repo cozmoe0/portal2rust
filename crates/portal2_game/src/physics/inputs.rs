@@ -35,6 +35,7 @@ pub fn register(app: &mut App) {
         h.register(class, motion_input);
     }
     h.register("env_physexplosion", explosion_input);
+    h.register("env_physimpact", impact_input);
 }
 
 fn mass_of(world: &World, e: Entity) -> f32 {
@@ -120,6 +121,68 @@ fn explosion_input(world: &mut World, call: &InputCall) -> bool {
             p.state.velocity += (at - center).normalize_or(Vec3::Z) * force / 75.0;
             p.state.on_ground = false;
         }
+    }
+    true
+}
+
+/// `env_physimpact` spawnflags.
+const IMPACT_NO_FALLOFF: u32 = 1;
+const IMPACT_INFINITE_LENGTH: u32 = 2;
+const IMPACT_IGNORE_MASS: u32 = 4;
+const IMPACT_IGNORE_NORMAL: u32 = 8;
+/// How far an infinite impact reaches (`MAX_TRACE_LENGTH`).
+const IMPACT_MAX_LENGTH: f32 = 56755.84;
+
+/// `env_physimpact`'s `Impact` (`CPhysImpact::InputImpact`): a line from
+/// it along its facing (turned at `directionentityname` first, if set),
+/// `distance` long, and the physics object it meets is struck where it is
+/// met by `magnitude`, less the share of the line already covered unless
+/// spawnflag 1 or 2, times the object's mass with spawnflag 4, away from
+/// the surface struck (along the line with spawnflag 8).
+/// `sp_a2_trust_fling` knocks its loosened wall and ceiling panels down
+/// this way.
+fn impact_input(world: &mut World, call: &InputCall) -> bool {
+    if call.input != "impact" {
+        return false;
+    }
+    let e = call.target;
+    let Some(me) = world.get::<MapEntity>(e).cloned() else { return true };
+    let placed = crate::entities::world_transform(world, e).compute_transform();
+    let start = placed.translation;
+    let toward = me
+        .get("directionentityname")
+        .filter(|n| !n.is_empty())
+        .and_then(|n| world.resource::<portal2_core::entity::EntityRegistry>().first_named(&n.to_ascii_lowercase()))
+        .map(|t| crate::entities::world_transform(world, t).translation());
+    let dir = toward.map_or(placed.rotation * Vec3::X, |t| (t - start).normalize_or(placed.rotation * Vec3::X));
+    let flags = me.spawnflags();
+    let magnitude = me.get_f32("magnitude").unwrap_or(100.0);
+    let length = if flags & IMPACT_INFINITE_LENGTH != 0 { IMPACT_MAX_LENGTH } else { me.get_f32("distance").unwrap_or(0.0) };
+    if length <= 0.0 {
+        return true;
+    }
+    let trace = {
+        let mut state = bevy::ecs::system::SystemState::<portal2_world::collision::Physics>::new(world);
+        let physics = state.get(world).expect("collision available");
+        physics.trace(start, start + dir * length, Vec3::ZERO, Vec3::ZERO, portal2_world::collision::mask::SOLID_ALL, &[e])
+    };
+    if !trace.hit() {
+        return true;
+    }
+    let Some(hit) = trace.entity else { return true };
+    if !world.get::<RigidBody>(hit).is_some_and(|b| b.is_dynamic()) {
+        return true;
+    }
+    let normal = if trace.start_solid { -dir } else { trace.normal };
+    let mut amount = if flags & (IMPACT_NO_FALLOFF | IMPACT_INFINITE_LENGTH) != 0 { magnitude } else { magnitude * (1.0 - trace.fraction) };
+    if flags & IMPACT_IGNORE_MASS != 0 {
+        amount *= mass_of(world, hit);
+    }
+    let push = if flags & IMPACT_IGNORE_NORMAL != 0 { dir } else { -normal };
+    world.entity_mut(hit).remove::<Sleeping>();
+    let mut q = world.query::<Forces>();
+    if let Ok(mut f) = q.get_mut(world, hit) {
+        f.apply_linear_impulse_at_point(push * amount, trace.end);
     }
     true
 }
