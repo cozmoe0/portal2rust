@@ -110,11 +110,13 @@ pub struct Collider {
     /// through. Only player movement uses them so far; other traces, touch
     /// tests and physics bodies keep `shape`.
     pub movement_shape: Option<Arc<Shape>>,
+    /// Debris: solid to everything but the player's movement.
+    pub debris: bool,
 }
 
 impl Collider {
     pub fn new(shape: Arc<Shape>, enabled: bool, solid: bool) -> Self {
-        Self { shape, enabled, solid, movement_shape: None }
+        Self { shape, enabled, solid, movement_shape: None, debris: false }
     }
 
     /// The shape a trace with `mask` sweeps against. Player movement is the
@@ -266,9 +268,10 @@ impl Physics<'_, '_> {
         }
 
         let reach = SweepReach::new(start, end, mins, maxs);
+        let player_move = mask & contents::PLAYERCLIP != 0;
         for (e, col, gt, follower) in &self.colliders {
             let e = follower.map_or(e, |f| f.owner);
-            if !col.enabled || !col.solid || ignore.contains(&e) {
+            if !col.enabled || !col.solid || ignore.contains(&e) || (col.debris && player_move) {
                 continue;
             }
             let affine = gt.affine();
@@ -327,9 +330,10 @@ impl Physics<'_, '_> {
             out.push(None);
         }
         let reach = SweepReach::new(pos, pos, mins, maxs);
+        let player_move = mask & contents::PLAYERCLIP != 0;
         for (e, col, gt, follower) in &self.colliders {
             let e = follower.map_or(e, |f| f.owner);
-            if !col.enabled || !col.solid {
+            if !col.enabled || !col.solid || (col.debris && player_move) {
                 continue;
             }
             let affine = gt.affine();

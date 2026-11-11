@@ -46,7 +46,7 @@ fn motion_input(world: &mut World, call: &InputCall) -> bool {
     match call.input.as_str() {
         "enablemotion" | "wake" => {
             if let Some(mut me) = world.get_mut::<MapEntity>(e) {
-                me.set_flag(super::SF_MOTION_DISABLED, false);
+                super::set_motion_disabled(&mut me, false);
             }
             let dynamic = world.get::<RigidBody>(e).is_some_and(|b| b.is_dynamic());
             // A prop on a parent keeps riding it, free to fall once
@@ -72,7 +72,7 @@ fn motion_input(world: &mut World, call: &InputCall) -> bool {
             if call.input == "disablemotion"
                 && let Some(mut me) = world.get_mut::<MapEntity>(e)
             {
-                me.set_flag(super::SF_MOTION_DISABLED, true);
+                super::set_motion_disabled(&mut me, true);
             }
             if world.get::<RigidBody>(e).is_some() {
                 world.entity_mut(e).insert((RigidBody::Kinematic, LinearVelocity::ZERO, AngularVelocity::ZERO));

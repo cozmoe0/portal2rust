@@ -24,6 +24,7 @@ fn register(c: &mut Console) {
     c.register_command("setang", setang);
     c.register_command("getpos", getpos);
     c.register_command("p2r_stuck", stuck);
+    c.register_command("ent_find", ent_find);
     c.register_command("noclip", noclip);
     c.register_command("god", god);
     c.register_command("hurtme", hurtme);
@@ -124,6 +125,47 @@ fn getpos(world: &mut World, _args: &CommandArgs) {
     let Some(p) = player_mut(world).map(|p| p.state.origin) else { return };
     let a = world.resource::<crate::player::PlayerInput>().input.angles;
     print(world, format!("setpos {:.6} {:.6} {:.6};setang {:.6} {:.6} {:.6}", p.x, p.y, p.z, a.x, a.y, a.z));
+}
+
+/// Development aid: lists the entities whose name or class contains the
+/// text, with where they are now, what they hang from and whether they
+/// are shown (`ent_find panel_1`).
+fn ent_find(world: &mut World, args: &CommandArgs) {
+    let needle = args.arg(1).to_ascii_lowercase();
+    let mut q = world.query::<(Entity, &portal2_core::entity::MapEntity)>();
+    let found: Vec<(Entity, String, String)> = q
+        .iter(world)
+        .filter(|(_, m)| {
+            let name = m.targetname.as_deref().unwrap_or("").to_ascii_lowercase();
+            name.contains(&needle) || m.classname.contains(&needle)
+        })
+        .map(|(e, m)| (e, m.classname.clone(), m.targetname.clone().unwrap_or_default()))
+        .collect();
+    let mut lines = Vec::new();
+    for (e, class, name) in found {
+        let at = crate::entities::world_transform(world, e).translation();
+        let parent = world.get::<ChildOf>(e).map(|c| c.parent());
+        let parent_name = parent.and_then(|p| world.get::<portal2_core::entity::MapEntity>(p)).and_then(|m| m.targetname.clone());
+        let hidden = world.get::<Visibility>(e).is_some_and(|v| *v == Visibility::Hidden);
+        let body = world.get::<avian3d::prelude::RigidBody>(e).map(|b| {
+            let v = world.get::<avian3d::prelude::LinearVelocity>(e).map_or(Vec3::ZERO, |v| v.0);
+            let w = world.get::<avian3d::prelude::AngularVelocity>(e).map_or(Vec3::ZERO, |w| w.0);
+            format!(" {b:?} v {:.0} {:.0} {:.0} w {:.2} {:.2} {:.2}", v.x, v.y, v.z, w.x, w.y, w.z)
+        });
+        lines.push(format!(
+            "{e} {class} '{name}' at {:.0} {:.0} {:.0}{}{}{}",
+            at.x,
+            at.y,
+            at.z,
+            parent.map(|p| format!(" parent {p} '{}'", parent_name.unwrap_or_default())).unwrap_or_default(),
+            if hidden { " hidden" } else { "" },
+            body.unwrap_or_default()
+        ));
+    }
+    lines.push(format!("{} found", lines.len()));
+    for l in lines {
+        print(world, l);
+    }
 }
 
 /// Development aid: lists the solid static volumes the player's hull

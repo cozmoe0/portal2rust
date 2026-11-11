@@ -311,9 +311,9 @@ fn fixture_lights(
     }
 }
 
-/// The normal beam's colour (its sprite is red), and the lethal one's.
+/// The beams' colour: their sprite is red, the lethal ones' too (the
+/// installed game draws `sp_a2_bts5`'s pipe cutter red, `re/shots/bts5_laser.txt`).
 const LASER_COLOR: Vec3 = Vec3::new(1.0, 0.1, 0.06);
-const LETHAL_COLOR: Vec3 = Vec3::new(0.2, 1.0, 0.25);
 const LASER_BEAM_INTENSITY: f32 = 350.0;
 const LASER_POINT_INTENSITY: f32 = 700.0;
 const LASER_RANGE: f32 = 150.0;
@@ -326,7 +326,7 @@ fn laser_lights(settings: Res<FxSettings>, emitters: Query<&LaserEmitter>, mut l
         if !e.on || e.segments.is_empty() {
             continue;
         }
-        let color = if e.lethal { LETHAL_COLOR } else { LASER_COLOR };
+        let color = LASER_COLOR;
         let both = light_flags::DIFFUSE | light_flags::SPECULAR;
         for s in &e.segments {
             if s.start.distance_squared(s.end) < 1.0 {

@@ -30,7 +30,7 @@ impl Plugin for PlayerPlugin {
             // Placed during level load, before the new map's first tick.
             .add_systems(PreUpdate, spawn_or_reset_player.in_set(PlayerSpawnSet).after(portal2_core::sets::EntitySpawnSet))
             .add_systems(Update, gather_input)
-            .add_systems(FixedUpdate, player_tick.in_set(PlayerMoveSet))
+            .add_systems(FixedUpdate, (pushed_by_movers, player_tick).chain().in_set(PlayerMoveSet))
             .add_systems(PostUpdate, place_camera.in_set(PlayerCameraSet).before(TransformSystems::Propagate));
     }
 }
@@ -154,6 +154,50 @@ fn gather_input(
         for mut p in &mut players {
             p.noclip = !p.noclip;
             info!("noclip {}", if p.noclip { "on" } else { "off" });
+        }
+    }
+}
+
+/// Solids that moved into the player since the last tick carry the player
+/// along with their move, as the engine's pushers do: `sp_a2_core`'s trap
+/// panels (thin plates riding animated arms) would otherwise sweep through
+/// the player, or close round them and leave them inside, free to walk out.
+/// A push that would put the player into something else is not made.
+fn pushed_by_movers(
+    physics: Physics,
+    colliders: Query<(Entity, &portal2_world::collision::Collider, &GlobalTransform, Option<&portal2_world::collision::BoneFollower>)>,
+    holding: Option<Res<crate::physics::carry::Holding>>,
+    mut players: Query<(Entity, &mut Player)>,
+    mut last: Local<bevy::platform::collections::HashMap<Entity, bevy::math::Affine3A>>,
+) {
+    let held = holding.and_then(|h| h.entity);
+    for (pe, mut p) in &mut players {
+        if p.noclip {
+            continue;
+        }
+        let (mins, maxs) = p.state.hull();
+        for (e, col, gt, follower) in &colliders {
+            let owner = follower.map_or(e, |f| f.owner);
+            if !col.enabled || !col.solid || col.debris || owner == pe || Some(owner) == held || Some(owner) == p.state.ground_entity {
+                continue;
+            }
+            let now = gt.affine();
+            let Some(prev) = last.get(&e).copied() else { continue };
+            if prev == now || !physics.touches(e, p.state.origin, mins, maxs) {
+                continue;
+            }
+            let carried = now.transform_point3(prev.inverse().transform_point3(p.state.origin));
+            let ignore: Vec<Entity> = [pe, owner].into_iter().chain(held).collect();
+            if physics.trace(carried, carried, mins, maxs, portal2_world::collision::mask::PLAYER_SOLID, &ignore).start_solid {
+                continue;
+            }
+            p.state.origin = carried;
+        }
+    }
+    last.clear();
+    for (e, col, gt, _) in &colliders {
+        if col.solid {
+            last.insert(e, gt.affine());
         }
     }
 }

@@ -224,7 +224,7 @@ fn use_or_grab(
         tr.entity.map(|e| props.get(e).map(|p| *p.2))
     );
     let pickable = |e: Entity| {
-        props.get(e).is_ok_and(|(_, _, body, me)| *body == RigidBody::Dynamic && !me.has_flag(crate::entities::props::SF_PREVENT_PICKUP))
+        props.get(e).is_ok_and(|(_, _, body, me)| *body == RigidBody::Dynamic && !super::prevents_pickup(me))
     };
     let caught = match CATCH_MAPS.iter().find(|(name, ..)| *name == map.name) {
         Some(&(_, reach, cone)) if !p.state.on_ground && !tr.entity.is_some_and(pickable) => {
@@ -238,7 +238,7 @@ fn use_or_grab(
     };
     events.write(event("player_use", target));
     match props.get(target) {
-        Ok((col, gt, body, me)) if *body == RigidBody::Dynamic && !me.has_flag(crate::entities::props::SF_PREVENT_PICKUP) => {
+        Ok((col, gt, body, me)) if *body == RigidBody::Dynamic && !super::prevents_pickup(me) => {
             let yaw = quat_to_angles(gt.compute_transform().rotation).y;
             grab(&mut holding, &mut commands, &mut out, &mut sounds, &console, pe, target, col, yaw - input.input.angles.y, me);
         }

@@ -48,7 +48,13 @@ impl Plugin for GamePhysicsPlugin {
                 build_static_world.after(portal2_world::collision::rebuild_on_map_load).before(portal2_core::sets::EntitySpawnSet),
             )
             .add_systems(Update, (attach_bodies, attach_follower_bodies, attach_player_body, sync_portal_slabs, sync_disabled_colliders))
+            .add_systems(PostUpdate, apply_debris)
+            .add_systems(Update, fold_child_bodies.after(attach_bodies))
             .add_systems(FixedUpdate, rest_new_props)
+            .add_systems(
+                FixedPostUpdate,
+                drive_kinematic_bodies.in_set(PhysicsSystems::Prepare).after(avian3d::physics_transform::PhysicsTransformSystems::TransformToPosition),
+            )
             .add_plugins((carry::CarryPlugin, held_clone::HeldClonePlugin, portal_travel::PortalTravelPlugin));
         inputs::register(app);
         constraints::register(app);
@@ -255,16 +261,20 @@ fn rest_new_props(mut commands: Commands, mut props: Query<(Entity, &mut StartsA
 fn attach_bodies(
     mut commands: Commands,
     fs: Res<GameFs>,
-    new: Query<(Entity, &TraceCollider, &MapEntity, Has<PhysicsProp>, Has<ChildOf>), Without<RigidBody>>,
+    new: Query<(Entity, &TraceCollider, &MapEntity, Has<PhysicsProp>, Has<ChildOf>), (Without<RigidBody>, Without<RidesPhysicsObject>)>,
 ) {
     for (e, col, me, is_prop, parented) in &new {
         if !col.solid {
             continue;
         }
+        // A `func_physbox` without its motion disabled is a physics object
+        // from the start (`sp_a2_bts3`'s lamp), like a prop.
+        let is_prop = is_prop || is_physbox(me);
         let collider = if is_prop { prop_collider(&col.shape) } else { shape_collider(&col.shape) };
         let Some(collider) = collider else { continue };
-        if is_prop && !parented && !me.has_flag(SF_MOTION_DISABLED) {
+        if is_prop && !parented && !motion_disabled(me) {
             make_dynamic(&mut commands, e, collider, prop_mass(&fs, me));
+            commands.entity(e).insert(PhysicsProp);
         } else {
             // Spawnflag 8 on physics props: start motion disabled.
             commands.entity(e).insert((RigidBody::Kinematic, collider, layers_for(layers::MOVER, layers::PROP | layers::HELD)));
@@ -275,6 +285,110 @@ fn attach_bodies(
 /// Physics prop spawnflag: motion disabled. `DisableMotion` and
 /// `EnableMotion` keep it up to date, so a saved game knows too.
 pub const SF_MOTION_DISABLED: u32 = 8;
+/// Physics prop spawnflag: debris, which never touches the player.
+pub const SF_DEBRIS: u32 = 4;
+
+/// `func_physbox` spawnflags, which differ from the props' (`physobj.h`).
+pub mod physbox_flags {
+    pub const IGNORE_USE: u32 = 0x2000;
+    pub const DEBRIS: u32 = 0x4000;
+    pub const MOTION_DISABLED: u32 = 0x8000;
+    pub const NEVER_PICK_UP: u32 = 0x20_0000;
+}
+
+pub fn is_physbox(me: &MapEntity) -> bool {
+    me.classname.starts_with("func_physbox")
+}
+
+/// The spawnflag that holds an object still, which `func_physbox` keeps
+/// elsewhere than props.
+fn motion_flag(me: &MapEntity) -> u32 {
+    if is_physbox(me) { physbox_flags::MOTION_DISABLED } else { SF_MOTION_DISABLED }
+}
+
+pub fn motion_disabled(me: &MapEntity) -> bool {
+    me.has_flag(motion_flag(me))
+}
+
+pub fn set_motion_disabled(me: &mut MapEntity, disabled: bool) {
+    let flag = motion_flag(me);
+    me.set_flag(flag, disabled);
+}
+
+/// Debris collides with the world and other objects but never with the
+/// player, who walks through it and cannot stand on it: `sp_a2_core`'s fake
+/// vault door falls over through where the player stands, `sp_a2_bts5`'s
+/// cut panel halves drop past the catwalks.
+pub fn is_debris(me: &MapEntity) -> bool {
+    if is_physbox(me) {
+        me.has_flag(physbox_flags::DEBRIS)
+    } else {
+        me.classname.starts_with("prop_physics") && me.has_flag(SF_DEBRIS)
+    }
+}
+
+/// Whether the player can never pick the object up.
+pub fn prevents_pickup(me: &MapEntity) -> bool {
+    if is_physbox(me) {
+        me.has_flag(physbox_flags::IGNORE_USE | physbox_flags::NEVER_PICK_UP)
+    } else {
+        me.has_flag(crate::entities::props::SF_PREVENT_PICKUP)
+    }
+}
+
+/// A solid brush parented to an object that moves freely, which drops out
+/// of the physics simulation: the physics engine keeps nested bodies
+/// apart, so on its own body `sp_a2_core`'s fake vault door handle stayed
+/// hanging on the wall while the door fell, and taken into the door's body
+/// it swung through the floor as it turned and threw the door about. It
+/// follows the object and still stops the player and traces.
+#[derive(Component)]
+pub struct RidesPhysicsObject;
+
+fn fold_child_bodies(world: &mut World) {
+    let movers: Vec<Entity> = world
+        .query_filtered::<(Entity, &RigidBody), (With<PhysicsProp>, Changed<RigidBody>)>()
+        .iter(world)
+        .filter(|(_, b)| b.is_dynamic())
+        .map(|(e, _)| e)
+        .collect();
+    for body in movers {
+        let mut stack: Vec<Entity> = world.get::<Children>(body).map(|c| c.iter().collect()).unwrap_or_default();
+        let mut riders = Vec::new();
+        while let Some(child) = stack.pop() {
+            if world.get::<PhysicsProp>(child).is_some() {
+                continue;
+            }
+            if world.get::<RigidBody>(child).is_some_and(|b| b.is_kinematic()) {
+                riders.push(child);
+            }
+            if let Some(children) = world.get::<Children>(child) {
+                stack.extend(children.iter());
+            }
+        }
+        for child in riders {
+            world.entity_mut(child).remove::<(RigidBody, Collider, KinematicTrack, LinearVelocity, AngularVelocity)>().insert(RidesPhysicsObject);
+        }
+    }
+}
+
+/// Debris bodies stop colliding with the player's body and its movement.
+fn apply_debris(
+    mut commands: Commands,
+    mut bodies: Query<(Entity, &MapEntity, &CollisionLayers, &mut TraceCollider), Changed<CollisionLayers>>,
+) {
+    for (e, me, collision, mut col) in &mut bodies {
+        if !is_debris(me) {
+            continue;
+        }
+        if collision.filters.0 & layers::PLAYER != 0 {
+            commands.entity(e).insert(CollisionLayers::new(collision.memberships, LayerMask(collision.filters.0 & !layers::PLAYER)));
+        }
+        if !col.debris {
+            col.debris = true;
+        }
+    }
+}
 
 /// A physics prop's mass: its model's (40 without one) times `massscale`.
 pub fn prop_mass(fs: &GameFs, me: &MapEntity) -> f32 {
@@ -292,7 +406,7 @@ pub fn on_parented(world: &mut World, e: Entity) {
 /// disabled (`sp_a1_intro7`'s Wheatley popping off his management rail).
 pub fn on_unparented(world: &mut World, e: Entity) {
     let Some(me) = world.get::<MapEntity>(e) else { return };
-    let frozen = me.has_flag(SF_MOTION_DISABLED);
+    let frozen = motion_disabled(me);
     if frozen || world.get::<PhysicsProp>(e).is_none() || world.get::<RigidBody>(e).is_none_or(|b| b.is_dynamic()) {
         return;
     }
@@ -315,6 +429,67 @@ fn sync_disabled_colliders(
         } else if !col.enabled && !disabled {
             commands.entity(e).insert(ColliderDisabled);
         }
+    }
+}
+
+/// Where a moving brush or bone follower was at the last physics step.
+#[derive(Component, Default)]
+pub struct KinematicTrack(Option<(Vec3, Quat)>);
+
+/// Farther than this in one tick (or turned more than a quarter turn), a
+/// moving body was put somewhere rather than moved there.
+const KINEMATIC_TELEPORT: f32 = 128.0;
+
+/// Moving brushes and bone followers are placed each tick by the game
+/// (doors, trains, animated arms). Placed as such, the physics engine sees
+/// a body that jumped into the props in its way and pushes them out of it
+/// all at once, flinging them: `sp_a2_core`'s fake vault door, shoved over
+/// by two closing brushes, flew about the room. As in the engine, where
+/// these are shadow-controlled objects moving at the speed they cover, each
+/// one is put back where it was and given the velocity that carries it to
+/// its new placement over the step, so what it pushes is pushed along.
+fn drive_kinematic_bodies(
+    mut commands: Commands,
+    time: Res<Time<Fixed>>,
+    mut bodies: Query<
+        (Entity, &RigidBody, &mut Position, &mut Rotation, &mut LinearVelocity, &mut AngularVelocity, Option<&mut KinematicTrack>),
+        (Without<PhysicsProp>, Without<Player>),
+    >,
+) {
+    let dt = time.delta_secs();
+    if dt <= 0.0 {
+        return;
+    }
+    for (e, body, mut position, mut rotation, mut linear, mut angular, track) in &mut bodies {
+        if !body.is_kinematic() {
+            continue;
+        }
+        let Some(mut track) = track else {
+            commands.entity(e).insert(KinematicTrack(Some((position.0, rotation.0))));
+            continue;
+        };
+        let (to, to_rot) = (position.0, rotation.0);
+        let (mut v, mut w) = (Vec3::ZERO, Vec3::ZERO);
+        if let Some((from, from_rot)) = track.0 {
+            let mut turn = to_rot * from_rot.inverse();
+            if turn.w < 0.0 {
+                turn = -turn;
+            }
+            let moved = to - from;
+            if moved.length() <= KINEMATIC_TELEPORT && turn.w >= std::f32::consts::FRAC_1_SQRT_2 && (moved != Vec3::ZERO || turn != Quat::IDENTITY) {
+                v = moved / dt;
+                w = turn.to_scaled_axis() / dt;
+                position.0 = from;
+                rotation.0 = from_rot;
+            }
+        }
+        if linear.0 != v {
+            linear.0 = v;
+        }
+        if angular.0 != w {
+            angular.0 = w;
+        }
+        track.0 = Some((to, to_rot));
     }
 }
 
@@ -349,7 +524,7 @@ pub fn make_dynamic(commands: &mut Commands, e: Entity, collider: Collider, mass
         // carried prop would otherwise judder against it at high frame rates.
         TransformInterpolation,
         layers_for(layers::PROP, layers::WORLD | layers::PROP | layers::PLAYER | layers::MOVER | layers::FOLLOWER | layers::HELD),
-        ActiveCollisionHooks::MODIFY_CONTACTS,
+        ActiveCollisionHooks::MODIFY_CONTACTS | ActiveCollisionHooks::FILTER_PAIRS,
         // For impact sounds (`sound::impacts`).
         CollisionEventsEnabled,
         portal_travel::PortalTraveler::default(),
@@ -434,9 +609,32 @@ pub struct PortalContactHooks<'w, 's> {
     statics: Query<'w, 's, (), With<StaticWorld>>,
     props: Query<'w, 's, (), With<PhysicsProp>>,
     shapes: Query<'w, 's, (&'static TraceCollider, &'static Position, &'static Rotation)>,
+    parents: Query<'w, 's, &'static ChildOf>,
+}
+
+impl PortalContactHooks<'_, '_> {
+    /// Whether `ancestor` is somewhere up `e`'s parent chain.
+    fn descends_from(&self, mut e: Entity, ancestor: Entity) -> bool {
+        for _ in 0..16 {
+            match self.parents.get(e) {
+                Ok(c) if c.parent() == ancestor => return true,
+                Ok(c) => e = c.parent(),
+                Err(_) => return false,
+            }
+        }
+        false
+    }
 }
 
 impl CollisionHooks for PortalContactHooks<'_, '_> {
+    /// An object never collides with what is parented to it, nor with what
+    /// it is parented to, as in the engine: `sp_a2_core`'s fake vault door
+    /// carries its handle (a rotating brush inside it), which otherwise
+    /// threw the door about the room the moment it could move.
+    fn filter_pairs(&self, collider1: Entity, collider2: Entity, _commands: &mut Commands) -> bool {
+        !(self.descends_from(collider1, collider2) || self.descends_from(collider2, collider1))
+    }
+
     fn modify_contacts(&self, contacts: &mut ContactPair, _commands: &mut Commands) -> bool {
         if self.holes.holes.is_empty() {
             return true;

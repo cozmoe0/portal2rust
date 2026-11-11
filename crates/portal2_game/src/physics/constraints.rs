@@ -17,16 +17,25 @@ use portal2_core::entity::{EntityRegistry, MapEntity};
 use portal2_world::MapObject;
 
 pub fn register(app: &mut App) {
-    app.add_systems(FixedUpdate, (build_hinges, spring_forces, drive_motors));
+    app.add_systems(FixedUpdate, (build_hinges, spring_forces, drive_motors, build_point_constraints));
     let world = app.world_mut();
     {
         let mut s = world.resource_mut::<SpawnHandlers>();
         s.register("phys_hinge", spawn_hinge);
         s.register("phys_spring", spawn_spring);
         s.register("phys_motor", spawn_motor);
+        s.register("phys_ballsocket", spawn_point_constraint);
+        s.register("phys_ragdollconstraint", spawn_point_constraint);
+        s.register("phys_lengthconstraint", spawn_point_constraint);
+        // Groups constraints for the solver; nothing to do here.
+        s.register("phys_constraintsystem", |_, _| {});
     }
-    world.resource_mut::<InputHandlers>().register("phys_spring", spring_input);
-    world.resource_mut::<InputHandlers>().register("phys_motor", motor_input);
+    let mut h = world.resource_mut::<InputHandlers>();
+    h.register("phys_spring", spring_input);
+    h.register("phys_motor", motor_input);
+    for class in ["phys_ballsocket", "phys_ragdollconstraint", "phys_lengthconstraint"] {
+        h.register(class, point_constraint_input);
+    }
 }
 
 pub fn register_save(r: &mut portal2_core::save::SaveRegistry) {
@@ -109,14 +118,36 @@ fn body(registry: &EntityRegistry, name: &str, bodies: &Query<&RigidBody>) -> Op
     registry.first_named(name).filter(|&b| bodies.get(b).is_ok())
 }
 
+/// Whether the physics engine has taken in a body's mass. A body made
+/// dynamic this tick still has the mass its collider gave it (hundreds of
+/// times too heavy for a brush) until the next step; a joint solved across
+/// that change turns its impulse up by the same factor and flings the body
+/// (`sp_a2_core`'s fake vault door spun 34 radians a second on its hinge).
+pub(crate) fn mass_settled(mass: Option<&Mass>, computed: Option<&ComputedMass>) -> bool {
+    match (mass, computed) {
+        // Colliders parented to the body (a door's handle) add theirs.
+        (Some(m), Some(c)) => c.value() <= m.0 * 4.0,
+        _ => true,
+    }
+}
+
 /// Hinges join their objects once those exist as bodies; an object hinged
 /// to the world turns about a fixed anchor.
-fn build_hinges(mut hinges: Query<&mut Hinge>, registry: Res<EntityRegistry>, bodies: Query<&RigidBody>, mut commands: Commands) {
+fn build_hinges(
+    mut hinges: Query<&mut Hinge>,
+    registry: Res<EntityRegistry>,
+    bodies: Query<&RigidBody>,
+    masses: Query<(Option<&Mass>, Option<&ComputedMass>)>,
+    mut commands: Commands,
+) {
     for mut h in &mut hinges {
         if h.built {
             continue;
         }
         let Some(b1) = body(&registry, &h.attach1, &bodies) else { continue };
+        if masses.get(b1).is_ok_and(|(m, c)| !mass_settled(m, c)) {
+            continue;
+        }
         let b2 = match &h.attach2 {
             Some(name) => match body(&registry, name, &bodies) {
                 Some(b) => b,
@@ -226,9 +257,12 @@ fn motor_input(world: &mut World, call: &InputCall) -> bool {
     true
 }
 
-/// How hard a motor may drive its object, as an acceleration toward its
-/// speed (the motor reaches it within a few ticks).
-const MOTOR_DAMPING: f32 = 20.0;
+/// How hard a motor drives its object toward its speed. The solver turns
+/// this times the speed still missing into the change of speed of each
+/// substep, so 1 would reach the speed at once and anything above
+/// overshoots: at 20, `sp_a2_core`'s fake vault door was flung about at 20
+/// times the motor's speed. A quarter reaches it within a tick.
+const MOTOR_DAMPING: f32 = 0.25;
 
 fn drive_motors(
     mut motors: Query<&mut Motor>,
@@ -236,14 +270,28 @@ fn drive_motors(
     bodies: Query<&RigidBody>,
     mut joints: Query<&mut RevoluteJoint>,
     mut velocities: Query<&mut AngularVelocity>,
+    masses: Query<(Option<&Mass>, Option<&ComputedMass>)>,
     mut commands: Commands,
 ) {
     for mut m in &mut motors {
-        let Some(object) = registry.first_named(&m.attach1).filter(|&b| bodies.get(b).is_ok_and(|b| b.is_dynamic())) else { continue };
-        // The joint drives its first body (the anchor) relative to the
-        // second, so the object turns the other way round: negated, it
-        // turns as the engine's motor does (right-handed about the axis;
-        // `sp_a2_core`'s door, -100 about +Y, tips towards -X).
+        let Some(object) = registry.first_named(&m.attach1).filter(|&b| bodies.get(b).is_ok()) else { continue };
+        // An object held still (`DisableMotion`) is not turned: the physics
+        // engine would carry a kinematic body round at the motor's speed
+        // (the fake vault door rose off the floor and swung over).
+        if !bodies.get(object).is_ok_and(|b| b.is_dynamic()) {
+            if let Some(mut joint) = m.joint.and_then(|j| joints.get_mut(j).ok())
+                && joint.motor.enabled
+            {
+                joint.motor.enabled = false;
+            }
+            continue;
+        }
+        if masses.get(object).is_ok_and(|(mass, c)| !mass_settled(mass, c)) {
+            continue;
+        }
+        // The joint turns its object the other way round from the engine's
+        // motor about the same axis: negated, `sp_a2_core`'s door (-100
+        // about +Y) tips towards -X, away from the wall behind it.
         let target = -m.speed.to_radians();
         if m.hinge {
             match m.joint.and_then(|j| joints.get_mut(j).ok()) {
@@ -264,6 +312,7 @@ fn drive_motors(
                         .with_max_torque(f32::MAX);
                     joint.motor.enabled = m.on;
                     m.joint = Some(commands.spawn((Name::new("phys_motor joint"), joint, MapObject)).id());
+                    debug!("phys_motor: hinged {object} about {:?} through {:?}", m.axis, m.origin);
                 }
                 None => {}
             }
@@ -274,5 +323,130 @@ fn drive_motors(
             let along = w.0.dot(m.axis);
             w.0 += m.axis * (m.speed.to_radians() - along);
         }
+    }
+}
+
+
+
+/// `phys_ballsocket` and `phys_ragdollconstraint` (two objects, or one and
+/// the world, joined at the constraint's origin, free to turn about it) and
+/// `phys_lengthconstraint` (a rope or rod between `attach1` at the origin
+/// and `attach2` at `attachpoint`, `minlength` to its length plus
+/// `addlength`; spawnflag 2 makes it rigid). `sp_a2_bts5`'s cut panels hang
+/// from one corner by a ball socket once the laser has cut the weld, until
+/// the socket is cut too. Spawnflags 4 and 16 wait for `TurnOn`; `TurnOff`,
+/// `Break` and `Kill` let go.
+#[derive(Component)]
+pub struct PointConstraint {
+    attach1: Option<String>,
+    attach2: Option<String>,
+    origin: Vec3,
+    /// The other end of a length constraint.
+    end: Option<Vec3>,
+    min_length: f32,
+    add_length: f32,
+    rigid: bool,
+    active: bool,
+    built: bool,
+}
+
+const SF_CONSTRAINT_START_INACTIVE: u32 = 4;
+const SF_CONSTRAINT_NO_CONNECT_UNTIL_ACTIVE: u32 = 16;
+const SF_LENGTH_RIGID: u32 = 2;
+
+fn spawn_point_constraint(world: &mut World, e: Entity) {
+    let Some(me) = world.get::<MapEntity>(e) else { return };
+    let length = me.classname == "phys_lengthconstraint";
+    let c = PointConstraint {
+        attach1: name_of(me, "attach1"),
+        attach2: name_of(me, "attach2"),
+        origin: me.origin(),
+        end: length.then(|| me.get("attachpoint").and_then(source_formats::kv::parse_vec3).unwrap_or(me.origin())),
+        min_length: me.get_f32("minlength").unwrap_or(0.0),
+        add_length: me.get_f32("addlength").unwrap_or(0.0),
+        rigid: length && me.has_flag(SF_LENGTH_RIGID),
+        active: !(me.has_flag(SF_CONSTRAINT_START_INACTIVE) || me.has_flag(SF_CONSTRAINT_NO_CONNECT_UNTIL_ACTIVE)),
+        built: false,
+    };
+    world.entity_mut(e).insert(c);
+}
+
+fn point_constraint_input(world: &mut World, call: &InputCall) -> bool {
+    let e = call.target;
+    let Some(mut c) = world.get_mut::<PointConstraint>(e) else { return false };
+    match call.input.as_str() {
+        "turnon" => c.active = true,
+        "turnoff" | "break" => {
+            c.active = false;
+            c.built = false;
+            world.entity_mut(e).remove::<(SphericalJoint, DistanceJoint)>();
+            if call.input == "break" {
+                crate::entities::io::fire_output(world, e, "OnBreak", call.activator, None);
+            }
+        }
+        _ => return false,
+    }
+    true
+}
+
+/// Joins each active constraint's objects once they are bodies whose mass
+/// the physics engine has taken in. The joint lives on the constraint, so
+/// killing the constraint lets go; an end on the world is a fixed anchor
+/// (cleared with the map).
+fn build_point_constraints(
+    mut constraints: Query<(Entity, &mut PointConstraint)>,
+    registry: Res<EntityRegistry>,
+    bodies: Query<&RigidBody>,
+    masses: Query<(Option<&Mass>, Option<&ComputedMass>)>,
+    mut commands: Commands,
+) {
+    for (e, mut c) in &mut constraints {
+        if !c.active || c.built {
+            continue;
+        }
+        let find = |name: &Option<String>| -> Result<Option<Entity>, ()> {
+            match name {
+                None => Ok(None),
+                Some(n) => match body(&registry, n, &bodies) {
+                    Some(b) if masses.get(b).is_ok_and(|(m, cm)| !mass_settled(m, cm)) => Err(()),
+                    Some(b) => Ok(Some(b)),
+                    None => Err(()),
+                },
+            }
+        };
+        let (Ok(b1), Ok(b2)) = (find(&c.attach1), find(&c.attach2)) else { continue };
+        let (b1, b2, frame1, frame2) = match (b1, b2) {
+            (None, None) => continue,
+            (Some(a), Some(b)) => (a, b, c.origin, c.end.unwrap_or(c.origin)),
+            (Some(a), None) | (None, Some(a)) => {
+                let fixed_at = if b1.is_some() { c.end.unwrap_or(c.origin) } else { c.origin };
+                let moving_at = if b1.is_some() { c.origin } else { c.end.unwrap_or(c.origin) };
+                let anchor = commands.spawn((Name::new("constraint anchor"), RigidBody::Static, Transform::from_translation(fixed_at), MapObject)).id();
+                (anchor, a, fixed_at, moving_at)
+            }
+        };
+        let to_frame = |p: Vec3| JointFrame::global(Isometry3d::from_translation(p));
+        match c.end {
+            None => {
+                let mut joint = SphericalJoint::new(b1, b2);
+                joint.frame1 = to_frame(frame1);
+                joint.frame2 = to_frame(frame1);
+                commands.entity(e).insert(joint);
+            }
+            Some(_) => {
+                let length = frame1.distance(frame2) + c.add_length;
+                let min = if c.rigid { length } else { c.min_length.min(length) };
+                let joint = DistanceJoint::new(b1, b2)
+                    .with_local_anchor1(Vec3::ZERO)
+                    .with_local_anchor2(Vec3::ZERO)
+                    .with_limits(min, length);
+                // The anchors are given where the ends are in the world.
+                let mut joint = joint;
+                joint.anchor1 = JointAnchor::FromGlobal(frame1);
+                joint.anchor2 = JointAnchor::FromGlobal(frame2);
+                commands.entity(e).insert(joint);
+            }
+        }
+        c.built = true;
     }
 }

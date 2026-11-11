@@ -70,16 +70,35 @@ fn constraint_input(world: &mut World, call: &InputCall) -> bool {
     true
 }
 
-/// The object a weld holds and the name of the one it rides, if any.
+/// Whether an object moves under physics of its own (rather than being
+/// animated, driven or part of the map).
+fn free_physics_object(world: &World, e: Entity) -> bool {
+    world.get::<crate::entities::props::PhysicsProp>(e).is_some()
+        || world.get::<MapEntity>(e).is_some_and(|m| {
+            m.classname.starts_with("prop_physics") || m.classname.starts_with("func_physbox") || m.classname == "prop_weighted_cube"
+        })
+}
+
+/// The object a weld holds and the name of the one it rides, if any. The
+/// two ends of a weld are alike, so the physics object rides the other end:
+/// `sp_a2_bts4`'s turret (`attach2`) rides its cart, and `sp_a2_bts5`'s
+/// panels (`attach1`) hang from the pincers (`attach2`) their trains carry.
+/// Between two physics objects the second rides the first.
 fn objects(world: &World, e: Entity) -> Option<(Entity, Option<String>)> {
     let me = world.get::<MapEntity>(e)?;
     let named = |key: &str| me.get(key).filter(|n| !n.is_empty()).map(str::to_ascii_lowercase);
     let registry = world.resource::<EntityRegistry>();
     let first = named("attach1").and_then(|n| registry.first_named(&n).map(|x| (n, x)));
-    let second = named("attach2").and_then(|n| registry.first_named(&n));
+    let second = named("attach2").and_then(|n| registry.first_named(&n).map(|x| (n, x)));
     match (first, second) {
-        (Some((name, _)), Some(held)) => Some((held, Some(name))),
-        (Some((_, held)), None) | (None, Some(held)) => Some((held, None)),
+        (Some((name1, e1)), Some((name2, e2))) => {
+            if free_physics_object(world, e1) && !free_physics_object(world, e2) {
+                Some((e1, Some(name2)))
+            } else {
+                Some((e2, Some(name1)))
+            }
+        }
+        (Some((_, held)), None) | (None, Some((_, held))) => Some((held, None)),
         (None, None) => None,
     }
 }
