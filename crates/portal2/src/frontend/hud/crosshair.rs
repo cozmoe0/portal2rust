@@ -42,9 +42,16 @@ fn paint(
     clock: Res<portal2_core::clock::GameClock>,
     ui: Res<crate::frontend::gameui::GameUi>,
     map: Option<Res<portal2_world::CurrentMap>>,
+    view: Option<Res<portal2_game::entities::viewcontrol::ActiveView>>,
     mut surface: ResMut<Surface>,
 ) {
     if map.is_none() || ui.active() || !portal2_ui::hud::visible(&console) {
+        return;
+    }
+    // Not while a scripted view shows something other than the player's
+    // eyes (the installed game drops it as `sp_a2_bts5`'s tube suction
+    // takes the view).
+    if view.is_some_and(|v| v.0.is_some()) {
         return;
     }
     let (cx, cy) = (surface.wide / 2, surface.tall / 2);

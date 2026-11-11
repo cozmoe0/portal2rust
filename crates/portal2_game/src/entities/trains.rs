@@ -23,7 +23,15 @@ use portal2_core::clock::GameClock;
 use portal2_core::sets::ThinkSet;
 
 pub fn register(app: &mut App) {
-    app.add_systems(FixedUpdate, (activate_trains, move_trains).chain().in_set(ThinkSet));
+    app.add_systems(FixedUpdate, (activate_trains, move_trains).chain().in_set(ThinkSet))
+        .add_systems(FixedLast, record_ease.after(portal2_core::sets::IoSet))
+        .add_systems(
+            RunFixedMainLoop,
+            (
+                restore_ease.in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
+                show_ease.in_set(RunFixedMainLoopSystems::AfterFixedMainLoop),
+            ),
+        );
     let world = app.world_mut();
     {
         let mut s = world.resource_mut::<SpawnHandlers>();
@@ -423,3 +431,136 @@ fn train_input(world: &mut World, call: &InputCall) -> bool {
 impl portal2_core::save::Restore for Train {}
 
 impl portal2_core::save::Restore for PathTrack {}
+
+/// A train's placement at the end of the last two ticks. Trains move once a
+/// tick, but frames are drawn more often: each frame shows the train part
+/// way between the two, as far as the time since the last tick goes, and
+/// the true placement is put back before the next tick runs. A view riding
+/// a train (`sp_a2_bts5`'s suction into the broken tube follows
+/// `podtrain_player` at 400 units/s) would otherwise jump 6.7 units every
+/// tick and stand still in between.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct RenderEase {
+    from: Transform,
+    to: Transform,
+    /// What this frame shows, while it is shown.
+    shown: Option<Transform>,
+}
+
+/// A train that moved farther than this in one tick was put somewhere
+/// (teleported to a node); it is shown there at once.
+const EASE_SNAP_DISTANCE: f32 = 128.0;
+
+/// After each tick, once its inputs have moved trains too.
+fn record_ease(mut commands: Commands, mut trains: Query<(Entity, &Transform, Option<&mut RenderEase>), With<Train>>) {
+    for (e, t, ease) in &mut trains {
+        match ease {
+            Some(mut ease) => {
+                ease.from = if ease.to.translation.distance(t.translation) > EASE_SNAP_DISTANCE { *t } else { ease.to };
+                ease.to = *t;
+            }
+            None => {
+                commands.entity(e).insert(RenderEase { from: *t, to: *t, shown: None });
+            }
+        }
+    }
+}
+
+/// Before the ticks of a frame: the true placement again. A train moved
+/// by something else meanwhile (a restored game) keeps that placement.
+fn restore_ease(mut trains: Query<(&mut Transform, &mut RenderEase)>) {
+    for (mut t, mut ease) in &mut trains {
+        let Some(shown) = ease.shown.take() else { continue };
+        if *t == shown {
+            *t = ease.to;
+        } else {
+            ease.from = *t;
+            ease.to = *t;
+        }
+    }
+}
+
+/// After the ticks of a frame: part way from the last tick but one.
+fn show_ease(fixed: Res<Time<Fixed>>, mut trains: Query<(&mut Transform, &mut RenderEase)>) {
+    let alpha = fixed.overstep_fraction();
+    for (mut t, mut ease) in &mut trains {
+        if *t != ease.to {
+            ease.from = *t;
+            ease.to = *t;
+        }
+        if ease.from == ease.to {
+            continue;
+        }
+        let shown = Transform {
+            translation: ease.from.translation.lerp(ease.to.translation, alpha),
+            rotation: ease.from.rotation.slerp(ease.to.rotation, alpha),
+            scale: ease.to.scale,
+        };
+        *t = shown;
+        ease.shown = Some(shown);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(x: f32) -> Transform {
+        Transform::from_xyz(x, 0.0, 0.0)
+    }
+
+    fn x(world: &World, e: Entity) -> f32 {
+        world.get::<Transform>(e).unwrap().translation.x
+    }
+
+    #[test]
+    fn frames_show_trains_between_ticks_and_ticks_see_the_truth() {
+        let mut world = World::new();
+        let mut fixed = Time::<Fixed>::from_hz(60.0);
+        fixed.accumulate_overstep(fixed.timestep() / 4);
+        world.insert_resource(fixed);
+        let train = Train {
+            toward: None,
+            last: None,
+            speed: 0.0,
+            max_speed: 0.0,
+            moving: false,
+            forward: true,
+            height: 0.0,
+            destination: None,
+            fixed_orientation: true,
+            no_pitch: false,
+            first: None,
+            activated: true,
+        };
+        let e = world.spawn((at(0.0), train)).id();
+        let record = |world: &mut World| {
+            world.run_system_cached(record_ease).unwrap();
+            world.flush();
+        };
+        record(&mut world);
+        // A tick moves the train to 10; a frame a quarter tick later shows
+        // it a quarter of the way there.
+        world.entity_mut(e).insert(at(10.0));
+        record(&mut world);
+        world.run_system_cached(show_ease).unwrap();
+        assert!((x(&world, e) - 2.5).abs() < 1e-3);
+        // Before the next tick the true placement is back.
+        world.run_system_cached(restore_ease).unwrap();
+        assert_eq!(x(&world, e), 10.0);
+        // A teleport is shown at once.
+        world.entity_mut(e).insert(at(1000.0));
+        record(&mut world);
+        world.run_system_cached(show_ease).unwrap();
+        assert_eq!(x(&world, e), 1000.0);
+        // Moved by something else while shown: that placement stays.
+        world.entity_mut(e).insert(at(1010.0));
+        record(&mut world);
+        world.run_system_cached(show_ease).unwrap();
+        world.entity_mut(e).insert(at(500.0));
+        world.run_system_cached(restore_ease).unwrap();
+        assert_eq!(x(&world, e), 500.0);
+        world.run_system_cached(show_ease).unwrap();
+        assert_eq!(x(&world, e), 500.0);
+    }
+}

@@ -32,6 +32,20 @@ screenshots through the network console).
   view, so other entities can aim at it (Wheatley's swivels target
   `camera_1`).
 - `TeleportPlayerToProxy` moves the player to the view and disables it.
+- `CTriggerViewProxy`'s think (`TranslateViewToProxy`, `sub_10278360`)
+  takes the angles from the attachment (or the proxy) but the position
+  from the proxy's own origin plus the offset (`sub_10274D40`), so a proxy
+  that should ride an attachment is parented to it first (`sp_a2_bts6`'s
+  `tube_ride_chell_proxy` gets `SetParentAttachment` at map spawn). The
+  view angles are the player's eye angles turned into the proxy's frame.
+- `Enable` (`sub_1027A590`): spawnflag 4 sets `FL_FROZEN` on the player,
+  32 makes the player not solid. The installed game stops drawing the
+  crosshair once the view moves to the proxy (`sp_a2_bts5`'s tube suction,
+  captured with `cl_showpos`).
+- Measured against the installed game: `sp_a2_bts5`'s suction keeps the
+  player's own look (setang 0 200 0 gives a view at yaw -160 all the way
+  in) and `sp_a2_bts6`'s ride passes (281, -415, 928) at angles
+  (-0.3, -82.6, 12.2), as here to within the sampling step.
 - `usefakeacceleration` (offset 944): each think the proxy's velocity is
   measured from its movement since the last think and its change taken as
   an acceleration; one whose square is below 20 or above 10000 counts as

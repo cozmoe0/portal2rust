@@ -26,9 +26,16 @@ pub fn register(app: &mut App) {
             PostUpdate,
             track_proxy_motion.after(portal2_render::models::animation::animate_models).before(TransformSystems::Propagate),
         )
+        // From this frame's pose of a proxy riding an animated model
+        // (`sp_a2_bts6`'s tube ride follows an attachment), as the models
+        // around it are drawn: an earlier read lags a frame behind them.
         .add_systems(
             PostUpdate,
-            apply_view.in_set(PlayerCameraSet).after(crate::player::place_camera).before(portal2_world::camera::sync_camera_transform),
+            apply_view
+                .in_set(PlayerCameraSet)
+                .after(crate::player::place_camera)
+                .after(portal2_render::models::animation::animate_models)
+                .before(portal2_world::camera::sync_camera_transform),
         );
     let world = app.world_mut();
     {
@@ -220,15 +227,16 @@ fn proxy_rotation(world: &World, e: Entity, proxy: Entity) -> Quat {
     super::map_parent(world, proxy).and_then(|parent| super::attachment_world(world, parent, &name)).map_or(own, |t| t.rotation)
 }
 
-/// Computes the proxy view from the player's place (`origin`: feet, or
-/// the current one) and moves the view proxy entity there.
-fn place_proxy(world: &mut World, e: Entity, origin: Option<Vec3>) -> Option<Transform> {
+/// Computes the proxy view and moves the view proxy entity there: for this
+/// tick, or for a drawn frame (`frame`: where the player's feet are drawn
+/// and the time between ticks it shows).
+fn place_proxy(world: &mut World, e: Entity, frame: Option<(Vec3, f64)>) -> Option<Transform> {
     let (Some(proxy), Some(p)) = (proxy_entity(world, e), world.get::<ViewProxy>(e)) else { return None };
     let (offset_type, tilt, spawn_origin, start_offset, enabled_at) = (p.offset_type, p.tilt, p.spawn_origin, p.start_offset, p.enabled_at);
     let pe = world.resource::<EntityRegistry>().player?;
     let player = world.get::<Player>(pe)?;
-    let feet = origin.unwrap_or(player.state.origin);
-    let now = world.resource::<GameClock>().curtime;
+    let curtime = world.resource::<GameClock>().curtime;
+    let (feet, now) = frame.unwrap_or((player.state.origin, curtime));
     let base = world_transform(world, proxy).translation();
     let rotation = proxy_rotation(world, e, proxy);
     let offset = match offset_type {
@@ -331,14 +339,18 @@ fn apply_view(world: &mut World) {
         return;
     }
     let t = if world.get::<ViewProxy>(view).is_some() {
-        // Between ticks, from where the player is drawn.
-        let alpha = world.resource::<Time<Fixed>>().overstep_fraction();
-        let feet = world
+        // Between ticks, from where the player is drawn: frames show the
+        // last tick but one and the way since to the last (as trains are
+        // drawn), so the clock is read the same way.
+        let fixed = world.resource::<Time<Fixed>>();
+        let (alpha, since_tick) = (fixed.overstep_fraction(), fixed.overstep().as_secs_f64());
+        let now = world.resource::<GameClock>().curtime - portal2_core::clock::TICK_INTERVAL + since_tick;
+        let frame = world
             .resource::<EntityRegistry>()
             .player
             .and_then(|pe| world.get::<Player>(pe))
-            .map(|p| p.previous_origin.lerp(p.state.origin, alpha));
-        match place_proxy(world, view, feet) {
+            .map(|p| (p.previous_origin.lerp(p.state.origin, alpha), now));
+        match place_proxy(world, view, frame) {
             Some(t) => t,
             None => return,
         }
