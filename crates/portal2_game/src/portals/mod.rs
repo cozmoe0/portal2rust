@@ -444,11 +444,12 @@ fn apply_placements(
     mut materials: ResMut<Assets<PortalMaterial>>,
     mut sounds: MessageWriter<portal2_audio::SoundRequest>,
     mut fx: MessageWriter<PortalFx>,
-    (fs, mut textures, physics, entities, mut resting, mut haze_materials): (
+    (fs, mut textures, physics, entities, players, mut resting, mut haze_materials): (
         Res<portal2_core::vfs::GameFs>,
         ResMut<portal2_render::textures::TextureCache>,
         portal2_world::collision::Physics,
         Query<(Entity, &portal2_core::entity::MapEntity)>,
+        Query<Entity, With<Player>>,
         ResMut<RestingTests>,
         ResMut<Assets<PortalHazeMaterial>>,
     ),
@@ -457,8 +458,7 @@ fn apply_placements(
         let mut req = *req;
         resting.next[req.slot] = Some(time.elapsed_secs_f64() + RESTING_TEST_INTERVAL);
         if req.settle {
-            let ignore: Vec<Entity> = entities.iter().filter(|(_, me)| placement::shot_ignores(&me.classname)).map(|(e, _)| e).collect();
-            settle_on_surface(&physics, &ignore, &mut req.frame);
+            settle_on_surface(&physics, &portal_trace_ignored(&entities, &players), &mut req.frame);
         }
         let rotation = req.frame.rotation();
         fx.write(PortalFx::Opened { slot: req.slot, frame: req.frame });
@@ -638,22 +638,38 @@ fn fresh_affine(e: Entity, transforms: &Query<(&Transform, Option<&ChildOf>), Wi
     Some(affine)
 }
 
+/// What the game's portal traces pass through (`UTIL_Portal_Trace_Filter`):
+/// physics props, turrets and the like (`placement::SHOT_IGNORED_CLASSES`),
+/// and the player.
+fn portal_trace_ignored(
+    entities: &Query<(Entity, &portal2_core::entity::MapEntity)>,
+    players: &Query<Entity, With<Player>>,
+) -> Vec<Entity> {
+    entities.iter().filter(|(_, me)| placement::shot_ignores(&me.classname)).map(|(e, _)| e).chain(players.iter()).collect()
+}
+
 /// Finds what each newly placed portal rests on: the entity behind its
-/// centre, if any.
+/// centre, if any. Like the shot, the trace passes through cubes and other
+/// props: a portal shot under a cube resting on the floor would otherwise
+/// ride the cube as it dropped in, sinking below the floor with it.
 fn anchor_portals(
     mut commands: Commands,
     physics: portal2_world::collision::Physics,
     portals: Query<(Entity, &Portal, Option<&PortalAnchor>)>,
     transforms: Query<(&Transform, Option<&ChildOf>), Without<Portal>>,
+    entities: Query<(Entity, &portal2_core::entity::MapEntity)>,
+    players: Query<Entity, With<Player>>,
 ) {
     use source_formats::bsp::contents;
     let mask = contents::SOLID | contents::WINDOW | contents::GRATE | contents::MOVEABLE;
+    let mut ignore = None;
     for (e, p, anchor) in &portals {
         if anchor.is_some_and(|a| a.frame == p.frame) {
             continue;
         }
+        let ignore = ignore.get_or_insert_with(|| portal_trace_ignored(&entities, &players));
         let f = p.frame;
-        let tr = physics.trace(f.center + f.forward, f.center - f.forward * 2.0, Vec3::ZERO, Vec3::ZERO, mask, &[]);
+        let tr = physics.trace(f.center + f.forward, f.center - f.forward * 2.0, Vec3::ZERO, Vec3::ZERO, mask, ignore);
         let base = tr.entity.filter(|_| tr.fraction < 1.0).and_then(|s| fresh_affine(s, &transforms).map(|a| (s, a)));
         let anchor = match base {
             Some((surface, affine)) => PortalAnchor { entity: Some(surface), local: affine.inverse() * f.affine(), frame: f },
@@ -704,10 +720,12 @@ fn test_resting_surfaces(
     physics: portal2_world::collision::Physics,
     mut tests: ResMut<RestingTests>,
     mut fizzle: MessageWriter<FizzlePortals>,
+    (entities, players): (Query<(Entity, &portal2_core::entity::MapEntity)>, Query<Entity, With<Player>>),
 ) {
     use source_formats::bsp::contents;
     let now = time.elapsed_secs_f64();
     let mask = contents::SOLID | contents::WINDOW | contents::GRATE | contents::MOVEABLE;
+    let mut ignore = None;
     for slot in 0..2 {
         let Some(at) = tests.next[slot] else { continue };
         if now < at {
@@ -718,12 +736,13 @@ fn test_resting_surfaces(
             continue;
         };
         let f = p.frame;
+        let ignore: &[Entity] = ignore.get_or_insert_with(|| portal_trace_ignored(&entities, &players));
         let mut on_entity = false;
         let mut removed = false;
         for (left, up) in [(1.0, 1.0), (-1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)] {
             let inset = placement::CORNER_INSET;
             let corner = f.to_world(Vec3::new(0.0, left * (HALF_WIDTH - inset), up * (HALF_HEIGHT - inset)));
-            let tr = physics.trace(corner, corner - f.forward, Vec3::ZERO, Vec3::ZERO, mask, &[]);
+            let tr = physics.trace(corner, corner - f.forward, Vec3::ZERO, Vec3::ZERO, mask, ignore);
             if tr.fraction >= 1.0 && !tr.start_solid {
                 removed = true;
                 break;
