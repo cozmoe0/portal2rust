@@ -347,8 +347,9 @@ fn turret_input(world: &mut World, call: &InputCall) -> bool {
         if let Some(mut me) = world.get_mut::<MapEntity>(e) {
             me.set("modelindex", &index.to_string());
         }
-        crate::entities::spawner::clear_render_children(world, e);
+        let riders = crate::entities::spawner::clear_render_children(world, e);
         spawn_turret(world, e);
+        riders.reattach(world, e);
         if let Some(mut t) = world.get_mut::<Turret>(e) {
             (t.enabled, t.gagged, t.out_of_ammo) = kept;
         }

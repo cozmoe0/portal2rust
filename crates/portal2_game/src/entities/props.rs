@@ -290,9 +290,11 @@ fn set_collision(world: &mut World, e: Entity, on: bool) {
     }
 }
 
+/// Shows or hides the entity alone, never what is parented to it (as the
+/// engine's `EF_NODRAW`).
 fn set_visible(world: &mut World, e: Entity, visible: bool) {
     if let Some(mut v) = world.get_mut::<Visibility>(e) {
-        *v = if visible { Visibility::Inherited } else { Visibility::Hidden };
+        *v = if visible { Visibility::Visible } else { Visibility::Hidden };
     }
 }
 
@@ -346,8 +348,9 @@ fn model_inputs(world: &mut World, call: &InputCall) -> bool {
             if let Some(mut me) = world.get_mut::<MapEntity>(e) {
                 me.set(key, &value);
             }
-            clear_render_children(world, e);
+            let riders = clear_render_children(world, e);
             attach_entity_model(world, e, true);
+            riders.reattach(world, e);
             // Bone followers rode on the old joints.
             let solid = world.get::<MapEntity>(e).map_or(0, |m| m.get_i32("solid").unwrap_or(6));
             if solid == 6 && world.get::<portal2_world::collision::Collider>(e).is_none() {
@@ -663,8 +666,9 @@ pub(crate) fn spawn_physics_prop(world: &mut World, e: Entity) {
 pub(crate) fn set_physics_prop_skin(world: &mut World, e: Entity, skin: i32) {
     let Some(mut me) = world.get_mut::<MapEntity>(e) else { return };
     me.set("skin", &skin.to_string());
-    clear_render_children(world, e);
+    let riders = clear_render_children(world, e);
     attach_entity_model(world, e, false);
+    riders.reattach(world, e);
 }
 
 // ------------------------------------------------------------- static props

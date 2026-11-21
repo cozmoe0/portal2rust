@@ -34,8 +34,9 @@ pub fn main() {
                 .map(|(_, n)| *n)
                 .collect::<Vec<_>>()
                 .join(",");
+        let (fps, frames) = model.sequence_timing(i);
         println!(
-            "seq {i}: {} [{flags}] grid {:?} params {:?} {:?}..{:?} anims {} fade {}/{}",
+            "seq {i}: {} [{flags}] grid {:?} params {:?} {:?}..{:?} anims {} fade {}/{} frames {frames} at {fps} fps",
             s.label,
             s.group_size,
             s.param_index,

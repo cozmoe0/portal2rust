@@ -342,8 +342,10 @@ fn brush_input(world: &mut World, call: &InputCall) -> bool {
     if let Some(mut t) = world.get_mut::<Toggleable>(e) {
         t.enabled = enabled;
     }
+    // Visible rather than inherited: a brush shown again stays drawn while
+    // what it is parented to is hidden, as in the engine.
     if let Some(mut v) = world.get_mut::<Visibility>(e) {
-        *v = if enabled { Visibility::Inherited } else { Visibility::Hidden };
+        *v = if enabled { Visibility::Visible } else { Visibility::Hidden };
     }
     // Collision follows unless the brush is always solid.
     let always_solid = world.get::<MapEntity>(e).is_some_and(|m| m.get_i32("solidity") == Some(2));

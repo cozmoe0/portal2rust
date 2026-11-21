@@ -159,8 +159,48 @@ pub fn relight_models(
     }
 }
 
-/// Removes previously attached render children (used by SetModel / skin changes).
-pub fn clear_render_children(world: &mut World, e: Entity) {
+/// Map entities riding a model's joints (put there by `SetParentAttachment`),
+/// taken off while the model's parts are rebuilt: each with the joint it rode
+/// and its placement on it.
+#[must_use]
+pub struct JointRiders(Vec<(Entity, usize, Transform)>);
+
+impl JointRiders {
+    /// Puts the riders back on the same joints of the rebuilt model, as they
+    /// were. A rider whose joint the new model lacks is left where it was.
+    pub fn reattach(self, world: &mut World, e: Entity) {
+        let joints = world.get::<StudioAnimator>(e).map(|a| a.joints.clone()).unwrap_or_default();
+        for (rider, joint, local) in self.0 {
+            let Some(&j) = joints.get(joint) else { continue };
+            if world.get_entity(rider).is_ok() {
+                world.entity_mut(rider).insert((ChildOf(j), local));
+            }
+        }
+    }
+}
+
+/// Removes previously attached render children (used by SetModel / skin
+/// changes). Map entities riding the old joints are not removed with them:
+/// they come back to be put on the new model's joints. In the engine a new
+/// skin is only another set of materials on the same model, so
+/// `sp_a2_laser_over_goo`'s corridor arms, whose skins flicker as they set
+/// the wall panels in place, threw the panels away with their old joints.
+pub fn clear_render_children(world: &mut World, e: Entity) -> JointRiders {
+    let joints = world.get::<StudioAnimator>(e).map(|a| a.joints.clone()).unwrap_or_default();
+    let mut riders = Vec::new();
+    for (i, &j) in joints.iter().enumerate() {
+        let on_joint: Vec<Entity> = world.get::<Children>(j).map(|c| c.iter().collect()).unwrap_or_default();
+        for rider in on_joint {
+            if world.get::<MapEntity>(rider).is_none() {
+                continue;
+            }
+            let local = world.get::<Transform>(rider).copied().unwrap_or_default();
+            let placed = super::world_transform(world, rider).compute_transform();
+            // Where it stands until it is put back.
+            world.entity_mut(rider).remove::<ChildOf>().insert(placed);
+            riders.push((rider, i, local));
+        }
+    }
     let children: Vec<Entity> = world.get::<Children>(e).map(|c| c.iter().collect()).unwrap_or_default();
     for c in children {
         if world.get::<MapEntity>(c).is_none() {
@@ -168,6 +208,7 @@ pub fn clear_render_children(world: &mut World, e: Entity) {
         }
     }
     world.entity_mut(e).remove::<StudioAnimator>();
+    JointRiders(riders)
 }
 
 /// Cache of studio model collision shapes (model space).

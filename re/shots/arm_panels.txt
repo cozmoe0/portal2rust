@@ -1,0 +1,19 @@
+# sp_a2_laser_over_goo's corridor repair (corridor_repair instance): arms
+# behind an invisible blocking door pull the wall panels out and set them
+# back. The view looks up the corridor from outside the trigger that starts
+# it (trigger_once at 3852..4108 x, -2368..-2256 y). The first shots wait out
+# the arrival; arm_trig starts the repair; the rest follow it (a shot takes
+# about three seconds).
+arm_wait0 sp_a2_laser_over_goo 3985 -2440 165 -8 90 0
+arm_wait1 sp_a2_laser_over_goo 3985 -2440 165 -8 90 0
+arm_wait2 sp_a2_laser_over_goo 3985 -2440 165 -8 90 0
+arm_pre sp_a2_laser_over_goo 3985 -2440 165 -8 90 0
+arm_trig sp_a2_laser_over_goo 3985 -2440 165 -8 90 0 ent_fire InstanceAuto69-corridor_repair-corridor_repair trigger
+arm_1 sp_a2_laser_over_goo 3985 -2440 165 -8 90 0
+arm_2 sp_a2_laser_over_goo 3985 -2440 165 -8 90 0
+arm_3 sp_a2_laser_over_goo 3985 -2440 165 -8 90 0
+arm_4 sp_a2_laser_over_goo 3985 -2440 165 -8 90 0
+arm_5 sp_a2_laser_over_goo 3985 -2440 165 -8 90 0
+arm_6 sp_a2_laser_over_goo 3985 -2440 165 -8 90 0
+# Inside the repaired stretch, both walls.
+arm_in sp_a2_laser_over_goo 3990 -2200 200 0 90 0

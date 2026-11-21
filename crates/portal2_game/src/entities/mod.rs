@@ -465,10 +465,44 @@ pub fn world_transform(world: &World, mut e: Entity) -> GlobalTransform {
 }
 
 pub fn despawn_entity(world: &mut World, e: Entity) {
+    // Map entities parented below go with it; forget their names too.
+    for c in map_children(world, e) {
+        despawn_entity(world, c);
+    }
     world.resource_mut::<EntityRegistry>().remove(e);
     if let Ok(ent) = world.get_entity_mut(e) {
         ent.despawn();
     }
+}
+
+/// The map entities parented to `e`, directly or through its model's joints
+/// (not those parented to them in turn).
+pub(crate) fn map_children(world: &World, e: Entity) -> Vec<Entity> {
+    let mut out = Vec::new();
+    let mut stack: Vec<Entity> = world.get::<Children>(e).map(|c| c.iter().collect()).unwrap_or_default();
+    while let Some(c) = stack.pop() {
+        if world.get::<MapEntity>(c).is_some() {
+            out.push(c);
+        } else if let Some(children) = world.get::<Children>(c) {
+            stack.extend(children.iter());
+        }
+    }
+    out
+}
+
+/// `Kill`: removes the entity the way the engine's `UTIL_Remove` does, which
+/// unparents whatever rides it where it stands rather than removing it too
+/// (`KillHierarchy` does that).
+pub fn remove_entity(world: &mut World, e: Entity) {
+    for c in map_children(world, e) {
+        clear_parent(world, c);
+    }
+    despawn_entity(world, e);
+}
+
+/// `KillHierarchy`: removes the entity and everything parented to it.
+pub fn despawn_hierarchy(world: &mut World, e: Entity) {
+    despawn_entity(world, e);
 }
 
 /// Moves an entity the way the original `Teleport` does: to `origin` (world
@@ -524,8 +558,12 @@ pub fn teleport_entity(world: &mut World, e: Entity, origin: Vec3, angles: Optio
 fn generic_inputs(world: &mut World, call: &InputCall) -> bool {
     let e = call.target;
     match call.input.as_str() {
-        "kill" | "killhierarchy" => {
-            despawn_entity(world, e);
+        "kill" => {
+            remove_entity(world, e);
+            true
+        }
+        "killhierarchy" => {
+            despawn_hierarchy(world, e);
             true
         }
         "addoutput" => {
@@ -555,9 +593,12 @@ fn generic_inputs(world: &mut World, call: &InputCall) -> bool {
             fire_output(world, e, &format!("onuser{n}"), call.activator, None);
             true
         }
+        // Hides the entity alone: in the engine `EF_NODRAW` is not passed
+        // on to what is parented to it (`sp_a2_laser_over_goo`'s arms stop
+        // drawing once they have set their panels in a wall).
         "enabledraw" | "disabledraw" => {
             if let Some(mut v) = world.get_mut::<Visibility>(e) {
-                *v = if call.input == "enabledraw" { Visibility::Inherited } else { Visibility::Hidden };
+                *v = if call.input == "enabledraw" { Visibility::Visible } else { Visibility::Hidden };
             }
             true
         }
