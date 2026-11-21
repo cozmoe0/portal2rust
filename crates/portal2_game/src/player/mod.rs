@@ -163,9 +163,13 @@ fn gather_input(
 /// panels (thin plates riding animated arms) would otherwise sweep through
 /// the player, or close round them and leave them inside, free to walk out.
 /// A push that would put the player into something else is not made.
+/// Physics objects never push the player (in the engine only brush movers
+/// do): `sp_a1_wakeup`'s Wheatley, carried up by the breaker shaft beside
+/// the player, lifted them off the rising floor and held them in the air.
 fn pushed_by_movers(
     physics: Physics,
     colliders: Query<(Entity, &portal2_world::collision::Collider, &GlobalTransform, Option<&portal2_world::collision::BoneFollower>)>,
+    props: Query<(), With<crate::entities::props::PhysicsProp>>,
     holding: Option<Res<crate::physics::carry::Holding>>,
     mut players: Query<(Entity, &mut Player)>,
     mut last: Local<bevy::platform::collections::HashMap<Entity, bevy::math::Affine3A>>,
@@ -178,7 +182,14 @@ fn pushed_by_movers(
         let (mins, maxs) = p.state.hull();
         for (e, col, gt, follower) in &colliders {
             let owner = follower.map_or(e, |f| f.owner);
-            if !col.enabled || !col.solid || col.debris || owner == pe || Some(owner) == held || Some(owner) == p.state.ground_entity {
+            if !col.enabled
+                || !col.solid
+                || col.debris
+                || owner == pe
+                || Some(owner) == held
+                || Some(owner) == p.state.ground_entity
+                || props.contains(owner)
+            {
                 continue;
             }
             let now = gt.affine();
@@ -233,6 +244,7 @@ fn player_tick(
     });
     for (e, mut p, mut t) in &mut players {
         p.previous_origin = p.state.origin;
+        p.state.carried = false;
         // Ride along with whatever the player stands on.
         if let Some((g, before)) = p.ground_ref
             && let Ok(now) = placements.get(g)
@@ -241,6 +253,7 @@ fn player_tick(
             if now != before {
                 let carried = now.transform_point3(before.inverse().transform_point3(p.state.origin));
                 p.state.origin = carried;
+                p.state.carried = true;
             }
         }
         // The carried prop never blocks its carrier.

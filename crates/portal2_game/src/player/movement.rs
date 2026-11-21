@@ -189,6 +189,9 @@ pub struct MoveState {
     pub base_velocity: Vec3,
     #[serde(skip)]
     pub base_velocity_set: bool,
+    /// What the player stands on carried them this tick.
+    #[serde(skip)]
+    pub carried: bool,
 }
 
 fn normal_speed() -> f32 {
@@ -211,6 +214,7 @@ impl Default for MoveState {
             ground_paint: None,
             base_velocity: Vec3::ZERO,
             base_velocity_set: false,
+            carried: false,
         }
     }
 }
@@ -467,17 +471,26 @@ impl Mover<'_, '_, '_> {
     }
 
     /// A player standing on something whom something else moved into
-    /// (Wheatley in his socket sweeping past as the breaker room turns): as
-    /// the game's `CheckStuck`, a few small nudges are tried and, failing
-    /// those, the player stays put this tick, still standing where they
-    /// stood (and so still carried by it). Returns whether to move on.
+    /// (Wheatley in his socket sweeping past as the breaker room turns), or
+    /// whom what they stand on carried into something this tick: as the game's
+    /// `CheckStuck`, a few small nudges are tried and, failing those, the
+    /// player stays put this tick, still standing where they stood (and so
+    /// still carried by it). `sp_a1_wakeup`'s breaker room is a train the
+    /// player cannot block, which carries them through the slanted player
+    /// clip in a corner of its shaft as it turns; leaving its floor there,
+    /// they hung in the clip while the floor rose through them. Returns
+    /// whether to move on.
     fn stuck_in_something_else(&self, s: &mut MoveState) -> bool {
         if !s.on_ground {
             return true;
         }
         let (mins, maxs) = s.hull();
-        let tr = self.trace(s.origin, s.origin, mins, maxs);
-        if !tr.start_solid || tr.entity.is_none() || tr.entity == s.ground_entity {
+        // What the player is inside, leaving out what they stand on (a
+        // floor rising into them is for `unstick`).
+        let mut ignore = self.ignore.to_vec();
+        ignore.extend(s.ground_entity);
+        let tr = self.physics.trace(s.origin, s.origin, mins, maxs, mask::PLAYER_SOLID, &ignore);
+        if !tr.start_solid || (tr.entity.is_none() && !s.carried) {
             return true;
         }
         const NUDGES: [Vec3; 7] = [

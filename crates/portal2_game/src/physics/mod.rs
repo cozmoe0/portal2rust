@@ -452,11 +452,29 @@ const KINEMATIC_TELEPORT: f32 = 128.0;
 /// these are shadow-controlled objects moving at the speed they cover, each
 /// one is put back where it was and given the velocity that carries it to
 /// its new placement over the step, so what it pushes is pushed along.
+///
+/// The physics engine turns a body about its centre of mass and moves that
+/// centre at the linear velocity, so the velocity is the centre's, not the
+/// origin's: a body turning about an origin away from its centre would
+/// otherwise slide sideways as it turned. `sp_a1_wakeup`'s breaker room,
+/// whose centre lies 16 units off its origin, turns a quarter turn over a
+/// one unit move; the slide made it turn further each tick, so it spun
+/// round in three ticks (flinging the player out of it) and came to rest
+/// 22 units off its track.
 fn drive_kinematic_bodies(
     mut commands: Commands,
     time: Res<Time<Fixed>>,
     mut bodies: Query<
-        (Entity, &RigidBody, &mut Position, &mut Rotation, &mut LinearVelocity, &mut AngularVelocity, Option<&mut KinematicTrack>),
+        (
+            Entity,
+            &RigidBody,
+            &mut Position,
+            &mut Rotation,
+            &mut LinearVelocity,
+            &mut AngularVelocity,
+            Option<&mut KinematicTrack>,
+            Option<&ComputedCenterOfMass>,
+        ),
         (Without<PhysicsProp>, Without<Player>),
     >,
 ) {
@@ -464,7 +482,7 @@ fn drive_kinematic_bodies(
     if dt <= 0.0 {
         return;
     }
-    for (e, body, mut position, mut rotation, mut linear, mut angular, track) in &mut bodies {
+    for (e, body, mut position, mut rotation, mut linear, mut angular, track, com) in &mut bodies {
         if !body.is_kinematic() {
             continue;
         }
@@ -481,7 +499,8 @@ fn drive_kinematic_bodies(
             }
             let moved = to - from;
             if moved.length() <= KINEMATIC_TELEPORT && turn.w >= std::f32::consts::FRAC_1_SQRT_2 && (moved != Vec3::ZERO || turn != Quat::IDENTITY) {
-                v = moved / dt;
+                let com = com.map_or(Vec3::ZERO, |c| c.0);
+                v = (moved + to_rot * com - from_rot * com) / dt;
                 w = turn.to_scaled_axis() / dt;
                 position.0 = from;
                 rotation.0 = from_rot;
