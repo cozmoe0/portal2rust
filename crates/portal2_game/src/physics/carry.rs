@@ -346,6 +346,26 @@ pub fn resume_hold(world: &mut World, prop: Entity) {
     }
 }
 
+/// Drops the carried prop without the use key, as the game's
+/// `ForceDropOfCarriedPhysObjects` does (a fizzler taking it): the same drop
+/// as the player's, through `CPhysicsProp::OnPhysGunDrop` (`sub_102188B0`),
+/// so its drop outputs and the `player_drop` event fire too.
+pub fn force_drop(world: &mut World) {
+    let Some(held) = world.resource_mut::<Holding>().entity.take() else { return };
+    let player = world.resource::<portal2_core::entity::EntityRegistry>().player;
+    if let Some(p) = player {
+        world.write_message(portal2_audio::SoundRequest::stop("Weapon_Portalgun.HoldSound", p));
+    }
+    let mut commands = world.commands();
+    release(&mut commands, held);
+    world.flush();
+    world.write_message(FireOutput::new(held, "OnPhysGunDrop").with_activator(player));
+    world.write_message(FireOutput::new(held, "OnPlayerDrop").with_activator(player));
+    world.write_message(
+        GameEvent::new("player_drop").with("userid", EventValue::Entity(player)).with("entity", EventValue::Entity(Some(held))),
+    );
+}
+
 /// Restores normal physics on a prop that is no longer held.
 pub fn release(commands: &mut Commands, prop: Entity) {
     if let Ok(mut e) = commands.get_entity(prop) {

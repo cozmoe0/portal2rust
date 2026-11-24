@@ -181,7 +181,8 @@ pub fn spawn_generic_prop(world: &mut World, e: Entity) {
     attach_entity_model(world, e, true);
 }
 
-/// `Dissolve`: the prop fizzles away (dropped first when carried).
+/// `Dissolve` (weighted cubes only; other props have no such input): the
+/// cube fizzles as in a fizzler field (`InputDissolve`, `sub_103E4E20`).
 fn physics_prop_input(world: &mut World, call: &InputCall) -> bool {
     if matches!(call.input.as_str(), "enableportalfunnel" | "disableportalfunnel") {
         if let Some(mut me) = world.get_mut::<MapEntity>(call.target) {
@@ -190,21 +191,22 @@ fn physics_prop_input(world: &mut World, call: &InputCall) -> bool {
         return true;
     }
     let e = call.target;
+    let cube = world.get::<MapEntity>(e).is_some_and(|me| me.classname == "prop_weighted_cube");
+    if call.input == "dissolve" && cube {
+        crate::physics::dissolve::fizzle(world, e, None);
+        return true;
+    }
     // `SilentDissolve` (weighted cubes; the goo pits' kill triggers send it)
     // kills the cube without the fizzle, but fires `OnFizzled` all the same,
     // which is what tells a dropper to bring a new one.
-    let silent = call.input == "silentdissolve"
-        && world.get::<MapEntity>(e).is_some_and(|me| me.classname == "prop_weighted_cube" || me.get_bool("allowsilentdissolve"));
-    if call.input != "dissolve" && !silent {
+    let silent = call.input == "silentdissolve" && (cube || world.get::<MapEntity>(e).is_some_and(|me| me.get_bool("allowsilentdissolve")));
+    if !silent {
         return false;
     }
     if let Some(mut holding) = world.get_resource_mut::<crate::physics::carry::Holding>()
         && holding.entity == Some(e)
     {
         holding.entity = None;
-    }
-    if !silent && let Some(at) = portal2_audio::sound_origin(world, e) {
-        portal2_audio::emit(world, "Prop.Fizzled", portal2_audio::Emit { origin: Some(at), ..default() });
     }
     fire_output(world, e, "OnFizzled", call.activator, None);
     super::despawn_entity(world, e);

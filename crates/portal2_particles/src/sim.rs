@@ -6,7 +6,7 @@
 use std::f32::consts::{PI, TAU};
 use std::sync::OnceLock;
 
-use bevy::math::{Mat3, Quat, Vec3};
+use bevy::math::{Affine3A, Mat3, Quat, Vec3};
 
 #[cfg(test)]
 use super::defs::Op;
@@ -351,6 +351,20 @@ pub struct Collection {
     /// The box of the model the effect rides, in control point 0's space
     /// (for `Position on Model Random`).
     pub model_box: Option<(Vec3, Vec3)>,
+    /// Control point 0's model hitboxes this frame and last frame (the
+    /// game's `UpdateHitBoxInfo`), for `Position on Model Random` and
+    /// `Movement Lock to Bone`.
+    pub hitboxes: Option<Vec<Hitbox>>,
+    pub prev_hitboxes: Option<Vec<Hitbox>>,
+}
+
+/// One hitbox of a control point's model: its box in bone space and the
+/// bone's world placement.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Hitbox {
+    pub min: Vec3,
+    pub max: Vec3,
+    pub to_world: Affine3A,
 }
 
 /// Creates collections from library indices (children need the library).
@@ -364,6 +378,16 @@ impl Collection {
         self.model_box = model_box;
         for child in &mut self.children {
             child.collection.set_model_box(model_box);
+        }
+    }
+
+    /// Gives this frame's hitboxes of control point 0's model, for it and
+    /// its children; last frame's become the previous ones.
+    pub fn set_hitboxes(&mut self, hitboxes: Option<&[Hitbox]>) {
+        self.prev_hitboxes = self.hitboxes.take();
+        self.hitboxes = hitboxes.map(<[Hitbox]>::to_vec);
+        for child in &mut self.children {
+            child.collection.set_hitboxes(hitboxes);
         }
     }
 
@@ -405,6 +429,8 @@ impl Collection {
             accel: Vec::new(),
             parent_cache: Vec::new(),
             model_box: None,
+            hitboxes: None,
+            prev_hitboxes: None,
         };
         c.start_emitters();
         c
@@ -599,6 +625,11 @@ impl Collection {
                 self.emit_and_init(env);
                 if self.particles.count > 0 {
                     self.step(env, false);
+                }
+                // The hitboxes moved once this frame, however many steps it
+                // takes.
+                if self.hitboxes.is_some() {
+                    self.prev_hitboxes.clone_from(&self.hitboxes);
                 }
             }
         }
@@ -998,20 +1029,52 @@ impl Collection {
                     self.set_velocity(i, vel);
                 }
             }
-            InitKind::OnModel { cp, scale } => {
+            InitKind::OnModel { cp, scale, force_inside, desired, bias } => {
+                // Box coordinates run over `1 - scale ..= scale`
+                // (`GetRandomPointsOnControllingObjectHitBox`).
+                let (lo, span) = (1.0 - scale, scale - (1.0 - scale));
+                let boxes = if cp == 0 { self.hitboxes.clone().filter(|b| !b.is_empty()) } else { None };
                 for i in first..n {
-                    let o = match self.model_box {
-                        Some((min, max)) => {
-                            let half = (max - min) * 0.5 * scale;
-                            (min + max) * 0.5 + rand_vec(self, -half, half)
-                        }
-                        None => Vec3::ZERO,
-                    };
                     let c = self.cp(cp);
                     let created = self.particles.s[CREATED][i];
-                    let pos = c.at(self.step_fraction(created)) + c.rotate(o);
+                    let at = c.at(self.step_fraction(created));
+                    let mut placed = None;
+                    if let Some(boxes) = &boxes {
+                        let last = boxes.len() as i32 - 1;
+                        let (first_box, count) = if desired >= 0 { (desired.min(last), 1) } else { (0, last + 1) };
+                        let tries = if bias.abs().max_element() > 1e-4 && force_inside <= 5 { 5 } else { force_inside.max(0) };
+                        let mut best = -1.0e20f32;
+                        for _ in 0..=tries {
+                            let b = (first_box + (self.rand() * count as f32) as i32).clamp(0, last) as usize;
+                            let hb = boxes[b];
+                            // Bones still at the origin (not set up yet) are skipped.
+                            if hb.to_world.translation.abs().max_element() < 0.1 {
+                                continue;
+                            }
+                            let uvw = Vec3::new(lo + self.rand() * span, lo + self.rand() * span, lo + self.rand() * span);
+                            let world = hb.to_world.transform_point3(hb.min + (hb.max - hb.min) * uvw);
+                            // The game adds 1000 for a point inside the model's
+                            // collision when `force to be inside model` is set;
+                            // no system the game ships here sets it.
+                            let goodness = (world - c.position).dot(bias) + self.rand() * 72.0;
+                            if goodness > best {
+                                best = goodness;
+                                placed = Some((world, uvw, b));
+                            }
+                        }
+                    }
+                    let (pos, uvw, index) = match (placed, self.model_box) {
+                        (Some(p), _) => p,
+                        (None, Some((min, max))) if boxes.is_none() => {
+                            let uvw = Vec3::new(lo + self.rand() * span, lo + self.rand() * span, lo + self.rand() * span);
+                            (at + c.rotate(min + (max - min) * uvw), uvw, 0)
+                        }
+                        _ => (at, Vec3::ZERO, 0),
+                    };
                     self.particles.v[POSITION][i] = pos;
                     self.particles.v[PREV_POSITION][i] = pos;
+                    self.particles.v[HITBOX_OFFSET][i] = uvw;
+                    self.particles.s[HITBOX_INDEX][i] = index as f32;
                 }
             }
             InitKind::Box { min, max, cp, local } => {
@@ -1653,6 +1716,35 @@ impl Collection {
                     let m = delta * amount * strength;
                     self.particles.v[POSITION][i] += m;
                     self.particles.v[PREV_POSITION][i] += m;
+                }
+            }
+            OpKind::LockToBone { cp, fade_start, fade_end } => {
+                // Each particle moves as its point in its hitbox moved since
+                // the last frame, only the part of the step it has been
+                // alive for, and less from `fade_start` until `fade_end`.
+                let (Some(cur), Some(prev)) = (&self.hitboxes, &self.prev_hitboxes) else { return };
+                if cp != 0 || dt <= 0.0 {
+                    return;
+                }
+                let threshold = if fade_end <= 0.0 { 1.0e20 } else { fade_end };
+                let iscale = if fade_end > fade_start { 1.0 / (fade_end - fade_start) } else { 0.0 };
+                for i in 0..n {
+                    let age = self.particles.age(i, time);
+                    if age >= threshold {
+                        continue;
+                    }
+                    let b = self.particles.s[HITBOX_INDEX][i] as i32;
+                    if b < 0 || b as usize >= cur.len() || b as usize >= prev.len() {
+                        continue;
+                    }
+                    let uvw = self.particles.v[HITBOX_OFFSET][i];
+                    let at = |h: &Hitbox| h.to_world.transform_point3(h.min + (h.max - h.min) * uvw);
+                    let mut d = (at(&cur[b as usize]) - at(&prev[b as usize])) * (dt.min(age) / dt);
+                    if age > fade_start {
+                        d *= (1.0 - (age - fade_start) * iscale) * strength;
+                    }
+                    self.particles.v[POSITION][i] += d;
+                    self.particles.v[PREV_POSITION][i] += d;
                 }
             }
             OpKind::Ramp { field, rate, start, end, proportional, spline } => {

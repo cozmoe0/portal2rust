@@ -96,6 +96,12 @@ pub struct ParticleEffect {
     /// `Position on Model Random`).
     #[serde(skip)]
     pub model_box: Option<(Vec3, Vec3)>,
+    /// The entity the effect rides (the game's `PATTACH_ABSORIGIN_FOLLOW`):
+    /// control point 0 follows its origin and axes and its model's hitboxes
+    /// feed `Position on Model Random` and `Movement Lock to Bone`. Once it
+    /// is gone the effect stops emitting.
+    #[serde(skip)]
+    pub follow: Option<Entity>,
     /// Remove the entity once the effect has run its course.
     pub one_shot: bool,
     /// Start again whenever the effect has run its course.
@@ -145,6 +151,7 @@ impl ParticleEffect {
             cp_values: Vec::new(),
             cp_frames: Vec::new(),
             model_box: None,
+            follow: None,
             one_shot: false,
             repeat: false,
             collection: None,
@@ -185,6 +192,35 @@ pub fn spawn_effect(commands: &mut Commands, name: &str, transform: Transform, o
     let mut effect = ParticleEffect::new(name, true);
     effect.one_shot = one_shot;
     commands.spawn((Name::new(format!("particles {name}")), transform, Visibility::default(), effect, MapObject)).id()
+}
+
+/// Spawns a one-shot effect riding `target` (see [`ParticleEffect::follow`]),
+/// as the game's `DispatchParticleEffect` with `PATTACH_ABSORIGIN_FOLLOW`.
+pub fn spawn_effect_following(commands: &mut Commands, name: &str, target: Entity, at: Transform) -> Entity {
+    let mut effect = ParticleEffect::new(name, true);
+    effect.one_shot = true;
+    effect.follow = Some(target);
+    commands.spawn((Name::new(format!("particles {name}")), at, Visibility::default(), effect, MapObject)).id()
+}
+
+/// The hitboxes of an entity's model, placed on its bones.
+fn hitboxes_of(
+    animators: &Query<&portal2_render::models::StudioAnimator>,
+    transforms: &Query<&GlobalTransform>,
+    e: Entity,
+) -> Option<Vec<sim::Hitbox>> {
+    let anim = animators.get(e).ok()?;
+    let mdl = &anim.model.studio.mdl;
+    Some(
+        mdl.hitboxes
+            .iter()
+            .filter_map(|h| {
+                let joint = *anim.joints.get(h.bone.max(0) as usize)?;
+                let to_world = transforms.get(joint).ok()?.affine();
+                Some(sim::Hitbox { min: h.bbmin, max: h.bbmax, to_world })
+            })
+            .collect(),
+    )
 }
 
 pub struct ParticlePlugin;
@@ -249,6 +285,7 @@ fn simulate(
     map: Option<Res<CurrentMap>>,
     registry: Res<EntityRegistry>,
     transforms: Query<&GlobalTransform>,
+    animators: Query<&portal2_render::models::StudioAnimator>,
     mut effects: Query<(Entity, &GlobalTransform, &mut ParticleEffect)>,
     mut looks: ResMut<Looks>,
     fs: Res<GameFs>,
@@ -261,6 +298,32 @@ fn simulate(
     let env = World2 { physics: &physics, map: map.as_deref() };
     for (e, gt, mut fx) in &mut effects {
         let fx = &mut *fx;
+        // An effect riding an entity follows it until it goes, then stops
+        // emitting where it was last.
+        let mut gt = *gt;
+        let mut hitboxes = None;
+        if let Some(target) = fx.follow {
+            match transforms.get(target) {
+                Ok(t) => {
+                    gt = *t;
+                    hitboxes = hitboxes_of(&animators, &transforms, target);
+                }
+                Err(_) => {
+                    fx.follow = None;
+                    fx.stop();
+                    match fx.collection.as_ref() {
+                        Some(c) => {
+                            gt = GlobalTransform::from(Transform::from_translation(c.cps[0].position).with_rotation(c.cps[0].rotation()))
+                        }
+                        None => {
+                            commands.entity(e).despawn();
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+        let gt = &gt;
         if fx.collection.is_none() {
             if !fx.active {
                 continue;
@@ -316,6 +379,9 @@ fn simulate(
         }
         if c.model_box != fx.model_box {
             c.set_model_box(fx.model_box);
+        }
+        if hitboxes.is_some() || c.hitboxes.is_some() || c.prev_hitboxes.is_some() {
+            c.set_hitboxes(hitboxes.as_deref());
         }
         if fx.end_cap {
             fx.end_cap = false;

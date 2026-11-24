@@ -26,6 +26,9 @@ pub mod field {
     pub const ID: usize = 11;
     pub const YAW: usize = 12;
     pub const SEQUENCE1: usize = 13;
+    /// The hitbox a particle was placed in, and its coordinates in that box
+    /// (0..1 across it), for `Movement Lock to Bone`.
+    pub const HITBOX_INDEX: usize = 14;
     pub const HITBOX_OFFSET: usize = 15;
     pub const ALPHA2: usize = 16;
     pub const SCRATCH_VECTOR: usize = 17;
@@ -171,13 +174,20 @@ pub enum InitKind {
         cp: i32,
         local: bool,
     },
-    /// `Position on Model Random`: the game picks a point in a random
-    /// hitbox of the model at the control point; here a point in the
-    /// owner's model box (when the code starting the effect gives one),
-    /// scaled by `hitbox scale`.
+    /// `Position on Model Random` (`C_INIT_CreateOnModel`): a point in a
+    /// random hitbox of the model at the control point, at box coordinates
+    /// drawn from `1 - scale ..= scale`, the best of several tries when a
+    /// direction bias is set. Without the model's hitboxes, a point in the
+    /// owner's model box (when the code starting the effect gives one).
     OnModel {
         cp: i32,
         scale: f32,
+        /// `force to be inside model`: extra tries.
+        force_inside: i32,
+        /// `desired hitbox`: only that hitbox (-1 for any).
+        desired: i32,
+        /// `direction bias`: favours points along it.
+        bias: Vec3,
     },
     Offset {
         min: Vec3,
@@ -476,6 +486,15 @@ pub enum OpKind {
         fade_start: (f32, f32, f32),
         fade_end: (f32, f32, f32),
         distance_fade: f32,
+    },
+    /// `Movement Lock to Bone` (`C_OP_LockToBone`): particles placed on the
+    /// control point's model (`Position on Model Random`) ride their
+    /// hitbox, fading out between `fade_start` and `fade_end` seconds of
+    /// age.
+    LockToBone {
+        cp: i32,
+        fade_start: f32,
+        fade_end: f32,
     },
     Ramp {
         field: usize,
@@ -907,7 +926,13 @@ fn initializer(op: &ParticleOperator) -> InitKind {
             growth_time: p.f("randomly distribution growth time", 0.0),
             scale_cp: p.cp("scale cp (distance/speed/local speed)", -1),
         },
-        "position on model random" => InitKind::OnModel { cp: p.cp("control_point_number", 0), scale: p.f("hitbox scale", 1.0) },
+        "position on model random" => InitKind::OnModel {
+            cp: p.cp("control_point_number", 0),
+            scale: p.f("model hitbox scale", 1.0),
+            force_inside: p.i("force to be inside model", 0),
+            desired: p.i("desired hitbox", -1),
+            bias: p.v("direction bias", Vec3::ZERO),
+        },
         "position within box random" => InitKind::Box {
             min: p.v("min", Vec3::ZERO),
             max: p.v("max", Vec3::ZERO),
@@ -1168,6 +1193,11 @@ fn operator(op: &ParticleOperator) -> OpKind {
             frequency: p.f("oscillation frequency", 1.0),
             multiplier: p.f("oscillation multiplier", 2.0),
             phase: p.f("oscillation start phase", 0.5),
+        },
+        "movement lock to bone" => OpKind::LockToBone {
+            cp: p.cp("control_point_number", 0),
+            fade_start: p.f("lifetime fade start", 0.0),
+            fade_end: p.f("lifetime fade end", 0.0),
         },
         "movement lock to control point" => OpKind::Lock {
             cp: p.cp("control_point_number", 0),

@@ -4,6 +4,7 @@
 
 pub mod carry;
 pub mod constraints;
+pub mod dissolve;
 pub mod held_clone;
 pub mod inputs;
 pub mod portal_travel;
@@ -55,7 +56,7 @@ impl Plugin for GamePhysicsPlugin {
                 FixedPostUpdate,
                 drive_kinematic_bodies.in_set(PhysicsSystems::Prepare).after(avian3d::physics_transform::PhysicsTransformSystems::TransformToPosition),
             )
-            .add_plugins((carry::CarryPlugin, held_clone::HeldClonePlugin, portal_travel::PortalTravelPlugin));
+            .add_plugins((carry::CarryPlugin, held_clone::HeldClonePlugin, portal_travel::PortalTravelPlugin, dissolve::DissolvePlugin));
         inputs::register(app);
         constraints::register(app);
         app.init_resource::<DisabledPairs>().add_systems(FixedUpdate, gather_collision_pairs);

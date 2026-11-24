@@ -160,10 +160,25 @@ Each operator has a strength in [0, 1] from the collection time `t`:
   both the position and the previous position.
 - `Sequence Random`: a uniform integer from `sequence_min` to
   `sequence_max`; `shuffle` and `linear` deal from a deck instead.
-- `Position on Model Random`: the game picks a point in a random hitbox of
-  the model at `control_point_number`; the port takes a point in the model
-  box the code starting the effect gives (scaled by `hitbox scale`), in
-  that control point's frame.
+- `Position on Model Random` (`C_INIT_CreateOnModel`, client.dll
+  `sub_105CF640`, through `GetRandomPointsOnControllingObjectHitBox`,
+  `sub_1017F060`): a point in a hitbox of the model of the entity at
+  `control_point_number`, from the hitbox set named `hitbox set`
+  (default `effects`, else the model's current set). The hitbox is random,
+  or only `desired hitbox` when that is 0 or more (clamped to the last).
+  Each box coordinate is uniform over `1 - s ..= s` (`s` = `model hitbox
+  scale`, default 1) between the box's mins and maxs (times the model
+  scale), placed by the hitbox's bone. Hitboxes whose bone sits within
+  0.1 of the world origin are skipped. With a `direction bias` the best of
+  6 tries wins (`force to be inside model` tries when larger), scored
+  `(point - control point) · bias + random(0, 72)`, plus 1000 for a point
+  inside the entity's collision when `force to be inside model` is set
+  (the port does not test that; no shipped system here sets it). The
+  hitbox index and box coordinates stay on the particle (attributes 14
+  and 15). Without a model the point is the control point. The port feeds
+  hitboxes from effects that ride an entity; others take a point in the
+  model box the code starting the effect gives, in the control point's
+  frame.
 
 ## Control points
 
@@ -181,6 +196,15 @@ origin and angles.
   constraint passes` times.
 - `Lifespan Decay` kills particles whose age reaches their lifetime (or
   whose lifetime is not positive). The lifetime defaults to 1 second.
+- `Movement Lock to Bone` (`C_OP_LockToBone`, client.dll `sub_10608260`):
+  once the control point's hitboxes are known for this frame and the last,
+  each particle younger than `lifetime fade end` seconds (no limit when
+  that is 0 or less) with a valid hitbox index moves, with its previous
+  position, by how far its box coordinates' point moved between last
+  frame's hitbox and this frame's, times `min(dt, age) / dt` (only the
+  part of the step it was alive for). Past `lifetime fade start` the move
+  is scaled by `1 - (age - start) / (end - start)` (0 when end is not past
+  start) and the operator's strength.
 - `Alpha Fade and Decay`: within `start_fade_in_time..end_fade_in_time` of
   the life the alpha eases (`3t² - 2t³`) from `start_alpha` × the initial
   alpha up to the initial alpha; within the fade-out window down to

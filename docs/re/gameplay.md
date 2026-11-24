@@ -291,19 +291,58 @@ be killed) and stops once all four rest on the world.
   gains one point of health every think (each 60 Hz tick) once
   `sv_regeneration_wait_time` (1.0 s) has passed since the last damage.
 
-## Fizzling (`trigger_portal_cleanser`)
+## Fizzling (`trigger_portal_cleanser`, weighted cubes' `Dissolve`)
 
-- A prop touching an active field is replaced by a non-solid copy of its
-  model and the original is removed at once (so the map can no longer
-  address it). A carried prop is dropped first and the copy moves with
-  the player's velocity plus 4 units along the view and 32 down;
-  otherwise it keeps the prop's velocity. The copy ignores gravity, moves
-  at half that velocity and spins 20°/s faster about the vertical axis.
-- The copy dissolves with the standard dissolve timing: the effect fades
-  in over 1 s, the model fades out from 1.9 to 2.0 s and the copy is
-  removed at 2.0 s. `Prop.Fizzled` plays.
-- Personality cores are handled separately, and a list of classes never
-  fizzles.
+Both a field touching a prop and a `prop_weighted_cube`'s `Dissolve` input
+run `CTriggerPortalCleanser::FizzleBaseAnimating` (server.dll
+`sub_10397480`; the cube's `InputDissolve`, `sub_103E4E20`, calls it with
+no field). Other props have no `Dissolve` input at all (only
+`env_entity_dissolver`, the cube, `prop_exploding_futbol` and
+`prop_hot_potato` declare one).
+
+- Classes in a fixed list never fizzle: `func_door`,
+  `func_door_rotating`, `prop_door_rotating`, `func_tracktrain`,
+  `env_ghostanimating`, `physicsshadowclone`, `prop_energy_ball`,
+  `weapon_portalgun`, `weapon_paintgun`. A personality core only runs its
+  `OnFizzled()` and stays.
+- From a field, a prop named `box` fires the field's `OnDissolveBox`
+  (activator the prop).
+- A carried prop is dropped first and the copy moves with the player's
+  velocity plus 4 units along the view across the ground
+  (`EyeDirection2D`, x and y only) and 32 down; otherwise it keeps the
+  prop's velocity and angular velocity.
+- `OnFizzled()` fires the prop's `OnFizzled` (activator and caller the
+  prop itself), game stats note the fizzle, and the prop is replaced by a
+  copy (`simple_physics_prop`, or `simple_physics_brush` for brush models)
+  with its model, skin, render colour and placement, and the original is
+  removed at once (so the map can no longer address it). The copy is not
+  solid, ignores gravity, moves at half the velocity and gets 20°/s more
+  angular velocity about its local z (the physics object's angular
+  velocity is local, in degrees).
+- A Schrödinger cube's linked cube fizzles with it (cube type 5).
+- With the dev-only cheat `swap_model_for_fizzler_fx` (default 0) the copy
+  would use `<model>_fx_fizzler.mdl` (`metal_box_fx_fizzler.mdl`, a
+  107-bone shard model with `fizzler_anim_a`) and an `env_fizzler_effects`;
+  shipped, the models match and the copy `Dissolve`s instead
+  (`CBaseAnimating::Dissolve`, `sub_100C5A60`, normal type), which plays
+  `Prop.Fizzled` on it. From a field, the field's `OnDissolve` fires last
+  (activator the prop).
+- The dissolver (`env_entity_dissolver`, `CEntityDissolve::Spawn`
+  `sub_101397F0`) sets fade-in start 0 and length 1, model fade-out start
+  1.9 and length 0.1, fade-out start 2 and length 0. Its think
+  (`sub_10139470`) removes the target and itself once 2 s have passed.
+- Client (`C_EntityDissolve`): on creation, with `cl_portal_use_new_dissolve`
+  (default 1), it starts the particle system `dissolve` on the target
+  (`PATTACH_ABSORIGIN_FOLLOW`; `particles/spark_fx.pcf`: sparks, glow,
+  black ash and ground flecks placed on and locked to the model's
+  hitboxes) and draws none of the old sprite sparks (`DrawModel` returns
+  at once). Its `ClientThink` (`sub_1009AD00`) gives the target render mode
+  `kRenderTransColor` and render colour grey `(1 - fade in) × 255`, alpha
+  `model fade out × 255` (1 until 1.9 s, then down to 0 at 2.0 s). The
+  fade-in is 0 before its start, `(t - start) / length` strictly inside
+  the window and 1 otherwise (so exactly at the start too). Models take
+  the render colour into linear space (gamma 2.2), so the model blackens
+  quickly.
 
 ## Stuck players
 

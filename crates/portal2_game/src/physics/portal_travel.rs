@@ -1,11 +1,9 @@
-//! Props moving through linked portals, and props dissolved by fizzler
-//! fields.
+//! Props moving through linked portals, and props touching fizzler fields.
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
 use super::carry::Holding;
-use crate::entities::io::FireOutput;
 use crate::entities::props::PhysicsProp;
 use crate::entities::triggers::{Trigger, TriggerKind};
 use crate::portals::{Portal, Portals};
@@ -17,7 +15,7 @@ pub struct PortalTravelPlugin;
 
 impl Plugin for PortalTravelPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, (funnel_props, teleport_props, fizzle_props, run_dissolves).chain());
+        app.add_systems(FixedUpdate, (funnel_props, teleport_props, fizzle_props).chain());
     }
 }
 
@@ -191,85 +189,25 @@ fn teleport_props(
     }
 }
 
-/// Seconds a fizzled prop takes to dissolve, and when its model vanishes.
-const DISSOLVE_TIME: f64 = 2.0;
-const DISSOLVE_MODEL_GONE: f64 = 1.95;
-
-/// A fizzled prop: no longer a prop the map can address or the player can
-/// touch, drifting without gravity until it has dissolved.
-#[derive(Component)]
-pub struct Dissolving {
-    pub since: f64,
-}
-
-/// Props touching an active fizzler field dissolve: the game swaps them for
-/// a non-solid copy that keeps half their velocity (half the player's,
-/// plus a little forward and down, when carried), spins 20°/s more about
-/// the vertical, ignores gravity and is gone after 2 seconds.
+/// Props touching an active fizzler field fizzle (see [`super::dissolve`]).
 fn fizzle_props(
-    clock: Res<portal2_core::clock::GameClock>,
     physics: Physics,
     cleansers: Query<(Entity, &Trigger)>,
-    mut props: Query<(Entity, &TraceCollider, &GlobalTransform, &mut LinearVelocity, &mut AngularVelocity), With<PhysicsProp>>,
-    players: Query<&crate::player::Player>,
-    input: Res<crate::player::PlayerInput>,
-    mut holding: ResMut<Holding>,
-    mut registry: ResMut<portal2_core::entity::EntityRegistry>,
-    mut out: MessageWriter<FireOutput>,
-    mut sounds: MessageWriter<portal2_audio::SoundRequest>,
+    props: Query<(Entity, &TraceCollider, &GlobalTransform), With<PhysicsProp>>,
     mut commands: Commands,
 ) {
     for (te, trig) in &cleansers {
         if !trig.enabled || !matches!(trig.kind, TriggerKind::Cleanser) {
             continue;
         }
-        for (pe, col, gt, mut lin, mut ang) in &mut props {
+        for (pe, col, gt) in &props {
             let t = gt.compute_transform();
             let (mins, maxs) = super::world_bounds(&col.shape, t.translation, t.rotation);
             let center = (mins + maxs) * 0.5;
             let half = (maxs - mins) * 0.5;
-            if !physics.touches(te, center, -half, half) {
-                continue;
+            if physics.touches(te, center, -half, half) {
+                commands.queue(move |world: &mut World| super::dissolve::fizzle(world, pe, Some(te)));
             }
-            let mut drift = lin.0;
-            if holding.entity == Some(pe) {
-                holding.entity = None;
-                if let Ok(p) = players.single() {
-                    let forward = portal2_core::coords::angles_forward(input.input.angles);
-                    drift = p.state.velocity + forward * 4.0 - Vec3::Z * 32.0;
-                }
-            }
-            out.write(FireOutput::new(pe, "OnFizzled"));
-            out.write(FireOutput::new(te, "OnDissolve").with_activator(Some(pe)));
-            sounds.write(portal2_audio::SoundRequest::at("Prop.Fizzled", center));
-            lin.0 = drift * 0.5;
-            ang.0 += Vec3::Z * 20f32.to_radians();
-            registry.remove(pe);
-            commands
-                .entity(pe)
-                .remove::<PhysicsProp>()
-                .insert((Dissolving { since: clock.curtime }, GravityScale(0.0), CollisionLayers::NONE))
-                // The copy is not solid to traces either.
-                .queue(|mut e: EntityWorldMut| {
-                    if let Some(mut c) = e.get_mut::<TraceCollider>() {
-                        c.solid = false;
-                    }
-                });
-        }
-    }
-}
-
-fn run_dissolves(
-    clock: Res<portal2_core::clock::GameClock>,
-    mut dissolving: Query<(Entity, &Dissolving, &mut Visibility)>,
-    mut commands: Commands,
-) {
-    for (e, d, mut vis) in &mut dissolving {
-        let age = clock.curtime - d.since;
-        if age >= DISSOLVE_TIME {
-            commands.entity(e).despawn();
-        } else if age >= DISSOLVE_MODEL_GONE && *vis != Visibility::Hidden {
-            *vis = Visibility::Hidden;
         }
     }
 }

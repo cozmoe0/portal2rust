@@ -304,6 +304,7 @@ fn update_lessons(
     registry: Res<EntityRegistry>,
     entities: Query<&MapEntity>,
     transforms: Query<&GlobalTransform>,
+    dissolving: Query<(), With<portal2_game::physics::dissolve::Dissolving>>,
     map: Option<Res<portal2_world::CurrentMap>>,
 ) {
     let now = clock.curtime;
@@ -312,8 +313,9 @@ fn update_lessons(
     if map.is_none() || !console.bool("gameinstructor_enable") {
         return;
     }
-    // Lessons about entities that no longer exist end.
-    gi.open.retain(|l| l.vars.icon_target.is_none_or(|t| transforms.contains(t)));
+    // Lessons about entities that no longer exist end. A fizzled prop
+    // counts as gone: the game removes it and dissolves a copy.
+    gi.open.retain(|l| l.vars.icon_target.is_none_or(|t| transforms.contains(t) && !dissolving.contains(t)));
     let classname = |e: Entity| {
         if Some(e) == registry.player {
             return Some("player".to_owned());
