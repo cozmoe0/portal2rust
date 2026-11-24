@@ -32,6 +32,13 @@ pub struct ImpactState {
     last: f64,
 }
 
+impl ImpactState {
+    /// The prop's velocity before the last physics step.
+    pub fn velocity(&self) -> Vec3 {
+        self.velocity
+    }
+}
+
 #[derive(Default)]
 pub struct ImpactSurfaces {
     props: Option<SurfaceProps>,

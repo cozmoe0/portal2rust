@@ -221,8 +221,9 @@ fn log_state(
     input: Res<PlayerInput>,
     physics: portal2_world::collision::Physics,
     entities: Query<&portal2_core::entity::MapEntity>,
-    props: Query<(&portal2_core::entity::MapEntity, &GlobalTransform), With<crate::entities::props::PhysicsProp>>,
+    props: Query<(Entity, &portal2_core::entity::MapEntity, &GlobalTransform), With<crate::entities::props::PhysicsProp>>,
     holding: Option<Res<crate::physics::carry::Holding>>,
+    sleeping: Query<(), With<avian3d::prelude::Sleeping>>,
 ) {
     let Some(mut ap) = ap else { return };
     ap.log_timer += time.delta_secs();
@@ -271,14 +272,28 @@ fn log_state(
         // Cubes anywhere, other props within reach of the player.
         let mut cubes: Vec<String> = props
             .iter()
-            .filter(|(m, t)| m.classname == "prop_weighted_cube" || t.translation().distance(s.origin) < 256.0)
-            .map(|(m, t)| {
+            .filter(|(_, m, t)| m.classname == "prop_weighted_cube" || t.translation().distance(s.origin) < 256.0)
+            .map(|(_, m, t)| {
                 let p = t.translation();
                 format!("{}({:.1}, {:.1}, {:.1})", m.targetname.as_deref().unwrap_or(""), p.x, p.y, p.z)
             })
             .collect();
         cubes.truncate(4);
         info!("  cubes {} holding {}", cubes.join(" "), holding.and_then(|h| h.entity).is_some());
+        // Floor turrets: where they are and how far their up axis leans.
+        let turrets: Vec<String> = props
+            .iter()
+            .filter(|(_, m, _)| m.classname == "npc_portal_turret_floor")
+            .map(|(e, _, t)| {
+                let p = t.translation();
+                let lean = (t.rotation() * Vec3::Z).z.clamp(-1.0, 1.0).acos().to_degrees();
+                let asleep = if sleeping.contains(e) { " asleep" } else { "" };
+                format!("({:.0}, {:.0}, {:.0}) lean {lean:.0}{asleep}", p.x, p.y, p.z)
+            })
+            .collect();
+        if !turrets.is_empty() {
+            info!("  turrets {}", turrets.join(" "));
+        }
     }
 }
 

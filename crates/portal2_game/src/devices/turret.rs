@@ -125,6 +125,9 @@ impl Plugin for TurretPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<TurretExploded>()
             .add_systems(FixedUpdate, run_turrets.in_set(ThinkSet))
+            // Reads the props' velocities from before the physics step,
+            // which the impact sounds then move on.
+            .add_systems(FixedUpdate, knock_over_on_impact.before(crate::sound::impacts::impact_sounds))
             .add_systems(Update, (fade_tracers, show_aim, draw_lasers))
             // After everything else this frame has had its say about it.
             .add_systems(Last, remove_exploded);
@@ -334,6 +337,122 @@ fn spawn_turret(world: &mut World, e: Entity) {
 
 /// Entities spawned before this much map time came with the map.
 const MAP_START_SPAWN: f64 = 0.05;
+
+/// Slower than this, a prop striking a turret does not knock it over.
+const KNOCK_MIN_SPEED: f32 = 150.0;
+/// The tilting speed a knock gives, in degrees per second per unit per
+/// second of the prop's speed (for a 40 kg cube), and its cap.
+const KNOCK_SPIN_PER_SPEED: f32 = 0.45;
+const KNOCK_MAX_SPIN: f32 = 300.0;
+/// Only blows above this height over the turret's origin knock it over:
+/// its upper body, above its centre of mass (about 36).
+const KNOCK_MIN_HEIGHT: f32 = 36.0;
+/// The mass a knock is scaled to (a weighted cube's), and the most a
+/// heavier prop counts for.
+const KNOCK_MASS: f32 = 40.0;
+const KNOCK_MAX_MASS_SCALE: f32 = 2.0;
+
+/// A prop striking a standing turret's upper body at speed knocks it over.
+///
+/// In the game a cube dropped onto a turret through a ceiling portal
+/// usually topples it: in `sp_a2_turret_intro`, 3 of 4 such drops from
+/// 64 units above the floor portal, and 5 of 5 cubes dropped from the
+/// ceiling. The cube rides the turret's rounded head and shoves it over.
+/// This port's physics engine resolves the same landing as a glancing
+/// blow: the cube spins off and the turret rocks by a few degrees (no tip
+/// in the same drops), whatever its mass, inertia, friction or bounce. So
+/// the blow is given the tilt the game's would have: the turret starts
+/// turning over away from the side the prop struck (along the prop's travel
+/// when it came straight down, else backwards), faster the harder and
+/// heavier the hit. It turns about the edge of its feet on that side, as a
+/// toppling body does: turned about its centre of mass instead, the floor
+/// under its feet would take nearly all of the turn back out. A turret
+/// standing still, or touched gently, is left alone, so turrets still
+/// stand as placed when a level loads.
+#[allow(clippy::type_complexity)]
+fn knock_over_on_impact(
+    mut starts: MessageReader<avian3d::prelude::CollisionStart>,
+    holding: Res<crate::physics::carry::Holding>,
+    mut turrets: Query<
+        (
+            Entity,
+            &GlobalTransform,
+            &mut LinearVelocity,
+            &mut avian3d::prelude::AngularVelocity,
+            Option<&avian3d::prelude::ComputedCenterOfMass>,
+            &portal2_world::collision::Collider,
+        ),
+        With<Turret>,
+    >,
+    props: Query<
+        (&GlobalTransform, &LinearVelocity, Option<&crate::sound::impacts::ImpactState>, Option<&avian3d::prelude::ComputedMass>),
+        (With<PhysicsProp>, Without<Turret>),
+    >,
+    mut commands: Commands,
+) {
+    for ev in starts.read() {
+        let a = ev.body1.unwrap_or(ev.collider1);
+        let b = ev.body2.unwrap_or(ev.collider2);
+        let (turret, prop) = if turrets.contains(a) && props.contains(b) {
+            (a, b)
+        } else if turrets.contains(b) && props.contains(a) {
+            (b, a)
+        } else {
+            continue;
+        };
+        if holding.entity == Some(turret) {
+            continue;
+        }
+        let Ok((_, t_gt, mut t_lin, mut t_ang, com, collider)) = turrets.get_mut(turret) else { continue };
+        let Ok((p_gt, p_lin, state, mass)) = props.get(prop) else { continue };
+        let (_, rot, origin) = t_gt.to_scale_rotation_translation();
+        let up = rot * Vec3::Z;
+        if up.z < UPRIGHT_COS {
+            continue;
+        }
+        let hit = p_gt.translation();
+        if (hit - origin).dot(up) < KNOCK_MIN_HEIGHT {
+            continue;
+        }
+        let velocity = state.map_or(p_lin.0, |s| s.velocity());
+        let speed = (velocity - t_lin.0).length();
+        if speed < KNOCK_MIN_SPEED {
+            continue;
+        }
+        // Over, away from where the prop struck the head.
+        let centre = origin + rot * com.map_or(Vec3::ZERO, |c| c.0);
+        let flat = |v: Vec3| (v - up * v.dot(up)).normalize_or_zero();
+        let mut push = flat(centre - hit);
+        if (centre - hit).length() - (centre - hit).dot(up).abs() < 2.0 || push == Vec3::ZERO {
+            push = flat(velocity);
+        }
+        if push == Vec3::ZERO {
+            push = flat(rot * Vec3::NEG_X);
+        }
+        let mass_scale = mass.map_or(1.0, |m| m.value() / KNOCK_MASS).min(KNOCK_MAX_MASS_SCALE);
+        let spin = (speed * KNOCK_SPIN_PER_SPEED * mass_scale).min(KNOCK_MAX_SPIN).to_radians();
+        let axis = up.cross(push).normalize_or_zero();
+        let along = t_ang.0.dot(axis);
+        if along < spin {
+            // The edge it turns over: its feet's furthest reach that way.
+            let local_push = rot.inverse() * push;
+            let reach = collider
+                .shape
+                .volumes
+                .iter()
+                .flat_map(|v| v.points.iter())
+                .filter(|p| p.z < 2.0)
+                .map(|p| p.dot(local_push))
+                .fold(f32::MIN, f32::max);
+            let pivot = if reach > f32::MIN { origin + push * reach } else { origin };
+            let added = axis * (spin - along);
+            t_ang.0 += added;
+            t_lin.0 += added.cross(centre - pivot);
+        }
+        commands.entity(turret).remove::<avian3d::prelude::Sleeping>();
+        debug!("turret {turret} knocked by {prop} at {speed:.0} u/s, tilting {:.0} deg/s", spin.to_degrees());
+    }
+}
 
 fn turret_input(world: &mut World, call: &InputCall) -> bool {
     // `SetModel <index>`: one of the models `ModelIndex` picks from

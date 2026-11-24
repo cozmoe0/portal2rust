@@ -101,6 +101,36 @@ tipped, disabled, collide, pickup, shot at, dissolved, flung, burned.
   line for 1 s. A burning turret has a 1 in 4 chance of crying out when it
   catches fire, then burns for `sv_portal_turret_min/max_burn_time`.
 
+## Physics and knocking over
+
+- The physics object (`physics_debug_entity`): mass 100, inertia 6.43,
+  6.99, 3.22 kg·m², no damping, material `solidmetal` (friction 0.8,
+  elasticity 0.1), 7 convex pieces. A weighted cube: mass 40, inertia
+  3.85 each way, linear damping 0.1, `metal_box` (friction 0.8, elasticity
+  0.1).
+- Tip controller (`CTurretTipController`, `floorturret_tipcontroller`, made
+  and enabled in the turret's `Activate`, `sub_102E2AF0`): a motion
+  controller that turns the turret's local up back toward world up. Each
+  step (`sub_102E0A90`) it gives an angular acceleration
+  `ComputeRotSpeedToAlignAxes(local up, world up in body space, angular
+  velocity, 1, 1/dt², limit/dt)`, the limit being 25°/s (45 while the
+  player's drop time has not passed), so at most 25°/s more each step. It
+  does nothing while suspended, disabled or carried, nor while the turret
+  moves faster than 300 units/s or turns faster than 90°/s. The port has no
+  tip controller; turrets placed in a map start at rest instead
+  (`physics::StartsAtRest`).
+- In `sp_a2_turret_intro` a cube dropped from 64 units above a floor portal
+  whose partner is on the ceiling over an upper turret toppled 3 of 4 of
+  them; cubes made at the ceiling over them toppled all 5. The cube lands
+  on the rounded head, rides it and shoves the turret over. The port's
+  physics engine resolves that landing as a glancing blow (the cube spins
+  off, the turret rocks a few degrees and stands), whatever the masses,
+  inertias, friction or bounce, so a prop hitting a standing turret's upper
+  body (above 36 units) at 150 units/s or more starts it turning over about
+  the edge of its feet, away from where it was struck, at 0.45°/s per
+  unit/s of the prop's speed (scaled by its mass over 40, at most twice;
+  at most 300°/s). With that, the same drops topple 4 of 4 and 5 of 5.
+
 ## Tipped (server)
 
 - Knocked over (`sub_102E35A0`, the side check), the turret sets its thrash
