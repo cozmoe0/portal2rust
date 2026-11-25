@@ -62,7 +62,9 @@ pub fn main() {
         let bone = counts.iter().enumerate().max_by_key(|(_, c)| **c).map_or(0, |(b, _)| b);
         let to_bone = bind.get(bone).map_or(glam::Mat4::IDENTITY, |m| m.inverse());
         println!(
-            "mesh {i} ({material}): {} verts, area {area:.1}, centroid {centroid:.2?} normal {normal:.2?}",
+            "mesh {i} (body part {} model {}, {material}): {} verts, area {area:.1}, centroid {centroid:.2?} normal {normal:.2?}",
+            mesh.body_part,
+            mesh.model,
             mesh.vertices.len()
         );
         println!(

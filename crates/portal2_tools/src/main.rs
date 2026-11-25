@@ -41,6 +41,7 @@ mod cmd {
     pub mod mdlinfo;
     pub mod mdlmesh;
     pub mod mdlpose;
+    pub mod mdlskin;
     pub mod mdlscan;
     pub mod mdlseq;
     pub mod mdluv;
@@ -129,6 +130,7 @@ const COMMANDS: &[(&str, &str, fn())] = &[
     ("mdlinfo", "Loads studio models and prints structural stats (no content dump).", cmd::mdlinfo::main),
     ("mdlmesh", "Prints where a model's meshes of one material sit (centroid, normal, main bone)", cmd::mdlmesh::main),
     ("mdlpose", "Prints chosen bones of a model across one sequence's cycle (position, axes, local rotation)", cmd::mdlpose::main),
+    ("mdlskin", "Skins a model's meshes in one sequence pose and prints their bounds per main bone", cmd::mdlskin::main),
     ("mdlscan", "Histogram of MDL / VVD / VTX header versions across the install.", cmd::mdlscan::main),
     (
         "mdlseq",
