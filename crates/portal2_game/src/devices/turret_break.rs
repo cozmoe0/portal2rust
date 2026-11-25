@@ -5,7 +5,8 @@
 //! `burning_character` smoke and flames ride it (control point 1, spread
 //! over its model) and `General.BurningFlesh` loops until it goes.
 //!
-//! Blowing apart (server.dll `sub_103248D0`, `sub_103260E0`):
+//! Blowing apart (server.dll `sub_103248D0`, `sub_103260E0`; a turret told
+//! to self-destruct gets only the blow-up, from the blast damage on):
 //!
 //! - an `env_explosion` of magnitude 232 and radius 244 with no damage,
 //!   smoke, sparks, sound, fireball smoke or light (spawn flags 1385), so
@@ -232,10 +233,16 @@ fn blow_up(
                 damage.write(DamagePlayer { amount, push: d.normalize_or(Vec3::Z) * amount * 4.0, source: None });
             }
         }
-        add_blast(&mut blasts, center, up);
+        // Burnt out, the explosion's sparks and a shake go with it.
+        let blast_fx = ev.blast;
+        if blast_fx {
+            add_blast(&mut blasts, center, up);
+        }
         let (model, at, velocity) = (ev.model.clone(), ev.at, ev.velocity);
         commands.queue(move |world: &mut World| {
-            screen_shake(world, center, SHAKE.0, SHAKE.1, SHAKE.2, SHAKE.3, ShakeCommand::Start, false);
+            if blast_fx {
+                screen_shake(world, center, SHAKE.0, SHAKE.1, SHAKE.2, SHAKE.3, ShakeCommand::Start, false);
+            }
             if let Some(model) = model {
                 spawn_pieces(world, &model, at, velocity);
             }

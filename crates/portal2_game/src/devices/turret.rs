@@ -102,6 +102,9 @@ const UPRIGHT_COS: f32 = 0.5;
 /// `sv_portal_turret_max_burn_time`), and between its cries.
 const BURN_TIME: (f32, f32) = (1.0, 1.5);
 const BURN_TALK_GAP: (f32, f32) = (0.5, 0.75);
+/// `SelfDestruct`: seconds of countdown, thinking every `SELF_DESTRUCT_THINK`.
+const SELF_DESTRUCT_TIME: f64 = 4.0;
+const SELF_DESTRUCT_THINK: f64 = 0.05;
 /// Walls, props and light bridges block a turret's view (`MASK_BLOCKLOS`
 /// in its visibility checks); it sees through glass and grates.
 const SIGHT_MASK: u32 = mask::BLOCKLOS;
@@ -173,6 +176,9 @@ pub struct TurretExploded {
     pub at: Transform,
     pub velocity: Vec3,
     pub model: Option<String>,
+    /// Burnt out: the burn's end adds an explosion's sparks and a screen
+    /// shake to the blow-up a self-destruct is alone.
+    pub blast: bool,
 }
 
 /// What the eye shows (server.dll's eye states): bright on its target,
@@ -278,6 +284,15 @@ pub struct Turret {
     /// it flings off the line towards the player.
     #[serde(default)]
     pub out_of_ammo: bool,
+    /// `SelfDestruct`'s countdown: when it began and when it last pinged.
+    #[serde(default)]
+    self_destruct: Option<f64>,
+    #[serde(default)]
+    last_ping: f64,
+    /// Blows apart at its next think (`SelfDestructImmediately`, or the end
+    /// of the countdown).
+    #[serde(default)]
+    blow_up: bool,
 }
 
 /// spawnflags: out of ammo.
@@ -334,6 +349,9 @@ fn spawn_turret(world: &mut World, e: Entity) {
             burn_until: 0.0,
             next_burn_talk: 0.0,
             out_of_ammo: me.has_flag(SF_OUT_OF_AMMO),
+            self_destruct: None,
+            last_ping: 0.0,
+            blow_up: false,
         },
     ));
     // Placed in the map (spawned as it loads), it stands where it was put
@@ -496,9 +514,19 @@ fn turret_input(world: &mut World, call: &InputCall) -> bool {
         "toggle" => t.enabled = !t.enabled,
         "enablegagging" => t.gagged = true,
         "disablegagging" => t.gagged = false,
-        "selfdestruct" | "selfdestructimmediately" => {
-            t.state = TurretState::Dead;
-            t.eye_state = EyeState::Dead;
+        // server.dll `sub_102E0940`: four seconds of quickening alarm pings,
+        // then the blow-up; a burning turret burns out instead.
+        "selfdestruct" => {
+            if t.self_destruct.is_none() {
+                t.self_destruct = Some(now);
+                t.last_ping = now;
+                t.next_think = now + 0.1;
+            }
+        }
+        // `sub_103247D0`: blows apart at once, whatever it was doing.
+        "selfdestructimmediately" => {
+            t.blow_up = true;
+            t.next_think = now;
         }
         "depleteammo" => t.out_of_ammo = true,
         "restoreammo" => t.out_of_ammo = false,
@@ -626,6 +654,22 @@ fn run_turrets(
     let player = players.single().ok();
     let frames = linked_frames(&portals, &portal_query);
     for (e, mut t, gt, me, velocity, anim) in &mut turrets {
+        // Self-destructing: blows apart now, dead or not (server.dll
+        // `sub_103260E0`, without the burn's explosion and shake).
+        if t.blow_up && now >= t.next_think {
+            t.blow_up = false;
+            t.state = TurretState::Dead;
+            t.eye_state = EyeState::Dead;
+            exploded.write(TurretExploded {
+                entity: e,
+                at: gt.compute_transform(),
+                velocity: velocity.map_or(Vec3::ZERO, |v| v.0),
+                model: me.studio_model(),
+                blast: false,
+            });
+            out.write(FireOutput::new(e, "OnExplode"));
+            continue;
+        }
         if t.state == TurretState::Dead || now < t.next_think {
             continue;
         }
@@ -641,6 +685,7 @@ fn run_turrets(
                     at: gt.compute_transform(),
                     velocity: velocity.map_or(Vec3::ZERO, |v| v.0),
                     model: me.studio_model(),
+                    blast: true,
                 });
                 out.write(FireOutput::new(e, "OnExplode"));
             } else if now > t.next_burn_talk {
@@ -649,6 +694,24 @@ fn run_turrets(
                 }
                 t.next_burn_talk = now + portal2_core::rng::random_range(BURN_TALK_GAP.0, BURN_TALK_GAP.1) as f64;
             }
+            continue;
+        }
+        // Counting down (server.dll `sub_102E0840`, every 0.05 s): an alarm
+        // ping, each flashing the eye, 0.75 s apart at first and down to 0.1 s
+        // after four seconds, when it blows apart.
+        if let Some(since) = t.self_destruct {
+            let elapsed = now - since;
+            if elapsed >= SELF_DESTRUCT_TIME {
+                t.blow_up = true;
+                continue;
+            }
+            let gap = 0.75 - 0.65 * (elapsed * 0.25).clamp(0.0, 1.0);
+            if now > t.last_ping + gap {
+                sound_out.write(SoundRequest::on("NPC_FloorTurret.AlarmPing", e));
+                t.eye_state = EyeState::SeeTarget;
+                t.last_ping = now;
+            }
+            t.next_think = now + SELF_DESTRUCT_THINK;
             continue;
         }
         let mut fx = Effects { now, sounds: Vec::new(), outputs: Vec::new(), sequences: Vec::new() };
@@ -1228,6 +1291,9 @@ mod tests {
             burn_until: 0.0,
             next_burn_talk: 0.0,
             out_of_ammo: false,
+            self_destruct: None,
+            last_ping: 0.0,
+            blow_up: false,
         };
         t.turn_toward(Vec2::new(90.0, -40.0));
         assert_eq!(t.aim, Vec2::new(12.0, -12.0));

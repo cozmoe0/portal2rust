@@ -355,8 +355,19 @@ fn touch_triggers(
                 }
             }
         }
-        // Forget touchers that no longer exist.
-        t.touching.retain(|e| touchers.iter().any(|t| t.entity == *e));
+        // A toucher that was removed ends its touch, as removing an entity
+        // does in the engine (`sp_a2_core`'s turrets crack the vault glass
+        // as they blow apart and leave their triggers). One that still
+        // exists but no longer counts (a prop dissolving) stays until then.
+        let gone: Vec<Entity> =
+            t.touching.iter().copied().filter(|e| !touchers.iter().any(|x| x.entity == *e) && entities.get(*e).is_err()).collect();
+        for who in gone {
+            t.touching.retain(|e| *e != who);
+            out.write(FireOutput::new(te, "OnEndTouch").with_activator(Some(who)));
+            if t.touching.is_empty() {
+                out.write(FireOutput::new(te, "OnEndTouchAll").with_activator(Some(who)));
+            }
+        }
     }
     if let Some((pos, angles, keep_velocity)) = teleport {
         player.state.origin = pos;

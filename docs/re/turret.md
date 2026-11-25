@@ -69,6 +69,15 @@ die, tractor beam) and adds held and tractor-beam thinks.
   (`PropBreakableCreateAll`, angular velocity ±800 each axis, burst scale
   100 by default), `OnExplode`, and it is removed. In co-op the pieces are
   `turret_coop_explosion` particles instead.
+- `SelfDestructImmediately` (`sub_103247D0`) switches the think to the
+  blow-up at once, whatever the turret is doing (dead or burning too):
+  the blast damage, `NPC_FloorTurret.Destruct`, the break pieces,
+  `OnExplode` and removal, without the burn's explosion and shake.
+  `SelfDestruct` (`sub_102E0940`) starts a countdown think
+  (`sub_102E0840`, every 0.05 s): `NPC_FloorTurret.AlarmPing`, each ping
+  flashing the eye bright, `0.75 - 0.65 × min(t / 4, 1)` seconds apart;
+  after four seconds the blow-up follows 0.1 s later. A turret on fire
+  goes over to its burning think instead.
 - `turret.phy` breaks into ten `turret_fx_break_gib` models (burst 500,
   `debris`, fade after 20 s), each placed by its `placementOrigin`
   attachment and carrying `turret_burning_gib_01` or `turret_smoke_gib1`
