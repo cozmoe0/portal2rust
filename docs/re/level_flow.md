@@ -83,6 +83,27 @@ scripts. Written in our own words; no code is copied.
   incinerator) to `incinerator_entry_portal_2` (a ceiling opening above the
   shaft whose trigger ends the level); `sp_a4_finale2` has two more pairs.
 
+## Parenting to the player
+
+- `SetParent` looks its parameter up the way the engine's entity search
+  does, so `!player`, `!activator` and `!caller` work. The child keeps its
+  world placement, and its offset is taken in the player's frame at that
+  moment.
+- The player's own angles are the view's yaw alone (pitch is zeroed after
+  each move), and what hangs from the player turns with that yaw.
+- `sp_a3_00` parents `player_looktarget` to `!player` on map spawn. The
+  potato rig (`potatos_tank`, a `func_tank`) aims at that target, so the
+  potato stays on the target's side of the player as they turn.
+  `sp_a2_core` teleports the player to its exit landmark at yaw 90 before
+  the change, so after a real playthrough the target (and the potato) sits
+  90 degrees to the player's right. Checked in the game: at yaw 45 the
+  target was at (89.8, -4208.8), at yaw 135 at (113.9, -4005.2).
+  The potato is only glimpsed while turning, as the tank's turn lags. Loading
+  the map directly (yaw 0) puts it in front.
+- The broken elevator above (`elevator_escape.mdl` on `lift_rotator_2` /
+  `lift_rotator_1` / `lift_mover`) is meant to be there. It rises at
+  5 units/s, spins and tilts, and starts about 416 units above the player.
+
 ## point_teleport
 
 - On activation it saves its own absolute origin and angles; with spawnflag 1

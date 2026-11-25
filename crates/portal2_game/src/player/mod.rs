@@ -81,17 +81,27 @@ fn spawn_or_reset_player(
         p.noclip = args.noclip;
         p.ground_ref = None;
         t.translation = origin;
+        t.rotation = facing(&input);
         return;
     }
     let e = commands
         .spawn((
             Name::new("player"),
             Player { state, previous_origin: origin, noclip: args.noclip, ground_ref: None },
-            Transform::from_translation(origin),
+            Transform::from_translation(origin).with_rotation(facing(&input)),
             Visibility::Hidden,
         ))
         .id();
     registry.player = Some(e);
+}
+
+/// The player entity's own rotation: the view's yaw alone, as the engine
+/// keeps the player's angles (CPortal_Player::PostThink zeroes the pitch).
+/// What is parented to the player turns with it: `sp_a3_00`'s potato rig
+/// aims at a target parented 144 units in front of the player, which keeps
+/// the potato in view whichever way they look.
+fn facing(input: &PlayerInput) -> Quat {
+    portal2_core::coords::angles_to_quat(Vec3::new(0.0, input.input.angles.y, 0.0))
 }
 
 /// The player entity, made now if it does not exist yet (a saved game
@@ -288,6 +298,7 @@ fn player_tick(
         p.state = state;
         p.ground_ref = state.ground_entity.and_then(|g| placements.get(g).ok().map(|gt| (g, gt.affine())));
         t.translation = state.origin;
+        t.rotation = facing(&input);
     }
 }
 

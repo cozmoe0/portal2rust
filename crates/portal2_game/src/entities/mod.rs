@@ -405,7 +405,20 @@ pub fn spawn_runtime_entity(world: &mut World, classname: &str, keyvalues: &[(&s
 /// Re-parents `child` under the first entity named `parent`, keeping its
 /// current world transform.
 pub fn set_parent(world: &mut World, child: Entity, parent: &str) {
-    let Some(p) = world.resource::<EntityRegistry>().first_named(parent) else { return };
+    set_parent_from(world, child, parent, None, None);
+}
+
+/// [`set_parent`] for an input, where the name may also be one of the
+/// special names (`!player`, `!activator`, `!caller`) the engine's entity
+/// search understands: `sp_a3_00` parents the potato rig's aim target to
+/// `!player`.
+pub fn set_parent_from(world: &mut World, child: Entity, parent: &str, activator: Option<Entity>, caller: Option<Entity>) {
+    let p = if parent.starts_with('!') {
+        io::resolve_targets(world, parent, activator, caller).into_iter().next()
+    } else {
+        world.resource::<EntityRegistry>().first_named(parent)
+    };
+    let Some(p) = p else { return };
     if p == child {
         return;
     }
@@ -604,7 +617,7 @@ fn generic_inputs(world: &mut World, call: &InputCall) -> bool {
         }
         "setparent" => {
             let name = call.param.trim().to_ascii_lowercase();
-            set_parent(world, e, &name);
+            set_parent_from(world, e, &name, call.activator, call.caller);
             true
         }
         "setparentattachment" | "setparentattachmentmaintainoffset" => {
