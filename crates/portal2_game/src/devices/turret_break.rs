@@ -339,7 +339,7 @@ fn attachment_matrix(mdl: &source_formats::mdl::Mdl, name: &str) -> Option<Mat4>
 }
 
 /// The pieces of a model blown apart at `at` while moving at `velocity`.
-fn spawn_pieces(world: &mut World, model: &str, at: Transform, velocity: Vec3) {
+pub fn spawn_pieces(world: &mut World, model: &str, at: Transform, velocity: Vec3) {
     let fs = world.resource::<GameFs>().clone();
     let origin = at.translation;
     for (path, burst, life) in break_pieces(&fs, model) {
@@ -349,7 +349,8 @@ fn spawn_pieces(world: &mut World, model: &str, at: Transform, velocity: Vec3) {
         let place = attachment_matrix(&mdl, "placementOrigin").map_or(Mat4::IDENTITY, |m| m.inverse());
         let place = Transform::from_matrix(at.to_matrix() * place);
         let origin_kv = format!("{} {} {}", place.translation.x, place.translation.y, place.translation.z);
-        let piece = crate::entities::spawn_runtime_entity(world, "prop_physics", &[("model", &path), ("origin", &origin_kv)]);
+        let piece =
+            crate::entities::spawn_runtime_entity(world, "prop_physics", &[("model", &path), ("origin", &origin_kv), ("spawnflags", "4")]);
         let center = place.transform_point((mdl.hull_min + mdl.hull_max) * 0.5);
         let out = (center - origin).normalize_or(Vec3::Z);
         let spin = Vec3::new(random_range(-GIB_SPIN, GIB_SPIN), random_range(-GIB_SPIN, GIB_SPIN), random_range(-GIB_SPIN, GIB_SPIN));

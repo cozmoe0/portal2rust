@@ -258,6 +258,12 @@ fn touch_triggers(
     let mut touchers =
         vec![Toucher { entity: pe, is_player: true, is_npc: false, center: origin + (mins + maxs) * 0.5, half: (maxs - mins) * 0.5 }];
     for (e, col, gt) in &props {
+        // Debris touches no triggers (the engine's debris collision group
+        // meets only the world): a turret's pieces would otherwise end its
+        // trigger's touch again and again as they fly out.
+        if entities.get(e).is_ok_and(crate::physics::is_debris) {
+            continue;
+        }
         let t = gt.compute_transform();
         let (lo, hi) = crate::physics::world_bounds(&col.shape, t.translation, t.rotation);
         let is_npc = entities.get(e).is_ok_and(|m| m.classname.starts_with("npc_"));

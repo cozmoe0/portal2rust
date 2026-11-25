@@ -191,6 +191,23 @@ fn physics_prop_input(world: &mut World, call: &InputCall) -> bool {
         return true;
     }
     let e = call.target;
+    // `Break` (CBreakableProp): the pieces its collision model lists fly
+    // off, `OnBreak` fires and the prop is gone (`sp_a2_core`'s juggled
+    // turret when Wheatley stops juggling).
+    if call.input == "break" {
+        let Some(model) = world.get::<MapEntity>(e).and_then(|me| me.studio_model()) else { return true };
+        let at = super::world_transform(world, e).compute_transform();
+        let velocity = world.get::<avian3d::prelude::LinearVelocity>(e).map_or(Vec3::ZERO, |v| v.0);
+        if let Some(mut holding) = world.get_resource_mut::<crate::physics::carry::Holding>()
+            && holding.entity == Some(e)
+        {
+            holding.entity = None;
+        }
+        fire_output(world, e, "OnBreak", call.activator, None);
+        super::despawn_entity(world, e);
+        crate::devices::turret_break::spawn_pieces(world, &model, at, velocity);
+        return true;
+    }
     let cube = world.get::<MapEntity>(e).is_some_and(|me| me.classname == "prop_weighted_cube");
     if call.input == "dissolve" && cube {
         crate::physics::dissolve::fizzle(world, e, None);
