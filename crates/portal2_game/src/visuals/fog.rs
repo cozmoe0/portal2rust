@@ -6,6 +6,11 @@
 //! our shaders read that uniform to fog by view depth the way Source does:
 //! `min(max density, (depth - start) / (end - start))`, clamped to 0..1.
 //!
+//! When the player switches to another controller, the view blends from the
+//! fog it showed to the new controller's over that controller's
+//! `foglerptime`, as the game's player does (colours, distances, maximum
+//! density and HDR scale; a new map or a loaded save snaps).
+//!
 //! The uniform has no slot for the maximum density, so it travels in
 //! `directional_light_exponent` (our shaders do not use directional fog
 //! light). The colour is scaled by the view's exposure, as the game scales
@@ -24,7 +29,7 @@ pub struct FogPlugin;
 
 impl Plugin for FogPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PostUpdate, apply_fog);
+        app.init_resource::<FogBlend>().add_systems(PostUpdate, (reset_blend_on_load, apply_fog).chain());
         let world = app.world_mut();
         world.resource_mut::<SpawnHandlers>().register("env_fog_controller", spawn_controller);
         world.resource_mut::<InputHandlers>().register("env_fog_controller", controller_input);
@@ -48,6 +53,41 @@ impl FogValues {
             start: self.start + (to.start - self.start) * t,
             end: self.end + (to.end - self.end) * t,
         }
+    }
+}
+
+/// The part of a fog the view blends when the controller changes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ShownFog {
+    values: FogValues,
+    max_density: f32,
+    hdr_scale: f32,
+}
+
+impl ShownFog {
+    fn lerp(self, to: Self, t: f32) -> Self {
+        Self {
+            values: self.values.lerp(to.values, t),
+            max_density: self.max_density + (to.max_density - self.max_density) * t,
+            hdr_scale: self.hdr_scale + (to.hdr_scale - self.hdr_scale) * t,
+        }
+    }
+}
+
+/// The player's controller change in progress.
+#[derive(Resource, Default)]
+struct FogBlend {
+    /// The controller the view used last frame.
+    controller: Option<Entity>,
+    /// What the view showed when the controller changed, and when.
+    from: Option<(ShownFog, f64)>,
+    /// What the view showed last frame.
+    shown: Option<ShownFog>,
+}
+
+fn reset_blend_on_load(mut loaded: MessageReader<portal2_world::MapLoaded>, mut blend: ResMut<FogBlend>) {
+    if loaded.read().count() > 0 {
+        *blend = FogBlend::default();
     }
 }
 
@@ -172,6 +212,27 @@ fn apply_fog(world: &mut World) {
         }
         c.enabled.then(|| c.clone())
     });
+    // A new controller blends in from what the view showed over its lerp
+    // time; the first controller of a map snaps.
+    let shown = {
+        let mut blend = world.resource_mut::<FogBlend>();
+        if blend.controller != active {
+            blend.from = if blend.controller.is_some() { blend.shown.map(|f| (f, now)) } else { None };
+            blend.controller = active;
+        }
+        let target = fog.as_ref().map(|c| ShownFog { values: c.values, max_density: c.max_density, hdr_scale: c.hdr_scale });
+        let shown = match (target, blend.from, fog.as_ref().map_or(0.0, |c| c.lerp_time)) {
+            (Some(to), Some((from, started)), time) if time > 0.0 && ((now - started) as f32) < time => {
+                Some(from.lerp(to, ((now - started) as f32 / time).max(0.0)))
+            }
+            (target, ..) => {
+                blend.from = None;
+                target
+            }
+        };
+        blend.shown = shown;
+        shown
+    };
     // The 3D sky box camera keeps the sky camera's own fog.
     let mut cameras = world.query_filtered::<(Entity, &GlobalTransform, Option<&DistanceFog>, Option<&bevy::camera::Exposure>), (
         With<Camera3d>,
@@ -198,21 +259,22 @@ fn apply_fog(world: &mut World) {
         };
         // With blending the colour follows how much the view faces the
         // primary direction.
+        let Some(f) = shown else { continue };
         let gamma = if c.blend {
             let t = (forward.dot(c.dir) + 1.0) * 0.5;
-            c.values.color2.lerp(c.values.color, t)
+            f.values.color2.lerp(f.values.color, t)
         } else {
-            c.values.color
+            f.values.color
         } / 255.0;
         // The surfaces it blends with are scaled by the tone map, and the
         // game scales the fog colour by it too (a foggy view brightens with
         // the exposure as a whole).
-        let linear = Vec3::new(srgb_to_linear(gamma.x), srgb_to_linear(gamma.y), srgb_to_linear(gamma.z)) * c.hdr_scale * exposure;
+        let linear = Vec3::new(srgb_to_linear(gamma.x), srgb_to_linear(gamma.y), srgb_to_linear(gamma.z)) * f.hdr_scale * exposure;
         let distance_fog = DistanceFog {
             color: Color::linear_rgb(linear.x, linear.y, linear.z),
             directional_light_color: Color::NONE,
-            directional_light_exponent: c.max_density,
-            falloff: FogFalloff::Linear { start: c.values.start, end: c.values.end.max(c.values.start + 1.0) },
+            directional_light_exponent: f.max_density,
+            falloff: FogFalloff::Linear { start: f.values.start, end: f.values.end.max(f.values.start + 1.0) },
         };
         world.entity_mut(e).insert(distance_fog);
     }

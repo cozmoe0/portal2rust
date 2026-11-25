@@ -118,3 +118,11 @@ scripts. Written in our own words; no code is copied.
 - `SetFogController` on the player with a name no entity has leaves the fog
   as it was (`sp_a1_wakeup`'s `relay_hub_fog_and_tonemap` names a
   `fog_hub` the map lacks).
+- Switching to another controller does not snap: the view blends from the
+  fog it showed to the new controller's colours, distances, maximum density
+  and HDR scale over the new controller's `foglerptime` (the Source SDK's
+  `C_BasePlayer::FogControllerChanged` / `UpdateFogBlend`; not traced in this
+  build). In `sp_a2_core` the real game goes red over 5 s at the core
+  transfer, white over 2 s when Wheatley takes the body, and back to dark
+  over 15 s later; measured in screenshots of both games, the brightness
+  ramps over about 2 s and 4 s.
