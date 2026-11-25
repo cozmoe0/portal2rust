@@ -22,11 +22,20 @@ die, tractor beam) and adds held and tractor-beam thinks.
 - Visible but out of range (or blocked): "last seen" 2 s ahead and it
   switches to suppression fire. Not visible at all: "last seen" 4 s ahead
   (1.5 s with spawn flag 128) and back to searching.
+- Its sight checks (`sub_10327020`, through a portal too) trace with
+  `MASK_BLOCKLOS` (solid, moveable and block-LOS contents), so it sees
+  through glass, grates (such as the `metal/metalgrate018` fence in
+  `sp_a2_column_blocker`) and other turrets.
+- Before each shot it traces from the muzzle toward the enemy, as far as
+  the enemy is and through the portal it sees them by, for
+  `CONTENTS_WINDOW` alone (`sub_10324280`); glass on that line holds its
+  fire, though it keeps tracking.
 
 ## Shots
 
 - One bullet per shot, 16384 units long, from the four muzzle attachments
-  in turn, with a line-and-whiz tracer every shot.
+  in turn, with a line-and-whiz tracer every shot (`sub_10324E30`). Bullets
+  trace with `MASK_SHOT`, which leaves out grates.
 - Ammo `PortalTurretBullet`: bullet damage 3 to players and to NPCs,
   carry 150.
 - A turret whose up axis is more than about 25° from vertical (up z below
@@ -184,7 +193,9 @@ an elight of colour (64, 128, 255) × 2⁵ and radius 32 to 128 for 0.05 s.
 - The client draws the laser sight as a beam with `effects/redlaser1.vmt`,
   colour (255, 32, 32) at full brightness, from the turret along its aim
   (client.dll `sub_10271940`): 0.75 units wide, with the server's halo
-  `sprites/redlaserglow.vmt` at scale 4 where it ends.
+  `sprites/redlaserglow.vmt` at scale 4 where it ends. Its end is a
+  `MASK_SHOT` trace 8192 units long that skips energy balls
+  (`sub_102714F0`), so it passes grates and stops on glass.
 
 ## Model
 

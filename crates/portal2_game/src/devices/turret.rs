@@ -15,6 +15,10 @@
 //! its bullets and their tracers carry on through, and so does its laser
 //! sight.
 //!
+//! It sees through glass and grates. Its bullets and laser sight pass
+//! grates but stop on glass, so it holds its fire while glass is between
+//! it and the player.
+//!
 //! Knocked over (server.dll's tipped think), it sounds its alarm and thrashes
 //! for 2 to 2.5 s, thinking every 0.05 s: firing each think and jerking its
 //! head toward a new random aim up to 60° away. Then it turns to face ahead,
@@ -98,8 +102,12 @@ const UPRIGHT_COS: f32 = 0.5;
 /// `sv_portal_turret_max_burn_time`), and between its cries.
 const BURN_TIME: (f32, f32) = (1.0, 1.5);
 const BURN_TALK_GAP: (f32, f32) = (0.5, 0.75);
-/// Walls, glass, props and light bridges block a turret's view.
-const SIGHT_MASK: u32 = mask::SOLID_ALL | contents::BLOCKLOS;
+/// Walls, props and light bridges block a turret's view (`MASK_BLOCKLOS`
+/// in its visibility checks); it sees through glass and grates.
+const SIGHT_MASK: u32 = mask::BLOCKLOS;
+/// Bullets and the laser sight stop on glass but pass grates (`MASK_SHOT`,
+/// server.dll `sub_10324E30`, client.dll `sub_102714F0`).
+const SHOT_MASK: u32 = mask::SHOT;
 /// The server sets the model from `ModelIndex` whatever the map says (the
 /// entity definition's `models/props/turret_01.mdl` is a self-lit leftover);
 /// 1 is unused and keeps the normal model.
@@ -790,8 +798,8 @@ fn run_turrets(
                 let muzzle_dir = tr.rotation * t.aim_dir();
                 let to = (aim - eye).normalize_or_zero();
                 let cos = if dist < CLOSE_RANGE { CLOSE_FIRE_COS } else { FIRE_COS };
-                if now > t.shot_time && muzzle_dir.dot(to) >= cos {
-                    let start = muzzle(&t, &anim).map_or(eye, |m| m.translation);
+                let start = muzzle(&t, &anim).map_or(eye, |m| m.translation);
+                if now > t.shot_time && muzzle_dir.dot(to) >= cos && !glass_in_the_way(&physics, frames, start, to, dist, &[e, pe]) {
                     fire(
                         &mut t,
                         e,
@@ -897,6 +905,26 @@ fn through_portal(physics: &Physics, frames: &[PortalFrame; 2], slot: usize, eye
     (physics.trace(out, center, Vec3::ZERO, Vec3::ZERO, SIGHT_MASK, ignore).fraction >= 1.0).then_some(aim)
 }
 
+/// Whether glass lies on the line from the muzzle at `start` toward the
+/// player, `dist` away along `dir` and on through a linked portal the shot
+/// would enter. A turret sees through glass but holds its fire then
+/// (server.dll `sub_10324280`: a trace for `CONTENTS_WINDOW` alone).
+fn glass_in_the_way(physics: &Physics, frames: Option<[PortalFrame; 2]>, start: Vec3, dir: Vec3, dist: f32, ignore: &[Entity]) -> bool {
+    let mut left = dist;
+    for seg in trace_beam(physics, frames, start, dir, SHOT_MASK, ignore, 4, |_| None) {
+        let length = seg.start.distance(seg.end);
+        let reach = if seg.through_portal { length.min(left) } else { left };
+        if physics.trace(seg.start, seg.start + seg.dir * reach, Vec3::ZERO, Vec3::ZERO, contents::WINDOW, ignore).fraction < 1.0 {
+            return true;
+        }
+        left -= length;
+        if !seg.through_portal || left <= 0.0 {
+            break;
+        }
+    }
+    false
+}
+
 /// One bullet along `dir` from the next muzzle (at `start`), on through
 /// any linked portal it enters: plays that pair's firing sequence (whose
 /// events flash the muzzles), damages the player when it reaches them and
@@ -923,7 +951,7 @@ fn fire(
     }
     t.muzzle = (t.muzzle + 1) % 4;
     fx.sequences.push((if t.muzzle < 2 { "fire" } else { "fire2" }, "idlealert"));
-    let mut path = trace_beam(physics, frames, start, dir, mask::SOLID_ALL, &[e], 4, |_| None);
+    let mut path = trace_beam(physics, frames, start, dir, SHOT_MASK, &[e], 4, |_| None);
     let through = path.len() > 1;
     if let Some(last) = path.last_mut()
         && let Some((pe, center)) = target
@@ -1049,7 +1077,7 @@ fn draw_lasers(
         let eye = tr.transform_point(t.eye);
         let dir = tr.rotation * t.aim_dir();
         let start = eye + dir * 2.0;
-        let path = trace_beam(&physics, frames, start, dir, mask::SOLID_ALL, &[e], SIGHT_SEGMENTS, |_| None);
+        let path = trace_beam(&physics, frames, start, dir, SHOT_MASK, &[e], SIGHT_SEGMENTS, |_| None);
         let Some(last) = path.last().copied() else { continue };
         // Pulled back a little so the wall it lies on does not cut it.
         let halo_place = Transform::from_translation(last.end - last.dir);

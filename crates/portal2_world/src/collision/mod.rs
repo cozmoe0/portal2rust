@@ -23,6 +23,11 @@ pub mod mask {
     pub const SOLID_ALL: u32 = SOLID | MOVEABLE | WINDOW | MONSTER | GRATE;
     /// World and brush geometry, not models or characters.
     pub const SOLID_BRUSH_ONLY: u32 = SOLID | MOVEABLE | WINDOW | GRATE;
+    /// Source's `MASK_SHOT`: what bullets hit. Grates let them through.
+    pub const SHOT: u32 = SOLID | MOVEABLE | MONSTER | WINDOW | DEBRIS | HITBOX;
+    /// Source's `MASK_BLOCKLOS`: what blocks an NPC's sight. Glass, grates
+    /// and characters don't.
+    pub const BLOCKLOS: u32 = SOLID | MOVEABLE | source_formats::bsp::contents::BLOCKLOS;
     pub const ALL: u32 = u32::MAX;
 }
 
