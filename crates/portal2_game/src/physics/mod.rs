@@ -56,9 +56,12 @@ impl Plugin for GamePhysicsPlugin {
                 FixedPostUpdate,
                 drive_kinematic_bodies.in_set(PhysicsSystems::Prepare).after(avian3d::physics_transform::PhysicsTransformSystems::TransformToPosition),
             )
+            .init_resource::<RiderPlacements>()
+            .add_systems(FixedPostUpdate, remember_rider_placements.before(PhysicsSystems::Prepare))
             .add_systems(
                 FixedPostUpdate,
-                keep_followers_on_joints.after(avian3d::physics_transform::PhysicsTransformSystems::PositionToTransform),
+                (keep_followers_on_joints, restore_rider_placements)
+                    .after(avian3d::physics_transform::PhysicsTransformSystems::PositionToTransform),
             )
             .add_plugins((carry::CarryPlugin, held_clone::HeldClonePlugin, portal_travel::PortalTravelPlugin, dissolve::DissolvePlugin));
         inputs::register(app);
@@ -544,6 +547,32 @@ fn attach_follower_bodies(
 fn keep_followers_on_joints(mut followers: Query<&mut Transform, With<portal2_world::collision::BoneFollower>>) {
     for mut t in &mut followers {
         t.set_if_neq(Transform::IDENTITY);
+    }
+}
+
+/// Where each kinematic body riding a parent sits on it, kept across the
+/// physics step (see `restore_rider_placements`).
+#[derive(Resource, Default)]
+struct RiderPlacements(Vec<(Entity, Transform)>);
+
+fn remember_rider_placements(
+    mut kept: ResMut<RiderPlacements>,
+    riders: Query<(Entity, &Transform, &RigidBody), (With<ChildOf>, Without<portal2_world::collision::BoneFollower>)>,
+) {
+    kept.0.clear();
+    kept.0.extend(riders.iter().filter(|(_, _, body)| body.is_kinematic()).map(|(e, t, _)| (e, *t)));
+}
+
+/// A kinematic body riding a parent (a wall panel on a room arm, a brush on
+/// a train) stays where it sits on it: the physics engine's write-back,
+/// like a bone follower's, turned wherever the step left it into a new
+/// offset, so `sp_a2_core`'s trap walls closed with their panels shifted,
+/// tilted up to ten degrees and gapped.
+fn restore_rider_placements(kept: Res<RiderPlacements>, mut transforms: Query<&mut Transform>) {
+    for (e, t) in &kept.0 {
+        if let Ok(mut current) = transforms.get_mut(*e) {
+            current.set_if_neq(*t);
+        }
     }
 }
 
