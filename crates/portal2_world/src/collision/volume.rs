@@ -1,7 +1,7 @@
 //! Convex volumes bounded by planes, and swept axis-aligned box tests
 //! against them (the Minkowski-sum plane clipping used by BSP engines).
 
-use bevy::math::Vec3;
+use bevy::math::{Affine3A, Vec3, Vec3A};
 
 /// Traces stop this far short of surfaces so the next move starts outside.
 pub const DIST_EPSILON: f32 = 0.031_25;
@@ -193,6 +193,40 @@ impl ConvexVolume {
             return Some(VolumeHit { fraction: enter.max(0.0), plane, start_solid: false, all_solid: false });
         }
         None
+    }
+
+    /// The volume placed in the world by `affine`: its planes and points
+    /// moved there, with world-axial bevels so an axis-aligned box sweeps
+    /// cleanly. Entities turned other than by quarter turns trace this way:
+    /// turning the box into their space instead and taking the box around
+    /// it grew a 32 by 72 player hull by half again against a tumbled prop,
+    /// so the player stood "inside" `sp_a2_core`'s Wheatley a foot away and
+    /// could not move.
+    pub fn transformed(&self, affine: &Affine3A) -> ConvexVolume {
+        let normal_matrix = affine.matrix3.inverse().transpose();
+        let mut planes: Vec<Plane> = self
+            .planes
+            .iter()
+            .filter_map(|p| {
+                let n = Vec3::from(normal_matrix * Vec3A::from(p.normal)).try_normalize()?;
+                let on = affine.transform_point3(p.normal * p.dist);
+                Some(Plane { normal: n, dist: n.dot(on), surface: p.surface })
+            })
+            .collect();
+        let points: Vec<Vec3> = if self.points.is_empty() {
+            (0..8).map(|i| Vec3::select(bevy::math::BVec3::new(i & 1 != 0, i & 2 != 0, i & 4 != 0), self.maxs, self.mins)).collect()
+        } else {
+            self.points.clone()
+        };
+        let points: Vec<Vec3> = points.iter().map(|p| affine.transform_point3(*p)).collect();
+        let (mut mins, mut maxs) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
+        for p in &points {
+            mins = mins.min(*p);
+            maxs = maxs.max(*p);
+        }
+        let surface = self.planes.first().map_or(-1, |p| p.surface);
+        add_axial_bevels(&mut planes, mins, maxs, surface);
+        ConvexVolume { planes, mins, maxs, contents: self.contents, points }
     }
 
     /// Whether the box at `pos` overlaps the volume.

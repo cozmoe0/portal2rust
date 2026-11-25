@@ -285,6 +285,7 @@ impl Physics<'_, '_> {
                 continue;
             }
             let inv = affine.inverse();
+            let exact = quarter_turns(affine.matrix3);
             let (ls, le) = (inv.transform_point3(start), inv.transform_point3(end));
             let (lmins, lmaxs) = rotated_box(inv.matrix3.into(), mins, maxs);
             let delta = le - ls;
@@ -311,9 +312,13 @@ impl Physics<'_, '_> {
                         continue;
                     }
                 }
-                if let Some(hit) = v.sweep(ls, le, lmins, lmaxs) {
-                    let n = Vec3::from(affine.matrix3 * bevy::math::Vec3A::from(hit.plane.normal)).normalize_or_zero();
-                    consider(hit, v.contents, Some(e), n, &mut best);
+                if exact {
+                    if let Some(hit) = v.sweep(ls, le, lmins, lmaxs) {
+                        let n = Vec3::from(affine.matrix3 * bevy::math::Vec3A::from(hit.plane.normal)).normalize_or_zero();
+                        consider(hit, v.contents, Some(e), n, &mut best);
+                    }
+                } else if let Some(hit) = v.transformed(&affine).sweep(start, end, mins, maxs) {
+                    consider(hit, v.contents, Some(e), hit.plane.normal, &mut best);
                 }
             }
         }
@@ -346,10 +351,7 @@ impl Physics<'_, '_> {
             if !reach.may_touch(&affine, shape) {
                 continue;
             }
-            let inv = affine.inverse();
-            let lp = inv.transform_point3(pos);
-            let (lmins, lmaxs) = rotated_box(inv.matrix3.into(), mins, maxs);
-            if shape.volumes.iter().any(|v| v.contents & mask != 0 && v.overlaps_box(lp, lmins, lmaxs)) {
+            if shape.volumes.iter().any(|v| v.contents & mask != 0 && volume_overlaps_box(v, &affine, pos, mins, maxs)) {
                 out.push(Some(e));
             }
         }
@@ -362,10 +364,8 @@ impl Physics<'_, '_> {
         if !col.enabled {
             return false;
         }
-        let inv = gt.affine().inverse();
-        let lp = inv.transform_point3(pos);
-        let (lmins, lmaxs) = rotated_box(inv.matrix3.into(), mins, maxs);
-        col.shape.volumes.iter().any(|v| v.overlaps_box(lp, lmins, lmaxs))
+        let affine = gt.affine();
+        col.shape.volumes.iter().any(|v| volume_overlaps_box(v, &affine, pos, mins, maxs))
     }
 }
 
@@ -413,6 +413,28 @@ fn is_similarity(m: Mat3) -> bool {
 }
 
 /// Axis-aligned bounds of a box after rotating it by `m`.
+/// Whether a turn only swaps and flips axes, under which a box stays the
+/// same box and tracing in the entity's own space is exact.
+fn quarter_turns(m: bevy::math::Mat3A) -> bool {
+    [m.x_axis, m.y_axis, m.z_axis].iter().all(|c| {
+        let a = c.abs();
+        let largest = a.max_element();
+        (largest - 1.0).abs() < 1e-4 && a.element_sum() - largest < 1e-4
+    })
+}
+
+/// Whether the world box at `pos` overlaps a volume an entity places with
+/// `affine`.
+fn volume_overlaps_box(v: &ConvexVolume, affine: &bevy::math::Affine3A, pos: Vec3, mins: Vec3, maxs: Vec3) -> bool {
+    if quarter_turns(affine.matrix3) {
+        let inv = affine.inverse();
+        let (lmins, lmaxs) = rotated_box(inv.matrix3.into(), mins, maxs);
+        v.overlaps_box(inv.transform_point3(pos), lmins, lmaxs)
+    } else {
+        v.transformed(affine).overlaps_box(pos, mins, maxs)
+    }
+}
+
 fn rotated_box(m: Mat3, mins: Vec3, maxs: Vec3) -> (Vec3, Vec3) {
     if m.abs_diff_eq(Mat3::IDENTITY, 1e-5) {
         return (mins, maxs);
@@ -492,10 +514,7 @@ mod tests {
             let ext = Vec3::new(rng.f(0.0, 16.0), rng.f(0.0, 16.0), rng.f(0.0, 36.0));
             let lift = Vec3::Z * rng.f(0.0, 36.0);
             let (mins, maxs) = (-ext + lift, ext + lift);
-            let inv = affine.inverse();
-            let (ls, le) = (inv.transform_point3(start), inv.transform_point3(end));
-            let (lmins, lmaxs) = rotated_box(inv.matrix3.into(), mins, maxs);
-            let hit = shape.volumes[0].sweep(ls, le, lmins, lmaxs).is_some();
+            let hit = shape.volumes[0].transformed(&affine).sweep(start, end, mins, maxs).is_some();
             if hit {
                 hits += 1;
                 let reach = SweepReach::new(start, end, mins, maxs);
