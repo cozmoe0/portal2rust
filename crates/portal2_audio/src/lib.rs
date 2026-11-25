@@ -235,6 +235,9 @@ pub struct Sounds {
     pub listener: Listener,
     /// Host time, seconds.
     now: f64,
+    /// Sounds stopped by other sounds' stacks skip their stop stacks (see
+    /// [`restoring`]).
+    quiet_stops: bool,
 }
 
 impl Sounds {
@@ -244,6 +247,11 @@ impl Sounds {
 
     pub fn now(&self) -> f64 {
         self.now
+    }
+
+    /// The map the sound system last reset for (its sounds stopped).
+    pub fn map(&self) -> &str {
+        &self.map
     }
 
     /// How far open a speaking entity's mouth is, measured as the engine
@@ -325,6 +333,7 @@ fn init_sounds(world: &mut World) {
         map: String::new(),
         listener: Listener { origin: Vec3::ZERO, forward: Vec3::X, right: Vec3::NEG_Y, velocity: Vec3::ZERO },
         now: 0.0,
+        quiet_stops: false,
     });
     // Keep the type in use when there is no device.
     let _ = std::mem::size_of::<OutputStream>();
@@ -412,6 +421,21 @@ pub fn stop(world: &mut World, entity: Option<Entity>, name: &str) {
     for c in sounds.channels.iter_mut().filter(|c| c.entity == entity && c.entry.eq_ignore_ascii_case(name)) {
         c.stop_at.get_or_insert(now);
     }
+}
+
+/// Runs `f` (a saved game putting its sounds back) with stops between the
+/// sounds it starts skipping their stop stacks: a music cue cut by the next
+/// one as both restart must not start its own follow-up part, since the
+/// game restores the sounds still playing, not the cues that led to them.
+pub fn restoring<R>(world: &mut World, f: impl FnOnce(&mut World) -> R) -> R {
+    if let Some(mut s) = world.get_resource_mut::<Sounds>() {
+        s.quiet_stops = true;
+    }
+    let r = f(world);
+    if let Some(mut s) = world.get_resource_mut::<Sounds>() {
+        s.quiet_stops = false;
+    }
+    r
 }
 
 pub fn stop_channel(world: &mut World, id: u64) {
@@ -635,8 +659,12 @@ impl Sounds {
             match e {
                 ops::Effect::Stop(ids) => {
                     let now = self.now;
+                    let quiet = self.quiet_stops;
                     for c in self.channels.iter_mut().filter(|c| ids.contains(&c.id)) {
                         c.stop_at.get_or_insert(now);
+                        if quiet {
+                            c.stop = None;
+                        }
                     }
                 }
                 ops::Effect::Start { entry, delay } => {
@@ -766,6 +794,15 @@ fn update_channels(world: &mut World) {
                 c.chan.speakers = Some([g, g, 0.0, 0.0, 0.0, 0.0]);
                 c.chan.out_pitch = Some(c.chan.pitch);
                 c.chan.mixlayer_trigger = 1.0;
+            }
+        }
+        // A stack that stopped its own sound (`stop_this_entry`) runs the
+        // stop stack now, as stopping a sound does.
+        if std::mem::take(&mut c.chan.stop_self) && c.stop_at.is_none() {
+            c.stop_at = Some(now);
+            c.chan.stop_elapsed = 1e-4;
+            if let Some((stack, mut inst)) = c.stop.take() {
+                stack.run(&mut inst, &mut c.chan, &mut env);
             }
         }
         all_effects.extend(std::mem::take(&mut env.effects).into_iter().map(|e| (e, c.entity, c.origin)));

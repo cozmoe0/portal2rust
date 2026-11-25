@@ -2,8 +2,10 @@
 //! `StartSound` and loops `MoveSound` while it moves, with the pitch rising
 //! from `MoveSoundMinPitch` towards `MoveSoundMaxPitch` as the speed nears
 //! 1000 units/s, and plays `StopSound` when it stops. Doors and
-//! `func_movelinear` play `noise1` when they start moving (kept looping with
-//! `loopmovesound`) and `noise2` when they arrive.
+//! `func_movelinear` play `noise1` when they start moving and stop it when
+//! they arrive, playing `noise2` (`loopmovesound` only restarts a move sound
+//! that ends on its own, so a looping wave such as `World.GrinderLp` on
+//! `sp_a2_core`'s stalemate doors must still be stopped).
 
 use bevy::prelude::*;
 
@@ -69,8 +71,15 @@ pub fn motion_sounds(world: &mut World) {
             (false, true) => {
                 stop_channel(world, e);
                 let id = key(&me, "noise1").and_then(|s| portal2_audio::emit(world, &s, Emit { entity: Some(e), ..default() }));
-                let looping = me.get_f32("loopmovesound").unwrap_or(0.0) != 0.0;
-                set_channel(world, e, if looping { id } else { None });
+                set_channel(world, e, id);
+            }
+            // `loopmovesound` starts a move sound again once it has ended.
+            (true, true) if me.get_f32("loopmovesound").unwrap_or(0.0) != 0.0 => {
+                let ended = world.get::<MotionSound>(e).and_then(|m| m.channel).is_some_and(|id| !portal2_audio::is_playing(world, id));
+                if ended {
+                    let id = key(&me, "noise1").and_then(|s| portal2_audio::emit(world, &s, Emit { entity: Some(e), ..default() }));
+                    set_channel(world, e, id);
+                }
             }
             (true, false) => {
                 stop_channel(world, e);

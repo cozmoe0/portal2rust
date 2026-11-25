@@ -100,6 +100,10 @@ their parameters and the way the stacks use them: `calc_source_distance`
 `math_speakers` (per-speaker `math_float`), `iterate_merge_speakers` (one
 source), `sys_stop_entries` (other playing sounds matching entry name or
 substring, entity and channel; the oldest beyond `input_max_entries` stop;
+with `stop_this_entry` it stops its own sound instead, running the stop
+stack: `update_stop_at_time` ends a looping music part after
+`usat_stop_time` seconds and its stop stack starts the next part, e.g.
+`music.sp_a2_core_b3.3` after 11 s into `music.sp_a2_core_b3.4`;
 `match_entry` `NONE` matches nothing), `sys_start_entry`,
 `sys_block_entries`, `sys_mixlayer`, `game_view_info`,
 `calc_angles_facing`, `math_logic_switch`, opvars, `get_map_name`,
@@ -144,6 +148,24 @@ Spawnflags 1 play everywhere (level 0), 16 start silent, 32 not looped.
 looping ambient or restarts a one-shot, `StopSound`, `ToggleSound`, `Volume`
 (0–10), `Pitch`, `FadeIn` and `FadeOut` (seconds). These follow the Source
 SDK's behaviour; this build's details were not traced.
+
+Saved games bring back the sounds still playing, not every looping ambient
+ever started. Measured with `snd_show 1` in `sp_a2_core`'s stalemate room:
+before `save` and after `load` the only music is `sp_a2_core_b6`, though
+`b3_2` and `b4` had been played earlier (each music cue's start stack stops
+the others, leaving their ambients active, so a later `PlaySound` on them
+does nothing). The player's soundscape also carries over a load, wherever
+the player stands.
+
+## Brush movers
+
+`func_door` and `func_movelinear` play `noise1` on `CHAN_STATIC` when they
+start moving and stop it by name when they arrive, then play `noise2`
+(Source SDK `CBaseDoor::StartMovingSound` / `StopMovingSound`).
+`loopmovesound` only re-emits a move sound that ends on its own after its
+duration; a looping wave such as `World.GrinderLp` (`sp_a2_core`'s
+stalemate doors) or `World.RotatingWheatleyPanelTravelLp` (its core
+receptacle movers) loops by itself and is still stopped on arrival.
 
 ## Code-side sound names
 

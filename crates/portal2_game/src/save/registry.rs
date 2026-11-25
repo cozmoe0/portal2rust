@@ -80,6 +80,7 @@ pub fn register_all(r: &mut SaveRegistry) {
     r.resource::<logic::GlobalStates>("global_states");
     r.resource::<detectors::SpeedMod>("speed_mod");
     r.resource::<detectors::PlayerFog>("player_fog");
+    r.resource::<soundscape::HeardSoundscape>("heard_soundscape");
     templates::register_save_resources(r);
     r.resource::<crate::portals::gun::PortalGun>("portal_gun");
     r.resource::<crate::screen::ScreenFade>("screen_fade");

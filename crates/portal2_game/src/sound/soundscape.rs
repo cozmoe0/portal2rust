@@ -5,6 +5,10 @@
 //! change the new soundscape's looping sounds fade in over its `fadetime`
 //! while the old ones fade out, its random sounds start their timers, and its
 //! `soundmixer` (or `Default_Mix`) becomes the active mixer.
+//!
+//! The soundscape the player hears is part of a saved game (the game keeps
+//! it in the player's audio state), so a loaded save resumes it even where
+//! no soundscape is in range.
 
 use bevy::prelude::*;
 use portal2_core::rng::random_range;
@@ -25,7 +29,7 @@ const DEFAULT_FADE: f32 = 3.0;
 const RANDOM_DISTANCE: (f32, f32) = (180.0, 600.0);
 
 pub fn register(app: &mut App) {
-    app.init_resource::<SoundscapeState>();
+    app.init_resource::<SoundscapeState>().init_resource::<HeardSoundscape>().add_systems(PreUpdate, reset_on_load);
     let world = app.world_mut();
     {
         let mut s = world.resource_mut::<SpawnHandlers>();
@@ -110,6 +114,22 @@ struct Playing {
     fade: f32,
     target: f32,
     rate: f32,
+}
+
+/// The soundscape the player hears, as saved games keep it.
+#[derive(Resource, Default, Clone, serde::Serialize, serde::Deserialize)]
+pub struct HeardSoundscape {
+    #[serde(with = "portal2_core::save::ids::opt_entity")]
+    current: Option<Entity>,
+}
+
+impl portal2_core::save::Restore for HeardSoundscape {}
+
+/// A new map (or a loaded save) starts from silence: the old sounds are gone.
+fn reset_on_load(mut loaded: MessageReader<portal2_world::MapLoaded>, mut state: ResMut<SoundscapeState>) {
+    if loaded.read().count() > 0 {
+        *state = SoundscapeState::default();
+    }
 }
 
 #[derive(Resource, Default)]
@@ -227,9 +247,23 @@ pub fn update_soundscapes(world: &mut World) {
     if state.map != map {
         state = SoundscapeState { map, ..default() };
     }
+    // Resume the soundscape a loaded save was hearing, once the sound
+    // system has reset for this map (that stops every sound).
+    if state.current.is_none()
+        && world.resource::<Sounds>().map() == state.map
+        && world.resource::<EntityRegistry>().player.is_some()
+        && let Some(e) = world.resource::<HeardSoundscape>().current
+        && world.get::<SoundscapeEnt>(e).is_some_and(|s| s.enabled)
+    {
+        start(world, &mut state, e, now);
+    }
     if now >= state.next_check {
         state.next_check = now + CHECK_PERIOD;
         choose(world, &mut state, now);
+    }
+    // Until the resumed one starts, keep what the save said.
+    if state.current.is_some() {
+        world.resource_mut::<HeardSoundscape>().current = state.current;
     }
     // Fades.
     for p in state.loops.iter_mut() {
@@ -315,8 +349,15 @@ fn choose(world: &mut World, state: &mut SoundscapeState, now: f64) {
     if current == state.current || current.is_none() {
         return;
     }
-    state.current = current;
-    let Some((_, _, ent)) = candidates.into_iter().find(|(e, _, _)| Some(*e) == current) else { return };
+    if let Some(e) = current {
+        start(world, state, e, now);
+    }
+}
+
+/// Makes `e` the soundscape heard: its loops fade in, the old ones fade out.
+fn start(world: &mut World, state: &mut SoundscapeState, e: Entity, now: f64) {
+    let Some(ent) = world.get::<SoundscapeEnt>(e).cloned() else { return };
+    state.current = Some(e);
     let registry = world.resource::<EntityRegistry>();
     let targets: Vec<Option<Entity>> =
         ent.positions.iter().map(|p| p.as_ref().and_then(|n| registry.by_name.get(n).and_then(|l| l.first()).copied())).collect();

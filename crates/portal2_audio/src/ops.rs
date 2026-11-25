@@ -418,6 +418,9 @@ pub struct Chan {
     pub stop_hold: Option<bool>,
     pub mixlayer_trigger: f32,
     pub block_start: bool,
+    /// Set by `sys_stop_entries` with `stop_this_entry`: the sound stops
+    /// itself (running its stop stack).
+    pub stop_self: bool,
     pub position: Option<Vec3>,
 }
 
@@ -739,6 +742,9 @@ impl Stack {
                     out[1][0] = chan.sound_elapsed;
                     out[2][0] = chan.stop_elapsed;
                     out[3][0] = chan.duration;
+                }
+                Kind::StopEntries if op.flag("stop_this_entry", false) => {
+                    chan.stop_self = true;
                 }
                 Kind::StopEntries => {
                     let max = f("input_max_entries", 0.0, inst).max(0.0) as usize;
@@ -1065,5 +1071,56 @@ mod install_tests {
         };
         stack.run(&mut inst, &mut chan, &mut env);
         assert!(chan.speakers.is_some_and(|s| s[0] > 0.1 && s[1] > 0.1), "{:?}", chan.speakers);
+    }
+
+    /// A looping music part on `update_stop_at_time` (`sp_a2_core`'s
+    /// `music.sp_a2_core_b3.3`, stop time 11 s) stops itself once it has
+    /// played that long, and its stop stack starts the next part (skipped
+    /// without an install).
+    #[test]
+    fn music_part_stops_at_its_time() {
+        let Some(root) = GameFileSystem::find_install() else { return };
+        let Ok(fs) = GameFileSystem::portal2(root) else { return };
+        let scripts = SoundScripts::load(&fs).unwrap();
+        let lib = Library::load(&fs);
+        let mut mix = MixData::load(&fs);
+        mix.update_layers(false);
+        let entry = scripts.get("music.sp_a2_core_b3.3").unwrap();
+        let update = lib.compile(StackKind::Update, entry.operator_stacks.as_ref(), Some("update_default")).unwrap();
+        let stop = lib.compile(StackKind::Stop, entry.operator_stacks.as_ref(), None).unwrap();
+        let mut inst = update.instance();
+        let mut chan = Chan { entry: entry.name.clone(), volume: 0.7, level: 0.0, pitch: 1.0, ..Default::default() };
+        let listener = Listener { origin: Vec3::ZERO, forward: Vec3::X, right: Vec3::NEG_Y, velocity: Vec3::ZERO };
+        let cvar = |n: &str| match n {
+            "snd_gain" | "snd_musicvolume" | "snd_mixer_master_level" | "snd_gain_max" => 1.0,
+            "snd_refdist" => 36.0,
+            _ => 0.0,
+        };
+        let opvars = HashMap::new();
+        let mut env = Env {
+            listener: &listener,
+            mix: &mix,
+            cvar: &cvar,
+            opvars: &opvars,
+            others: &[],
+            now: 1.0,
+            map: "",
+            speaker_mode: 0,
+            effects: Vec::new(),
+        };
+        chan.entry_elapsed = 10.0;
+        update.run(&mut inst, &mut chan, &mut env);
+        assert!(!chan.stop_self, "stopped before its time");
+        chan.entry_elapsed = 11.5;
+        update.run(&mut inst, &mut chan, &mut env);
+        assert!(chan.stop_self, "kept playing past its stop time");
+        let mut stop_inst = stop.instance();
+        chan.stop_elapsed = 1e-4;
+        stop.run(&mut stop_inst, &mut chan, &mut env);
+        assert!(
+            env.effects.iter().any(|e| matches!(e, Effect::Start { entry, .. } if entry.eq_ignore_ascii_case("music.sp_a2_core_b3.4"))),
+            "{:?}",
+            env.effects
+        );
     }
 }

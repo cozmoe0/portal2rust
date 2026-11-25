@@ -18,7 +18,7 @@ const SF_START_SILENT: u32 = 16;
 const SF_NOT_LOOPING: u32 = 32;
 
 pub fn register(app: &mut App) {
-    app.add_systems(Update, fade_ambients);
+    app.add_systems(Update, (fade_ambients, track_audible).chain());
     let world = app.world_mut();
     world.resource_mut::<SpawnHandlers>().register("ambient_generic", spawn);
     world.resource_mut::<InputHandlers>().register("ambient_generic", input);
@@ -41,6 +41,13 @@ pub struct Ambient {
     /// Playing in a restored saved game; its sound starts again.
     #[serde(skip)]
     resume: bool,
+    /// Its sound is still heard. An active looping ambient whose sound
+    /// another entry's stack stopped (one music cue cutting the last) stays
+    /// active, so `PlaySound` still does nothing, but a saved game does not
+    /// bring that sound back: the game restores only sounds still playing.
+    /// `None` in saves from before this was kept.
+    #[serde(default)]
+    audible: Option<bool>,
     /// Volume factor and its ramp (per second, negative fades out).
     fade: f32,
     fade_rate: f32,
@@ -67,6 +74,7 @@ fn spawn(world: &mut World, e: Entity) {
         channel: None,
         pending: looping && !me.has_flag(SF_START_SILENT),
         resume: false,
+        audible: Some(false),
         fade: 1.0,
         fade_rate: 0.0,
     });
@@ -76,13 +84,15 @@ fn spawn(world: &mut World, e: Entity) {
 /// been reset.
 pub fn start_pending(world: &mut World) {
     let resumed: Vec<Entity> = world.query::<(Entity, &Ambient)>().iter(world).filter(|(_, a)| a.resume).map(|(e, _)| e).collect();
-    for e in resumed {
-        let id = play(world, e);
-        if let Some(mut a) = world.get_mut::<Ambient>(e) {
-            a.resume = false;
-            a.channel = id;
+    portal2_audio::restoring(world, |world| {
+        for e in resumed {
+            let id = play(world, e);
+            if let Some(mut a) = world.get_mut::<Ambient>(e) {
+                a.resume = false;
+                a.channel = id;
+            }
         }
-    }
+    });
     let pending: Vec<Entity> = world.query::<(Entity, &Ambient)>().iter(world).filter(|(_, a)| a.pending).map(|(e, _)| e).collect();
     for e in pending {
         if let Some(mut a) = world.get_mut::<Ambient>(e) {
@@ -219,11 +229,29 @@ fn fade_ambients(world: &mut World) {
     }
 }
 
+/// Notes which ambients are still heard, for saved games.
+fn track_audible(world: &mut World) {
+    let channels: Vec<(Entity, Option<u64>, Option<bool>)> =
+        world.query::<(Entity, &Ambient)>().iter(world).map(|(e, a)| (e, a.channel, a.audible)).collect();
+    for (e, channel, was) in channels {
+        let now = Some(channel.is_some_and(|id| portal2_audio::is_playing(world, id)));
+        if now != was
+            && let Some(mut a) = world.get_mut::<Ambient>(e)
+        {
+            a.audible = now;
+        }
+    }
+}
+
 impl portal2_core::save::Restore for Ambient {
     fn keep(&mut self, live: Self) {
         self.channel = live.channel;
-        // A looping sound that was playing starts again.
-        self.resume = self.active && self.channel.is_none();
+        // A looping sound that was still playing starts again. Older saves
+        // do not say; there every active one but the music cues does (a
+        // cue that was cut long ago would otherwise come back, and the next
+        // cue starts the music again).
+        let audible = self.audible.unwrap_or_else(|| !self.sound.to_ascii_lowercase().starts_with("music."));
+        self.resume = self.active && audible && self.channel.is_none();
     }
 }
 
