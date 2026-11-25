@@ -9,7 +9,8 @@ import bevy_pbr::render::mesh_functions::get_world_from_local;
 struct BeamParams {
     // rgb: colour (linear, brightness included)
     color: vec4<f32>,
-    // x: length, y: half width at the far end
+    // x: length, y: half width at the far end, w: length it shades out
+    // over (FBEAM_SHADEOUT; 0 for none)
     shape: vec4<f32>,
 }
 
@@ -61,6 +62,9 @@ fn fragment(in: BeamVertexOutput) -> @location(0) vec4<f32> {
     }
     let tex = textureSample(base_tex, base_samp, in.uv);
     var c = tex.rgb * beam.color.rgb * in.fade * view.exposure;
+    if beam.shape.w > 0.0 {
+        c = c * saturate(1.0 - in.uv.y * beam.shape.x / beam.shape.w);
+    }
     if fog.mode == 1u {
         let forward = -view.world_from_view[2].xyz;
         let depth = dot(in.world_position - view.world_position, forward);

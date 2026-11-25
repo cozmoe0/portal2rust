@@ -116,8 +116,15 @@ descriptions are our own; the code in `crates/portal2` is written from them.
   `beam_spotlight`), `maxspeed` 100.
 - `beam_spotlight` spawn flags: 1 on, 2 no dynamic light, 4 rotation on,
   8 reverse, 16 / 32 rotate about X / Y instead of Z.
-- How bright the beam and halo are and the exact halo fade were not traced;
-  ours are matched by eye.
+- A `point_spotlight` makes its beam (server.dll `sub_10208480`) with
+  brightness 64 of 255, flags `FBEAM_SHADEOUT | FBEAM_NOTILE`, halo scale 60
+  and its width capped at 102.3. Each update the beam runs to where a
+  brush-only trace along it stops (up to twice `SpotlightLength`) and fades
+  out over that length, at most `SpotlightLength` (the SDK's
+  `SpotlightUpdate`). In `sp_a2_core`'s stalemate room this leaves the beam
+  over the button too faint to see, as in the game.
+- How bright the halo and `beam_spotlight`'s beam are and the exact halo
+  fade were not traced; ours are matched by eye.
 
 ## Water and goo
 

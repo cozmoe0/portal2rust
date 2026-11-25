@@ -10,7 +10,9 @@
 //! light. `beam_spotlight` turns at `maxspeed` degrees per second about its
 //! local Z axis (X or Y with spawn flags 16 / 32, reversed with 8) while its
 //! rotation is on (spawn flag 4, `Start` / `Stop`). Spawn flag 1 starts the
-//! light on. Colours are `rendercolor` × `HDRColorScale`.
+//! light on. Colours are `rendercolor` × `HDRColorScale`; a `point_spotlight`
+//! draws its beam at brightness 64 of 255, running to what it hits and
+//! fading out along it.
 
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, MeshVertexBufferLayoutRef, PrimitiveTopology};
@@ -33,6 +35,9 @@ const BEAM_MATERIAL: &str = "sprites/glow_test02.vmt";
 const HALO_MATERIAL: &str = "sprites/light_glow03.vmt";
 /// The engine's widest beam.
 const MAX_WIDTH: f32 = 102.3;
+/// A `point_spotlight` makes its beam with brightness 64 of 255 and flags
+/// `FBEAM_SHADEOUT | FBEAM_NOTILE` (server.dll `sub_10208480`).
+const POINT_BEAM_BRIGHTNESS: f32 = 64.0 / 255.0;
 const DEFAULT_HALO_SCALE: f32 = 60.0;
 
 #[derive(Clone, Copy, Debug, Default, ShaderType)]
@@ -96,6 +101,12 @@ pub struct Spotlight {
     pub beam: Option<Entity>,
     #[serde(skip)]
     pub halo: Option<Entity>,
+    /// A `point_spotlight`'s beam runs to what it hits (up to twice
+    /// `SpotlightLength`) and fades out along it.
+    #[serde(default)]
+    pub reaches: bool,
+    #[serde(default)]
+    pub max_length: f32,
 }
 
 impl portal2_core::save::Restore for Spotlight {
@@ -160,8 +171,9 @@ fn spawn_spotlight(world: &mut World, e: Entity) {
             load_sprite_source(&fs, &mut textures, &mut images, HALO_MATERIAL),
         )
     });
+    let (beam_color, shade_out) = if beam_spotlight { (color, 0.0) } else { (color * POINT_BEAM_BRIGHTNESS, length) };
     let beam_material = world.resource_mut::<Assets<BeamMaterial>>().add(BeamMaterial {
-        params: BeamParams { color: color.extend(1.0), shape: Vec4::new(length, width * 0.5, 0.0, 0.0) },
+        params: BeamParams { color: beam_color.extend(1.0), shape: Vec4::new(length, width * 0.5, 0.0, shade_out) },
         base: beam_tex.base,
     });
     let halo_material = world.resource_mut::<Assets<SpriteMaterial>>().add(SpriteMaterial {
@@ -216,6 +228,8 @@ fn spawn_spotlight(world: &mut World, e: Entity) {
         speed: if beam_spotlight { speed } else { 0.0 },
         beam: Some(beam),
         halo: Some(halo),
+        reaches: !beam_spotlight,
+        max_length: length,
     });
 }
 
@@ -288,15 +302,38 @@ fn rotate_spotlights(time: Res<Time>, mut lights: Query<(&Spotlight, &mut Transf
 /// Halos are brightest seen from in front of the light and gone from behind.
 fn update_spotlights(
     main: Query<&GlobalTransform, With<MainCamera>>,
-    lights: Query<(&GlobalTransform, &Spotlight)>,
+    lights: Query<(Entity, &GlobalTransform, &Spotlight)>,
     halos: Query<&MeshMaterial3d<SpriteMaterial>>,
+    beams: Query<&MeshMaterial3d<BeamMaterial>>,
+    physics: portal2_world::collision::Physics,
     mut materials: ResMut<Assets<SpriteMaterial>>,
+    mut beam_materials: ResMut<Assets<BeamMaterial>>,
 ) {
     let Ok(eye) = main.single() else { return };
     let eye = eye.translation();
-    for (gt, s) in &lights {
+    for (e, gt, s) in &lights {
         if !s.on {
             continue;
+        }
+        // The SDK's `CPointSpotlight::SpotlightUpdate`: the beam ends where a
+        // brush trace along it stops, fading out over its length (at most
+        // `SpotlightLength`).
+        if s.reaches
+            && let Some(beam) = s.beam.and_then(|b| beams.get(b).ok())
+        {
+            let start = gt.translation();
+            let dir = gt.rotation() * Vec3::X;
+            let reach = 2.0 * s.max_length;
+            let hit =
+                physics.trace(start, start + dir * reach, Vec3::ZERO, Vec3::ZERO, portal2_world::collision::mask::SOLID_BRUSH_ONLY, &[e]);
+            let length = (hit.fraction * reach).max(1.0);
+            let fade = length.min(s.max_length);
+            if beam_materials.get(&beam.0).is_some_and(|m| (m.params.shape.x - length).abs() > 1.0 || (m.params.shape.w - fade).abs() > 1.0)
+                && let Some(mut m) = beam_materials.get_mut(&beam.0)
+            {
+                m.params.shape.x = length;
+                m.params.shape.w = fade;
+            }
         }
         let Some(halo) = s.halo.and_then(|h| halos.get(h).ok()) else { continue };
         let forward: Vec3 = gt.rotation() * Vec3::X;
