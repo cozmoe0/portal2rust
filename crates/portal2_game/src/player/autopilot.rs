@@ -239,14 +239,6 @@ fn log_state(
         let (mins, maxs) = s.hull();
         let up = Vec3::Z * 2.0;
         let tr = physics.trace(s.origin + up, s.origin + up + ahead, mins, maxs, portal2_world::collision::mask::PLAYER_SOLID, &[pe]);
-        let blocker = if tr.fraction < 1.0 {
-            match tr.entity {
-                Some(e) => entities.get(e).map(|m| m.classname.clone()).unwrap_or_else(|_| "entity".into()),
-                None => "world".into(),
-            }
-        } else {
-            "-".into()
-        };
         let describe = |e: Option<Entity>| match e {
             Some(e) => entities
                 .get(e)
@@ -254,6 +246,7 @@ fn log_state(
                 .unwrap_or_else(|_| "entity".into()),
             None => "world".into(),
         };
+        let blocker = if tr.fraction < 1.0 { describe(tr.entity) } else { "-".into() };
         let inside: Vec<String> =
             physics.overlapping(s.origin, mins, maxs, portal2_world::collision::mask::PLAYER_SOLID).into_iter().map(describe).collect();
         info!(

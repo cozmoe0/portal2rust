@@ -56,6 +56,10 @@ impl Plugin for GamePhysicsPlugin {
                 FixedPostUpdate,
                 drive_kinematic_bodies.in_set(PhysicsSystems::Prepare).after(avian3d::physics_transform::PhysicsTransformSystems::TransformToPosition),
             )
+            .add_systems(
+                FixedPostUpdate,
+                keep_followers_on_joints.after(avian3d::physics_transform::PhysicsTransformSystems::PositionToTransform),
+            )
             .add_plugins((carry::CarryPlugin, held_clone::HeldClonePlugin, portal_travel::PortalTravelPlugin, dissolve::DissolvePlugin));
         inputs::register(app);
         constraints::register(app);
@@ -525,6 +529,21 @@ fn attach_follower_bodies(
     for (e, col) in &new {
         let Some(collider) = shape_collider(&col.shape) else { continue };
         commands.entity(e).insert((RigidBody::Kinematic, collider, layers_for(layers::FOLLOWER, layers::PROP)));
+    }
+}
+
+/// Bone followers sit exactly on their joints. After each step the physics
+/// engine writes a body's place back into its transform relative to its
+/// parent, so wherever it left a follower short of its joint became a
+/// lasting offset from it: a moving model's collision fell a tick behind
+/// and stayed that far off once it stopped, and a joint that jumped (a
+/// sequence restarted part way through) left its follower where it was.
+/// `sp_a2_column_blocker`'s exit door, opened, closed and opened again
+/// within half a second as a relay flickered, stood open with its leaves'
+/// collision still across the doorway.
+fn keep_followers_on_joints(mut followers: Query<&mut Transform, With<portal2_world::collision::BoneFollower>>) {
+    for mut t in &mut followers {
+        t.set_if_neq(Transform::IDENTITY);
     }
 }
 
