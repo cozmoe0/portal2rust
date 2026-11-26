@@ -32,7 +32,9 @@ pub struct PaintBombPlugin;
 
 impl Plugin for PaintBombPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, burst_bombs.in_set(ThinkSet));
+        // After portal crossings, so a bomb that went through this tick is
+        // judged where it came out.
+        app.add_systems(FixedUpdate, burst_bombs.in_set(ThinkSet).after(crate::physics::portal_travel::teleport_props));
         app.world_mut().resource_mut::<SpawnHandlers>().register("prop_paint_bomb", spawn_bomb);
         app.world_mut().resource_mut::<crate::entities::io::InputHandlers>().register("prop_paint_bomb", bomb_input);
     }
@@ -123,12 +125,12 @@ fn burst_bombs(
             if inside {
                 if bomb.layers.is_none() {
                     bomb.layers = Some(*layers);
-                    commands.entity(e).insert(CollisionLayers::NONE);
+                    commands.entity(e).try_insert(CollisionLayers::NONE);
                 }
                 continue;
             }
             if let Some(saved) = bomb.layers.take() {
-                commands.entity(e).insert(saved);
+                commands.entity(e).try_insert(saved);
             }
             bomb.passing = false;
             bomb.last_speed = speed;
@@ -140,7 +142,7 @@ fn burst_bombs(
         // lands on the other side.
         let ahead = v.normalize_or_zero() * (speed * TICK * 1.5 + BALL_RADIUS);
         let probe = physics.trace(pos, pos + ahead, Vec3::ZERO, Vec3::ZERO, mask::SOLID_ALL, &[e]);
-        let through_portal = holes.holes.iter().any(|h| into_opening(&h.frame, pos, probe.end));
+        let through_portal = holes.holes.iter().any(|h| in_tunnel(&h.frame, pos) || into_opening(&h.frame, pos, probe.end));
         let hit = speed > BURST_SPEED && probe.hit() && !through_portal;
         let stopped = bomb.last_speed > BURST_SPEED && bomb.last_speed - speed > BURST_SPEED && !through_portal;
         bomb.last_speed = speed;
@@ -173,7 +175,8 @@ fn burst_bombs(
         sounds.write(SoundRequest::at("PaintBomb.Splat", pos));
         outputs.write(FireOutput { entity: e, output: "OnExploded".into(), activator: None, value: None });
         bomb.burst = true;
-        commands.entity(e).insert(CollisionLayers::NONE);
+        // A fizzler or `Kill` may take the bomb this tick.
+        commands.entity(e).try_insert(CollisionLayers::NONE);
     }
 }
 
@@ -186,6 +189,14 @@ fn splash_effect(paint: PaintType) -> &'static str {
         PaintType::Speed => "paint_bomb_speed",
         PaintType::Portal | PaintType::Erase => "paint_bomb_erase",
     }
+}
+
+/// Whether the bomb's centre is passing through a linked portal's opening:
+/// over it, within the ball's radius in front or anywhere in the space it
+/// cuts behind.
+fn in_tunnel(frame: &PortalFrame, pos: Vec3) -> bool {
+    let l = frame.to_local(pos);
+    l.x < BALL_RADIUS && l.x > -CARVE_DEPTH && frame.in_opening(l, 0.0)
 }
 
 /// Whether the path from `from` to `to` (on a surface) runs into a linked

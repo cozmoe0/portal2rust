@@ -9,6 +9,39 @@ import bevy_pbr::render::mesh_view_bindings::fog;
 struct BlobParams {
     // +X, -X, +Y, -Y, +Z, -Z
     ambient: array<vec4<f32>, 6>,
+    // Per linked portal: centre (w: 1 when linked), forward (w: half
+    // width), up (w: half height).
+    portals: array<vec4<f32>, 6>,
+}
+
+// How far behind a portal's plane a blob still shows (its quad hides the
+// sliver), and how deep the space behind its opening reaches.
+const CLIP_BEHIND: f32 = 0.5;
+const TUNNEL_DEPTH: f32 = 128.0;
+const RIM: f32 = 4.0;
+
+// Whether `p` lies in the space behind a linked portal's opening: what is
+// there has gone through, and shows coming out of the other portal.
+fn in_portal(p: vec3<f32>) -> bool {
+    for (var i = 0; i < 2; i++) {
+        let c = blob.portals[i * 3];
+        if c.w < 0.5 {
+            continue;
+        }
+        let f = blob.portals[i * 3 + 1];
+        let u = blob.portals[i * 3 + 2];
+        let d = p - c.xyz;
+        let x = dot(d, f.xyz);
+        if x > -CLIP_BEHIND || x < -TUNNEL_DEPTH {
+            continue;
+        }
+        let y = dot(d, cross(u.xyz, f.xyz));
+        let z = dot(d, u.xyz);
+        if abs(y) < f.w + RIM && abs(z) < u.w + RIM {
+            return true;
+        }
+    }
+    return false;
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> blob: BlobParams;
@@ -27,6 +60,9 @@ fn ambient_light(n: vec3<f32>) -> vec3<f32> {
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     // Blobs stay out of projected-texture shadow maps.
     if fog.mode == 2u {
+        discard;
+    }
+    if in_portal(in.world_position.xyz) {
         discard;
     }
     var color = vec3<f32>(1.0);

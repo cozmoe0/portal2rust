@@ -125,7 +125,7 @@ pub fn carry_through(body: bevy::ecs::query::QueryItem<'_, '_, TravelBody>, m: &
     }
 }
 
-fn teleport_props(
+pub(crate) fn teleport_props(
     portals: Res<Portals>,
     portal_query: Query<&Portal>,
     mut holding: ResMut<Holding>,

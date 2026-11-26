@@ -24,7 +24,7 @@ use portal2_core::sets::ThinkSet;
 use portal2_core::vfs::GameFs;
 use portal2_render::textures::TextureCache;
 use portal2_world::CurrentMap;
-use portal2_world::collision::portal::transfer;
+use portal2_world::collision::portal::{HALF_HEIGHT, HALF_WIDTH, PortalFrame, transfer};
 use portal2_world::collision::{Physics, mask};
 use portal2_world::paint_map::{PaintMap, PaintType, SplatSettings};
 
@@ -45,7 +45,9 @@ impl Plugin for BlobPlugin {
             .init_resource::<Blobs>()
             .add_systems(PreUpdate, clear_on_map_load.after(portal2_core::sets::LoadMapSet))
             .add_systems(FixedUpdate, (spray, move_blobs).chain().in_set(ThinkSet))
-            .add_systems(PostUpdate, draw_blobs);
+            
+            // Drawn where the bombs are now, not a frame behind.
+            .add_systems(PostUpdate, draw_blobs.after(TransformSystems::Propagate));
         let world = app.world_mut();
         world.resource_mut::<SpawnHandlers>().register("info_paint_sprayer", spawn_sprayer);
         world.resource_mut::<InputHandlers>().register("info_paint_sprayer", sprayer_input);
@@ -467,6 +469,10 @@ fn move_blobs(
 pub struct BlobParams {
     /// Ambient light from +X, -X, +Y, -Y, +Z, -Z.
     pub ambient: [Vec4; 6],
+    /// The linked portals, three rows each: centre (w 1 when linked),
+    /// forward (w half width), up (w half height). The shader drops what
+    /// lies behind an opening.
+    pub portals: [Vec4; 6],
 }
 
 /// Shiny paint blobs; colours come from the vertices.
@@ -639,7 +645,41 @@ impl DrawTargets<'_> {
 }
 
 fn ambient_params(ambient: [Vec3; 6]) -> BlobParams {
-    BlobParams { ambient: ambient.map(|a| a.extend(1.0)) }
+    BlobParams { ambient: ambient.map(|a| a.extend(1.0)), portals: [Vec4::ZERO; 6] }
+}
+
+fn portal_rows(frames: Option<&[PortalFrame; 2]>) -> [Vec4; 6] {
+    let mut rows = [Vec4::ZERO; 6];
+    if let Some(frames) = frames {
+        for (i, f) in frames.iter().enumerate() {
+            rows[i * 3] = f.center.extend(1.0);
+            rows[i * 3 + 1] = f.forward.extend(HALF_WIDTH);
+            rows[i * 3 + 2] = f.up.extend(HALF_HEIGHT);
+        }
+    }
+    rows
+}
+
+/// Blobs over a linked portal's opening, near its plane, copied through to
+/// the other portal. With the shader dropping what lies behind each
+/// opening, the surface flows out of the exit as it goes into the entrance
+/// (the game draws models partly through a portal the same way, see
+/// `crate::portals::ghosts`), instead of jumping across when a blob or bomb
+/// is moved over.
+fn through_portals(particles: &mut Vec<super::surface::Particle>, frames: &[PortalFrame; 2], surface: &super::surface::SurfaceParams) {
+    let n = particles.len();
+    for slot in 0..2 {
+        let (from, to) = (frames[slot], frames[1 - slot]);
+        let m = transfer(&from, &to);
+        for i in 0..n {
+            let p = particles[i];
+            let reach = p.radius.clamp(0.001, 1.0) * surface.box_width * surface.render_radius * 2.2 + surface.cell;
+            let l = from.to_local(p.center);
+            if l.x < reach && l.x > -reach && l.y.abs() < HALF_WIDTH && l.z.abs() < HALF_HEIGHT {
+                particles.push(super::surface::Particle { center: m.transform_point3(p.center), ..p });
+            }
+        }
+    }
 }
 
 /// One mesh per sprayer holding its blobs, and one for everything else,
@@ -649,11 +689,19 @@ fn draw_blobs(
     blobs: Res<Blobs>,
     mut sprayers: Query<(Entity, &mut PaintSprayer)>,
     bombs: Query<(Entity, &super::bomb::PaintBomb, &GlobalTransform)>,
-    (mut meshes, mut materials, handles): (ResMut<Assets<Mesh>>, ResMut<Assets<PaintBlobMaterial>>, Query<&Mesh3d>),
+    (mut meshes, mut materials, handles, material_handles): (
+        ResMut<Assets<Mesh>>,
+        ResMut<Assets<PaintBlobMaterial>>,
+        Query<&Mesh3d>,
+        Query<&MeshMaterial3d<PaintBlobMaterial>>,
+    ),
     (console, time, current): (Res<Console>, Res<Time>, Option<Res<CurrentMap>>),
     (fs, mut textures, mut images): (Res<GameFs>, ResMut<TextureCache>, ResMut<Assets<Image>>),
     (mut bomb_blobs, mut free): (Local<HashMap<Entity, BombBlobs>>, Local<FreeDraw>),
+    (portals, portal_query): (Res<crate::portals::Portals>, Query<&crate::portals::Portal>),
 ) {
+    let frames = crate::portals::linked_frames(&portals, &portal_query);
+    let rows = portal_rows(frames.as_ref());
     let envmap = textures.load(&fs, &mut images, "materials/paint/paint_envmap_hdr.vtf", false).map(|t| t.handle);
     let surface = super::surface::SurfaceParams::from_console(&console);
     let palette = Palette::new(&console);
@@ -679,6 +727,11 @@ fn draw_blobs(
         }
     }
     groups.push((spheres, free.slot.drawn));
+    if let Some(frames) = &frames {
+        for (particles, _) in &mut groups {
+            through_portals(particles, frames, &surface);
+        }
+    }
     // The surfaces are built side by side; a group with nothing to show,
     // and nothing shown before, is skipped.
     let built: Vec<Option<Mesh>> = bevy::tasks::ComputeTaskPool::get().scope(|scope| {
@@ -695,8 +748,9 @@ fn draw_blobs(
         let mut slot = DrawSlot { entity: s.draw, drawn: s.drawn };
         let env = envmap.clone();
         targets.show(&mut slot, mesh, count, &mut commands, &handles, |m| {
-            m.add(PaintBlobMaterial { params: ambient_params(ambient), envmap: env })
+            m.add(PaintBlobMaterial { params: BlobParams { portals: rows, ..ambient_params(ambient) }, envmap: env })
         });
+        set_portals(&mut targets, slot.entity, &material_handles, rows);
         s.draw = slot.entity;
         s.drawn = slot.drawn;
     }
@@ -714,14 +768,28 @@ fn draw_blobs(
     if let (Some(ambient), Some(m)) = (relight, free.material.as_ref())
         && let Some(mut mat) = targets.materials.get_mut(m)
     {
-        mat.params = ambient_params(ambient);
+        mat.params = BlobParams { portals: rows, ..ambient_params(ambient) };
     }
     let FreeDraw { slot, material, .. } = &mut *free;
     targets.show(slot, mesh, count, &mut commands, &handles, |m| {
-        let h = m.add(PaintBlobMaterial { params: ambient_params(relight.unwrap_or([Vec3::splat(0.2); 6])), envmap });
+        let h = m.add(PaintBlobMaterial {
+            params: BlobParams { portals: rows, ..ambient_params(relight.unwrap_or([Vec3::splat(0.2); 6])) },
+            envmap,
+        });
         *material = Some(h.clone());
         h
     });
+    set_portals(&mut targets, slot.entity, &material_handles, rows);
+}
+
+/// Keeps a group's material told where the portals are.
+fn set_portals(targets: &mut DrawTargets, entity: Option<Entity>, handles: &Query<&MeshMaterial3d<PaintBlobMaterial>>, rows: [Vec4; 6]) {
+    let Some(handle) = entity.and_then(|e| handles.get(e).ok()) else { return };
+    if targets.materials.get(&handle.0).is_some_and(|m| m.params.portals != rows)
+        && let Some(mut m) = targets.materials.get_mut(&handle.0)
+    {
+        m.params.portals = rows;
+    }
 }
 
 #[cfg(test)]
