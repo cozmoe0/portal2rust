@@ -12,10 +12,11 @@ use bevy::prelude::*;
 
 use std::cell::RefCell;
 
+use crate::paint::PaintedSurfaces;
 use crate::paint::power::{self, BounceCheck, GelSettings, SpeedCheck};
 use portal2_world::collision::portal::{HALF_HEIGHT, HALF_WIDTH, PortalFrame};
 use portal2_world::collision::{Physics, Trace, mask};
-use portal2_world::paint_map::{PaintMap, PaintType};
+use portal2_world::paint_map::PaintType;
 
 pub const GRAVITY: f32 = 600.0;
 pub const FRICTION: f32 = 4.0;
@@ -37,6 +38,8 @@ const AIR_BRAKE_SPEED: f32 = 150.0;
 pub const DUCK_SPEED_SCALE: f32 = 1.0 / 3.0;
 /// Surfaces steeper than this are not standable.
 pub const MIN_WALKABLE_NORMAL: f32 = 0.7;
+/// How far off a touched surface its paint is looked up.
+const GEL_PROBE_LIFT: f32 = 2.0;
 /// Faster upward motion than this means the player has left the ground.
 pub const NON_JUMP_VELOCITY: f32 = 140.0;
 pub const DUCK_TIME: f32 = 0.2;
@@ -233,8 +236,8 @@ pub struct Mover<'a, 'w, 's> {
     pub physics: &'a Physics<'w, 's>,
     pub ignore: &'a [Entity],
     pub funnel: Option<&'a Funnel>,
-    /// The map's paint and the gel settings, on maps with paint.
-    pub gels: Option<(&'a PaintMap, &'a GelSettings)>,
+    /// The paint around the player and the gel settings, on maps with paint.
+    pub gels: Option<(&'a PaintedSurfaces<'a>, &'a GelSettings)>,
     /// Surfaces touched during the tick: hull origin and surface normal.
     pub contacts: RefCell<Vec<(Vec3, Vec3)>>,
 }
@@ -332,7 +335,7 @@ impl Mover<'_, '_, '_> {
         &self,
         s: &mut MoveState,
         input: &MoveInput,
-        paint: &PaintMap,
+        paint: &PaintedSurfaces,
         g: &GelSettings,
         pre_velocity: Vec3,
         was_in_air: bool,
@@ -352,10 +355,14 @@ impl Mover<'_, '_, '_> {
         let mut bounce = None;
         let mut touching = None;
         for &(origin, n) in &contacts {
-            // The point of the hull against the surface.
+            // The point of the hull against the surface, lifted off it: on
+            // brush entities' collision the hull can rest a little inside the
+            // drawn face, and the paint sphere only sees faces it is in
+            // front of.
             let reach = n.x.abs() * half.x + n.y.abs() * half.y + n.z.abs() * half.z;
-            let point = origin + (mins + maxs) * 0.5 - n * reach + n * 0.1;
-            let ty = paint.dominant(0, point, g.detection_radius, g.min_valid_amount);
+            let point = origin + (mins + maxs) * 0.5 - n * reach + n * GEL_PROBE_LIFT;
+            let ty = paint.dominant(point, g.detection_radius, g.min_valid_amount);
+            trace!("gel at {point} (normal {n}): {ty:?}");
             touching = Some(n);
             if standing && n.z >= MIN_WALKABLE_NORMAL && ground_paint.is_none() {
                 ground_paint = ty;

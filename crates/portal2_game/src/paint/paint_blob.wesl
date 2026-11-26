@@ -69,6 +69,10 @@ const ERASE_REFRACT: f32 = 0.1;
 const ERASE_BACKGROUND_BOOST: f32 = 0.0;
 const ERASE_AMBIENT_SCALE: f32 = 0.1;
 const ERASE_BACKLIGHT_SCALE: f32 = 0.1;
+// The reflection: 0.67 × the cube map scale (c30.z) × 1/16. Cube maps
+// already come out at their stored value times c30.z, as on models, so the
+// blob's reflection is a sixteenth of what the cube map holds.
+const ENV_SCALE: f32 = 0.67 / 16.0;
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> blob: BlobParams;
 @group(constants::MATERIAL_BIND_GROUP) @binding(1) var env_tex: texture_cube<f32>;
@@ -242,7 +246,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let dim = vec3<f32>(0.8, 0.85, 1.0);
 
     // Opaque paint.
-    let env_o = textureSample(env_tex, env_samp, r_opaque).rgb * fresnel * 0.67;
+    let env_o = textureSample(env_tex, env_samp, r_opaque).rgb * fresnel * ENV_SCALE;
     let lit_o = base * ((diffuse_o * 0.82 + 0.04) * dim + ambient)
         + spec_o * PHONG_BOOST + glint_o * PHONG_BOOST2
         + rim_o * fresnel4 * OPAQUE_RIM_BOOST
@@ -256,7 +260,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     var behind = scene_behind(screen + shift * bump_xy, inside * view.exposure);
     let lum = dot(behind, vec3<f32>(0.3, 0.59, 0.11));
     behind = behind * (1.0 + lum * lum * ERASE_BACKGROUND_BOOST);
-    let env_e = textureSample(env_tex, env_samp, r_erase).rgb * fresnel * 0.67;
+    let env_e = textureSample(env_tex, env_samp, r_erase).rgb * fresnel * ENV_SCALE;
     let through = mix(inside, behind, sqrt(n_dot_v)) * base + env_e * (1.0 + diffuse_e + ambient) + spec_e * PHONG_BOOST;
     let lit_e = base * ((diffuse_e * 0.82 + 0.04) * dim + ambient)
         + glint_e * PHONG_BOOST2 + rim_e * fresnel4 * ERASE_RIM_BOOST;

@@ -227,8 +227,14 @@ in tangent space:
   ```
   base × ((diffuse × 0.82 + 0.04) × (0.8, 0.85, 1) + amb)
     + spec1 × phongboost + spec2 × phongboost2 + rim
-    + env(R) × F × 0.67 × (1 + diffuse + amb)
+    + env(R) × F × 0.67 × c30.z / 16 × (1 + diffuse + amb)
   ```
+
+  c30.z is the cube map scale. Cube maps come out at their stored value
+  times c30.z, as on models (see `refract.md`), so the reflection is a
+  sixteenth of what `paint_envmap_hdr` holds (values up to 1). Taken at
+  full strength it turned the blue blobs silvery white; the game's are a
+  flat, matte light blue.
 
 - Erase paint (`$interior 1`, `$opacitytexture`, `$fresnelwarptexture`,
   static 52):
@@ -242,7 +248,8 @@ in tangent space:
     normal-map xy).
   - The output is
     `lerp(lerp(interior, frame, sqrt(N·V)) × base + env × F × 0.67 × (1 +
-    diffuse + amb) + spec1 × 2, opaque layer, 0.082)`. In the opaque layer
+    diffuse + amb) + spec1 × 2, opaque layer, 0.082)`, with the same
+    sixteenth on the reflection. In the opaque layer
     the rim boost is 300 and the exponent 8.
 - Everything, the copied frame included, is multiplied by `cLightScale.x`
   (the tonemap scale). That is why the water reads brighter than what is
@@ -276,6 +283,12 @@ in tangent space:
 
 ## Bounce gel (player)
 
+- The gel under a touched surface is the paint within
+  `sv_paint_detection_sphere_radius` (16) of the contact point, on the
+  world and on brush entities alike (a painted `func_brush` floor bounces
+  like a painted world floor). Ours looks 2 units off the surface: on a
+  brush entity's collision the hull can rest half a unit inside the drawn
+  face, and the sphere only sees faces it is in front of.
 - `sv_press_jump_to_bounce` is 3: in the air the player bounces when
   moving into a bounce-painted surface faster than
   `trampoline_bounce_min_impact_speed` (4); on the ground only when jump

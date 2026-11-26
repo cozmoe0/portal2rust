@@ -223,6 +223,10 @@ fn pushed_by_movers(
     }
 }
 
+/// How far from the player's origin a painted brush entity can be touched:
+/// the hull's half diagonal plus the paint detection sphere, with margin.
+const GEL_REACH: f32 = 96.0;
+
 fn player_tick(
     time: Res<Time<Fixed>>,
     input: Res<PlayerInput>,
@@ -236,11 +240,14 @@ fn player_tick(
     portals: Option<Res<crate::portals::Portals>>,
     portal_query: Query<&crate::portals::Portal>,
     mut players: Query<(Entity, &mut Player, &mut Transform)>,
-    (paint, mut sounds): (Option<Res<portal2_world::paint_map::PaintMap>>, MessageWriter<portal2_audio::SoundRequest>),
+    (paint, mut sounds, brushes): (
+        Option<Res<portal2_world::paint_map::PaintMap>>,
+        MessageWriter<portal2_audio::SoundRequest>,
+        Query<(&portal2_core::entity::MapEntity, &GlobalTransform)>,
+    ),
 ) {
     let speed_scale = speed_mod.map(|s| s.0).unwrap_or(1.0);
     let gel_settings = crate::paint::power::GelSettings::from_console(&console);
-    let gels = paint.as_deref().map(|p| (p, &gel_settings));
     let dt = time.delta_secs();
     let now = time.elapsed_secs_f64();
     let held = holding.and_then(|h| h.entity);
@@ -268,6 +275,12 @@ fn player_tick(
         }
         // The carried prop never blocks its carrier.
         let ignore: Vec<Entity> = std::iter::once(e).chain(held).collect();
+        // Brush entities the player could touch this tick carry paint too.
+        let surfaces = paint.as_deref().map(|map| {
+            let reach = GEL_REACH + p.state.velocity.length() * dt;
+            crate::paint::PaintedSurfaces::near(map, &brushes, p.state.origin, reach)
+        });
+        let gels = surfaces.as_ref().map(|s| (s, &gel_settings));
         let mover = Mover { physics: &physics, ignore: &ignore, funnel: funnel.as_ref(), gels, contacts: Default::default() };
         let mut state = p.state;
         let mut move_input = input.input;

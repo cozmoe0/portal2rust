@@ -339,7 +339,9 @@ fn fire_gun(
         // Portal gel takes portals whatever the surface.
         if on_paint
             && let Some(paint) = paint.as_deref()
-            && paint.dominant(0, point + normal * 0.1, PORTAL_PAINT_RADIUS, min_paint) == Some(portal2_world::paint_map::PaintType::Portal)
+            && crate::paint::PaintedSurfaces::near(paint, entities.iter().map(|(_, me, gt, _)| (me, gt)), point, PORTAL_PAINT_RADIUS)
+                .dominant(point + normal * 0.1, PORTAL_PAINT_RADIUS, min_paint)
+                == Some(portal2_world::paint_map::PaintType::Portal)
         {
             return true;
         }
