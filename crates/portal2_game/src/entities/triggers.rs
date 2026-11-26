@@ -227,6 +227,25 @@ fn filter_named(
 /// spawnflags that admit NPCs and physics objects.
 const SF_NPCS: u32 = 2;
 const SF_PHYSICS: u32 = 8;
+
+/// Whether a trigger lets an object (not the player) in, as the engine's
+/// PassesTriggerFilters decides: its spawnflags admit physics objects or
+/// everything (or NPCs, for an `npc_` class), and its filter passes.
+/// `sp_a3_bomb_flings`' fizzlers (spawnflags 4097, players only) clear
+/// portals but let the paint bombs through.
+pub(crate) fn admits_object(
+    trigger: &Trigger,
+    trigger_entity: &MapEntity,
+    object: Entity,
+    registry: &EntityRegistry,
+    entities: &Query<&MapEntity>,
+    held: Option<Entity>,
+) -> bool {
+    let flags = trigger_entity.spawnflags();
+    let is_npc = entities.get(object).is_ok_and(|m| m.classname.starts_with("npc_"));
+    let admitted = flags & (SF_PHYSICS | SF_EVERYTHING) != 0 || (is_npc && flags & SF_NPCS != 0);
+    admitted && passes_filter(&trigger.filter, object, false, registry, entities, held)
+}
 /// trigger_teleport: keep the toucher's view angles.
 const SF_PRESERVE_ANGLES: u32 = 32;
 

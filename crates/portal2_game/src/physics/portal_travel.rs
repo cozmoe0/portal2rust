@@ -194,13 +194,18 @@ fn fizzle_props(
     physics: Physics,
     cleansers: Query<(Entity, &Trigger)>,
     props: Query<(Entity, &TraceCollider, &GlobalTransform), With<PhysicsProp>>,
+    (entities, registry, holding): (Query<&portal2_core::entity::MapEntity>, Res<portal2_core::entity::EntityRegistry>, Res<Holding>),
     mut commands: Commands,
 ) {
     for (te, trig) in &cleansers {
         if !trig.enabled || !matches!(trig.kind, TriggerKind::Cleanser) {
             continue;
         }
+        let Ok(me) = entities.get(te) else { continue };
         for (pe, col, gt) in &props {
+            if !crate::entities::triggers::admits_object(trig, me, pe, &registry, &entities, holding.entity) {
+                continue;
+            }
             let t = gt.compute_transform();
             let (mins, maxs) = super::world_bounds(&col.shape, t.translation, t.rotation);
             let center = (mins + maxs) * 0.5;

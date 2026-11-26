@@ -334,6 +334,17 @@ no field). Other props have no `Dissolve` input at all (only
 `env_entity_dissolver`, the cube, `prop_exploding_futbol` and
 `prop_hot_potato` declare one).
 
+- A field fizzles only what passes its trigger filters
+  (PassesTriggerFilters, via the touch at server.dll `sub_10397930`):
+  - objects need spawnflag 8 (physics) or 64 (everything), or 2 for NPCs;
+  - the field's filter entity must pass.
+
+  Most fields are 9 or 65. The 4097 fields (players only, 17 in the
+  campaign) take the player's portals but let props through:
+  `sp_a3_bomb_flings` flings paint bombs through three of them to
+  `catapult_target`. Checked in the game (2026-11-26): the bomb comes out of
+  the 50° panel's portal at 883 u/s, the unnamed catapult re-aims it ("needed
+  between 781.3 and 1128.5"), and it flies past the field.
 - Classes in a fixed list never fizzle: `func_door`,
   `func_door_rotating`, `prop_door_rotating`, `func_tracktrain`,
   `env_ghostanimating`, `physicsshadowclone`, `prop_energy_ball`,
