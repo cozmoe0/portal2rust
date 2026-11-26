@@ -98,6 +98,13 @@ pub const DEFAULTS: &[(&str, &str, u32)] = &[
     ("paintbomb_draw_max_blob_radius", "0.8", 0),
     ("paintbomb_draw_blob_speed_min", "50.0f", 0),
     ("paintbomb_draw_blob_speed_max", "80.0f", 0),
+    // Splashes where blobs land (client.dll).
+    ("draw_paint_splat_particles", "1", 0x2000),
+    ("cl_group_paint_impact_effects", "1", 0x2000),
+    ("paint_impact_particles_distance_threshold", "20.0f", 0x2000),
+    ("paint_impact_particles_duration", "0.2f", 0x2000),
+    ("paint_min_impact_particles", "20", 0x2000),
+    ("paint_max_impact_particles", "50", 0x2000),
     ("bounce_paint_min_speed", "500.0f", 0x6000),
     ("bounce_paint_wall_jump_upward_speed", "275", 0x6000),
     ("sv_wall_bounce_trade", "0.73", 0x6000),

@@ -2,9 +2,10 @@
 //! fall under gravity with a little drag, 60 steps a second, and paint a
 //! sphere where they hit (the world and any brush entity it reaches), or
 //! slide along the surface first when they streak. Each sprayer draws its
-//! live blobs as one merged liquid surface (`super::surface`) lit by the
-//! ambient light at the nozzle; bombs draw the same way, from twenty blobs
-//! bouncing about inside them. Rules from the game's (docs/re/paint.md).
+//! live blobs as one merged liquid surface (`super::surface`), lit as a
+//! model at its `light_position_name` (`paint_blob.wesl`); bombs draw the
+//! same way, from twenty blobs bouncing about inside them. Rules from the
+//! game's (docs/re/paint.md).
 
 use bevy::asset::RenderAssetUsages;
 use bevy::math::Affine3A;
@@ -22,6 +23,8 @@ use portal2_core::console::Console;
 use portal2_core::entity::MapEntity;
 use portal2_core::sets::ThinkSet;
 use portal2_core::vfs::GameFs;
+use portal2_render::models::lighting::MAX_MODEL_LIGHTS;
+use portal2_render::source_material::ModelLight;
 use portal2_render::textures::TextureCache;
 use portal2_world::CurrentMap;
 use portal2_world::collision::portal::{HALF_HEIGHT, HALF_WIDTH, PortalFrame, transfer};
@@ -52,6 +55,7 @@ impl Plugin for BlobPlugin {
         world.resource_mut::<SpawnHandlers>().register("info_paint_sprayer", spawn_sprayer);
         world.resource_mut::<InputHandlers>().register("info_paint_sprayer", sprayer_input);
         world.resource_mut::<InputHandlers>().register("paint_sphere", paint_sphere_input);
+        world.resource_mut::<InputHandlers>().register_generic(remove_paint_input);
     }
 }
 
@@ -106,9 +110,9 @@ pub struct PaintSprayer {
     draw_only: bool,
     accumulated: f32,
     rng: Rng,
-    /// Ambient cube at the nozzle (+X, -X, +Y, -Y, +Z, -Z) for drawing.
+    /// Light the blobs are drawn in.
     #[serde(skip)]
-    ambient: [Vec3; 6],
+    lighting: BlobLighting,
     #[serde(skip)]
     draw: Option<Entity>,
     /// Blobs in the drawn mesh.
@@ -118,7 +122,7 @@ pub struct PaintSprayer {
 
 impl portal2_core::save::Restore for PaintSprayer {
     fn keep(&mut self, live: Self) {
-        self.ambient = live.ambient;
+        self.lighting = live.lighting;
         self.draw = live.draw;
         self.drawn = live.drawn;
     }
@@ -172,20 +176,87 @@ impl Blob {
 pub struct Blobs {
     pub list: Vec<Blob>,
     noise_budget: f32,
+    /// Each sprayer's recent splash effects: where, and how long they
+    /// still count for grouping.
+    splashes: HashMap<Entity, Vec<(Vec3, f32)>>,
+}
+
+/// The splash effect a blob of `paint` makes where it lands
+/// (`paint_splat_bounce_01`, `_stick_01`, `_speed_01`; portal paint and
+/// erasers use `paint_splat_erase_01`).
+fn splat_effect(paint: PaintType) -> &'static str {
+    match paint {
+        PaintType::Bounce => "paint_splat_bounce_01",
+        PaintType::Reflect => "paint_splat_stick_01",
+        PaintType::Speed => "paint_splat_speed_01",
+        PaintType::Portal | PaintType::Erase => "paint_splat_erase_01",
+    }
+}
+
+/// Whether a landing blob gets its own splash (the client's grouping,
+/// `cl_group_paint_impact_effects`): always while its sprayer has fewer than
+/// `paint_min_impact_particles` recent splashes, never at
+/// `paint_max_impact_particles`, and in between only at least
+/// `paint_impact_particles_distance_threshold` from each recent one.
+fn splash_allowed(recent: &[(Vec3, f32)], at: Vec3, console: &Console) -> bool {
+    if !console.bool("cl_group_paint_impact_effects") {
+        return true;
+    }
+    let n = recent.len() as i32;
+    if n < console.i32("paint_min_impact_particles") {
+        return true;
+    }
+    if n >= console.i32("paint_max_impact_particles") {
+        return false;
+    }
+    let d = console.f32("paint_impact_particles_distance_threshold");
+    recent.iter().all(|(p, _)| p.distance_squared(at) >= d * d)
 }
 
 fn clear_on_map_load(mut loaded: MessageReader<portal2_world::MapLoaded>, mut blobs: ResMut<Blobs>) {
     if loaded.read().last().is_some() {
+        blobs.splashes.clear();
         blobs.list.clear();
+    }
+}
+
+/// Light a group of blobs is drawn in: the ambient cube and strongest few
+/// world lights at a point, as for a model.
+#[derive(Clone, Copy)]
+struct BlobLighting {
+    ambient: [Vec3; 6],
+    lights: [ModelLight; MAX_MODEL_LIGHTS],
+    count: usize,
+}
+
+impl Default for BlobLighting {
+    fn default() -> Self {
+        Self { ambient: [Vec3::splat(0.2); 6], lights: [ModelLight::default(); MAX_MODEL_LIGHTS], count: 0 }
+    }
+}
+
+impl BlobLighting {
+    fn at(bsp: &source_formats::bsp::Bsp, p: Vec3) -> Self {
+        let m = portal2_render::models::lighting::compute(bsp, p);
+        let mut lights = [ModelLight::default(); MAX_MODEL_LIGHTS];
+        let count = m.lights.len().min(MAX_MODEL_LIGHTS);
+        lights[..count].copy_from_slice(&m.lights[..count]);
+        Self { ambient: m.ambient, lights, count }
     }
 }
 
 fn spawn_sprayer(world: &mut World, e: Entity) {
     let Some(me) = world.get::<MapEntity>(e).cloned() else { return };
-    let ambient = world
-        .get_resource::<CurrentMap>()
-        .map(|m| portal2_render::models::lighting::compute(&m.bsp, me.origin()).ambient)
-        .unwrap_or([Vec3::splat(0.2); 6]);
+    // The game lights a sprayer's blobs where its `light_position_name`
+    // entity is (the client's lighting origin, `m_vLightPosition`), at the
+    // nozzle without one.
+    let light_at = me
+        .get("light_position_name")
+        .filter(|n| !n.is_empty())
+        .and_then(|n| world.resource::<portal2_core::entity::EntityRegistry>().first_named(n))
+        .and_then(|t| world.get::<MapEntity>(t).map(|m| m.origin()))
+        .unwrap_or_else(|| me.origin());
+    let lighting = world.get_resource::<CurrentMap>().map(|m| BlobLighting::at(&m.bsp, light_at)).unwrap_or_default();
     world.entity_mut(e).insert(PaintSprayer {
         active: me.get_bool("start_active"),
         paint: PaintType::from_index(me.get_i32("painttype").unwrap_or(0)).unwrap_or(PaintType::Bounce),
@@ -204,7 +275,7 @@ fn spawn_sprayer(world: &mut World, e: Entity) {
         draw_only: me.get_bool("drawonly"),
         accumulated: 0.0,
         rng: Rng(0x9e37_79b9 ^ (me.index as u32).wrapping_mul(0x85eb_ca6b) | 1),
-        ambient,
+        lighting,
         draw: None,
         drawn: 0,
     });
@@ -252,6 +323,21 @@ fn paint_sphere_input(world: &mut World, call: &InputCall) -> bool {
                 map.paint_sphere(model, local, radius, coat, paint, &settings);
             }
         }
+    }
+    true
+}
+
+/// Any brush entity's `RemovePaint`: all paint on its model goes
+/// (CBaseEntity::InputRemovePaint, the engine's `RemoveAllPaint`).
+/// sp_a3_crazy_box's cleansing gel floor is washed this way when the gel
+/// comes back on.
+fn remove_paint_input(world: &mut World, call: &InputCall) -> bool {
+    if call.input != "removepaint" {
+        return false;
+    }
+    let Some(model) = world.get::<MapEntity>(call.target).and_then(|m| m.brush_model()).filter(|&m| m > 0) else { return true };
+    if let Some(mut map) = world.get_resource_mut::<PaintMap>() {
+        map.clear_model(model);
     }
     true
 }
@@ -324,7 +410,7 @@ fn new_blob(s: &mut PaintSprayer, e: Entity, gt: &GlobalTransform) -> Blob {
 
 /// Where a blob paints: a sphere just off the surface, on the world and
 /// on every brush entity it reaches.
-fn paint_impact(
+pub(super) fn paint_impact(
     map: &mut PaintMap,
     brushes: &Query<(&MapEntity, &GlobalTransform)>,
     bsp: Option<&source_formats::bsp::Bsp>,
@@ -350,6 +436,7 @@ fn paint_impact(
 }
 
 fn move_blobs(
+    mut commands: Commands,
     mut blobs: ResMut<Blobs>,
     map: Option<ResMut<PaintMap>>,
     physics: Physics,
@@ -377,6 +464,16 @@ fn move_blobs(
     let frames = crate::portals::linked_frames(&portals, &portal_query);
     blobs.noise_budget = (blobs.noise_budget + NOISY_PER_SECOND * TICK).min(NOISY_PER_SECOND);
     let mut noise_budget = blobs.noise_budget;
+    let mut splashes = std::mem::take(&mut blobs.splashes);
+    for recent in splashes.values_mut() {
+        recent.retain_mut(|(_, left)| {
+            *left -= TICK;
+            *left > 0.0
+        });
+    }
+    splashes.retain(|_, recent| !recent.is_empty());
+    let draw_splashes = console.bool("draw_paint_splat_particles");
+    let splash_time = console.f32("paint_impact_particles_duration");
     let mut list = std::mem::take(&mut blobs.list);
     list.retain_mut(|b| {
         b.age += TICK;
@@ -449,6 +546,14 @@ fn move_blobs(
             noise_budget -= 1.0;
             sounds.write(SoundRequest::at("PaintBlob.Impact", tr.end));
         }
+        let recent = splashes.entry(b.sprayer).or_default();
+        if splash_allowed(recent, tr.end, &console) {
+            if draw_splashes {
+                let at = Transform::from_translation(tr.end).with_rotation(Quat::from_rotation_arc(Vec3::X, -n));
+                portal2_particles::spawn_effect(&mut commands, splat_effect(b.paint), at, true);
+            }
+            recent.push((tr.end, splash_time));
+        }
         // Streak along walls, or along anything hit at a glancing angle.
         let tangent = b.vel - n * b.vel.dot(n);
         let glancing = b.vel.normalize_or_zero().dot(tangent.normalize_or_zero()) >= streak_cos;
@@ -462,6 +567,7 @@ fn move_blobs(
         false
     });
     blobs.noise_budget = noise_budget;
+    blobs.splashes = splashes;
     blobs.list = list;
 }
 
@@ -473,9 +579,24 @@ pub struct BlobParams {
     /// forward (w half width), up (w half height). The shader drops what
     /// lies behind an opening.
     pub portals: [Vec4; 6],
+    pub lights: [ModelLight; MAX_MODEL_LIGHTS],
+    /// x: lights in use.
+    pub light_count: Vec4,
 }
 
-/// Shiny paint blobs; colours come from the vertices.
+impl BlobParams {
+    fn new(lighting: &BlobLighting, portals: [Vec4; 6]) -> Self {
+        Self {
+            ambient: lighting.ambient.map(|a| a.extend(1.0)),
+            portals,
+            lights: lighting.lights,
+            light_count: Vec4::new(lighting.count as f32, 0.0, 0.0, 0.0),
+        }
+    }
+}
+
+/// Paint blobs (`paintblob`); each paint's base colour and opacity come
+/// from the vertices.
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
 pub struct PaintBlobMaterial {
     #[uniform(0)]
@@ -483,11 +604,33 @@ pub struct PaintBlobMaterial {
     #[texture(1, dimension = "cube")]
     #[sampler(2)]
     pub envmap: Option<Handle<Image>>,
+    #[texture(3)]
+    #[sampler(4)]
+    pub normal_map: Option<Handle<Image>>,
+}
+
+/// The textures every blob material shares.
+#[derive(Clone)]
+struct BlobTextures {
+    envmap: Option<Handle<Image>>,
+    normal_map: Option<Handle<Image>>,
+}
+
+impl BlobTextures {
+    fn material(&self, params: BlobParams) -> PaintBlobMaterial {
+        PaintBlobMaterial { params, envmap: self.envmap.clone(), normal_map: self.normal_map.clone() }
+    }
 }
 
 impl Material for PaintBlobMaterial {
     fn fragment_shader() -> ShaderRef {
         BLOB_SHADER.into()
+    }
+
+    /// Erase paint shows the scene behind it, which puts blobs in the
+    /// transmissive pass after a copy of the opaque one.
+    fn reads_view_transmission_texture(&self) -> bool {
+        true
     }
 
     fn enable_prepass() -> bool {
@@ -509,15 +652,21 @@ fn surface_mesh(particles: &[super::surface::Particle], params: &super::surface:
     mesh
 }
 
-/// The linear colour of every paint type, read from the console once a
-/// frame rather than for every blob.
+/// Erase blobs' base colour: blob_surface_erase.vtf, a flat 4x4 texture
+/// (`erase_color` is for painted surfaces and is fully clear).
+const ERASE_BLOB_COLOR: [u8; 3] = [191, 198, 211];
+
+/// Each paint type's blob colour (linear rgb; alpha 1 for opaque paint, 0
+/// for erase paint, which `paint_blob.wesl` draws as water), read from the
+/// console once a frame rather than for every blob.
 struct Palette([[f32; 4]; 5]);
 
 impl Palette {
     fn new(console: &Console) -> Self {
         Self([PaintType::Bounce, PaintType::Reflect, PaintType::Speed, PaintType::Portal, PaintType::Erase].map(|t| {
-            let c = t.color(console);
-            Color::srgb_u8(c[0], c[1], c[2]).to_linear().to_f32_array()
+            let c = if t == PaintType::Erase { ERASE_BLOB_COLOR } else { t.color(console)[..3].try_into().unwrap() };
+            let rgb = Color::srgb_u8(c[0], c[1], c[2]).to_linear();
+            [rgb.red, rgb.green, rgb.blue, if t == PaintType::Erase { 0.0 } else { 1.0 }]
         }))
     }
 
@@ -589,7 +738,7 @@ struct DrawSlot {
 }
 
 /// Blobs no sprayer owns (bomb splashes) and the bomb balls, drawn
-/// together, lit by the ambient light where the first of them is.
+/// together, lit where the first of them is.
 #[derive(Default)]
 struct FreeDraw {
     slot: DrawSlot,
@@ -642,10 +791,6 @@ impl DrawTargets<'_> {
         }
         slot.drawn = count;
     }
-}
-
-fn ambient_params(ambient: [Vec3; 6]) -> BlobParams {
-    BlobParams { ambient: ambient.map(|a| a.extend(1.0)), portals: [Vec4::ZERO; 6] }
 }
 
 fn portal_rows(frames: Option<&[PortalFrame; 2]>) -> [Vec4; 6] {
@@ -702,7 +847,10 @@ fn draw_blobs(
 ) {
     let frames = crate::portals::linked_frames(&portals, &portal_query);
     let rows = portal_rows(frames.as_ref());
-    let envmap = textures.load(&fs, &mut images, "materials/paint/paint_envmap_hdr.vtf", false).map(|t| t.handle);
+    let shared = BlobTextures {
+        envmap: textures.load(&fs, &mut images, "materials/paint/paint_envmap_hdr.vtf", false).map(|t| t.handle),
+        normal_map: textures.load(&fs, &mut images, "materials/paintblobs/blob_surface_normal.vtf", false).map(|t| t.handle),
+    };
     let surface = super::surface::SurfaceParams::from_console(&console);
     let palette = Palette::new(&console);
     let streak_radius = console.f32("paintblob_radius_while_streaking");
@@ -744,12 +892,9 @@ fn draw_blobs(
     let mut targets = DrawTargets { meshes: &mut meshes, materials: &mut materials };
     for (_, mut s) in &mut sprayers {
         let (mesh, count) = (built.next().flatten(), counts.next().unwrap_or(0));
-        let ambient = s.ambient;
+        let lighting = s.lighting;
         let mut slot = DrawSlot { entity: s.draw, drawn: s.drawn };
-        let env = envmap.clone();
-        targets.show(&mut slot, mesh, count, &mut commands, &handles, |m| {
-            m.add(PaintBlobMaterial { params: BlobParams { portals: rows, ..ambient_params(ambient) }, envmap: env })
-        });
+        targets.show(&mut slot, mesh, count, &mut commands, &handles, |m| m.add(shared.material(BlobParams::new(&lighting, rows))));
         set_portals(&mut targets, slot.entity, &material_handles, rows);
         s.draw = slot.entity;
         s.drawn = slot.drawn;
@@ -761,21 +906,18 @@ fn draw_blobs(
         && let Some(first) = groups.last().and_then(|(p, _)| p.first())
         && let Some(map) = current.as_ref()
     {
-        relight = Some(portal2_render::models::lighting::compute(&map.bsp, first.center).ambient);
+        relight = Some(BlobLighting::at(&map.bsp, first.center));
         free.relight_in = 30;
     }
     free.relight_in = free.relight_in.saturating_sub(1);
-    if let (Some(ambient), Some(m)) = (relight, free.material.as_ref())
+    if let (Some(lighting), Some(m)) = (relight.as_ref(), free.material.as_ref())
         && let Some(mut mat) = targets.materials.get_mut(m)
     {
-        mat.params = BlobParams { portals: rows, ..ambient_params(ambient) };
+        mat.params = BlobParams::new(lighting, rows);
     }
     let FreeDraw { slot, material, .. } = &mut *free;
     targets.show(slot, mesh, count, &mut commands, &handles, |m| {
-        let h = m.add(PaintBlobMaterial {
-            params: BlobParams { portals: rows, ..ambient_params(relight.unwrap_or([Vec3::splat(0.2); 6])) },
-            envmap,
-        });
+        let h = m.add(shared.material(BlobParams::new(&relight.unwrap_or_default(), rows)));
         *material = Some(h.clone());
         h
     });

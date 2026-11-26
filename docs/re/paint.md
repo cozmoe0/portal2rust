@@ -137,6 +137,27 @@ in tangent space:
   of the surface keeps sliding along it; otherwise it paints and dies.
   Blobs that hit props paint the prop instead (a light bridge takes the
   paint along its length).
+- Splashes where blobs land (client.dll sub_1039B5E0 / sub_1039A780):
+  - The effect is `paint_splat_bounce_01`, `_stick_01` or `_speed_01`;
+    portal paint and erasers use `paint_splat_erase_01`. It faces away
+    from the surface (VectorAngles of the negated normal).
+  - Each sprayer keeps its recent splashes, each counting for
+    `paint_impact_particles_duration` (0.2 s).
+  - A landing blob gets a splash while there are fewer than
+    `paint_min_impact_particles` (20) recent ones, never at
+    `paint_max_impact_particles` (50). In between it needs to be at least
+    `paint_impact_particles_distance_threshold` (20) from each recent one.
+  - `cl_group_paint_impact_effects` 0 turns the grouping off, and
+    `draw_paint_splat_particles` 0 turns off the effect.
+  - The white spray where sp_a3_crazy_box's cleansing gel lands is these
+    splashes.
+- Any brush entity's `RemovePaint` input (CBaseEntity, server.dll
+  sub_100DEEA0) clears all paint on its model: the engine's
+  `RemoveAllPaint` for the model, then a `RemovePaint` user message to
+  clients. sp_a3_crazy_box's floor under the cleansing gel is a
+  `func_brush` (`erase_cleanser_brush`). It gets `RemovePaint` 1.6 s after
+  the gel comes back on, so blue gel put down while the gel was off is
+  washed away.
 
 ## Drawing blobs (client.dll's Blobulator)
 
@@ -168,6 +189,67 @@ in tangent space:
     while moving outward, stepped 60 times a second;
   - the result is one wobbling ball about the pipe's width.
 
+## Blob material (stdshader_dx9.dll `paintblob`, sub_100210F0)
+
+- Client.dll picks the material by paint type:
+  `paintblobs/blob_surface_bounce`, `_stick`, `_speed`, `_portal` or
+  `_erase`. A sprayer's blobs are lit as a model at its
+  `light_position_name` entity (`m_vLightPosition`).
+- Pixel shader static combo:
+  `20 × (BACK_SURFACE + 2 LIGHT_WARP + 4 FRESNEL_WARP + 8
+  HIGH_PRECISION_DEPTH + 16 INTERIOR_LAYER + 32 OPACITY_TEXTURE + 64
+  shadow filter + 256 CONTACT_SHADOW)`. Dynamic combo: lights 0..4.
+- Parameter defaults the shader falls back on:
+  - `$bumpstrength` 1, `$fresnelbumpstrength` 1;
+  - `$translucentfresnelminmaxexp` (0, 0.5, 2);
+  - `$interiorambientscale` and `$interiorbacklightscale` 0.3;
+  - `$interiorrefractstrength` 0.015;
+  - `$phongexponent` 1, `$phongboost` 1, `$phongexponent2` 1,
+    `$phongboost2` 1;
+  - `$rimlightexponent` 10, `$rimlightboost` 1;
+  - `$uvscale` 0.02.
+- Shared by every blob material:
+  - triplanar `paintblobs/blob_surface_normal` at `$uvscale` 0.006
+    (projection weights `max((|n| - 0.2) × 7, 0)`, normalized);
+  - Phong 40 × 2 and 400 × 7;
+  - `paint/paint_envmap_hdr`.
+  - None sets a spec mask; the shader binds white there.
+- Per light, with `nr` the bumped normal (`$bumpstrength` scales the
+  bump's tangential part), `R = reflect(-V, nr)` and `F = 1 - N·V` from
+  the plain normal (`$fresnelbumpstrength` 0):
+  - diffuse `halfLambert² × light`;
+  - `spec1 = (R·L)^phongexp × sat(N·L) × light`;
+  - `spec2 = (R·L)^phongexp2 × sat(N·L) × light`;
+  - `rim = (R·L)^rimexp × sat(N·L) × light × F⁴ × rimboost`.
+- Opaque paint (`$interior 0`, static 0), with `amb` the ambient cube at
+  the vertex normal:
+
+  ```
+  base × ((diffuse × 0.82 + 0.04) × (0.8, 0.85, 1) + amb)
+    + spec1 × phongboost + spec2 × phongboost2 + rim
+    + env(R) × F × 0.67 × (1 + diffuse + amb)
+  ```
+
+- Erase paint (`$interior 1`, `$opacitytexture`, `$fresnelwarptexture`,
+  static 52):
+  - Base colour (191, 198, 211); opacity 21/255.
+  - With FRESNEL_WARP on, the translucency is the opacity alone; the warp
+    texture is never sampled.
+  - The interior light is
+    `max(average ambient × 0.1, ambient(-normalize(V + N)) × 0.1)`.
+  - The frame is looked up at the screen position plus
+    `(2 - F) × 0.1 × 80 / distance × bump.xy` (the blended raw
+    normal-map xy).
+  - The output is
+    `lerp(lerp(interior, frame, sqrt(N·V)) × base + env × F × 0.67 × (1 +
+    diffuse + amb) + spec1 × 2, opaque layer, 0.082)`. In the opaque layer
+    the rim boost is 300 and the exponent 8.
+- Everything, the copied frame included, is multiplied by `cLightScale.x`
+  (the tonemap scale). That is why the water reads brighter than what is
+  behind it.
+- `erase_color` is "0 0 0 0" (for painted surfaces). Drawing erase blobs
+  with it left only the reflection, which looked like chrome.
+
 ## Paint bombs (`prop_paint_bomb`, server.dll sub_103AB060)
 
 - Burst: sound `PaintBomb.Splat`. Traces over the
@@ -177,6 +259,9 @@ in tangent space:
 - The splash is the particle effect `paint_bomb_bounce` / `_stick` /
   `_speed` / `_erase` (portal paint uses erase). It faces away from the
   last surface a burst trace reached.
+- The burst paints brush entities as well as the world. Ours painted only
+  the world until 2026-11-26, so the func_brush floor under
+  sp_a3_crazy_box's cleansing gel stayed bare.
 - Bombs are physics props and cross portals like any other. Ours does
   not burst a bomb heading into an open portal's opening, and reads the
   body's own position, so a crossing in the same tick counts (2026-11-25).

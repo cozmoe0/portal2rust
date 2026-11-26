@@ -473,6 +473,23 @@ impl PaintMap {
         out
     }
 
+    /// Clears all paint from a brush model's faces (the engine's
+    /// `RemoveAllPaint`, behind entities' `RemovePaint` input). Returns
+    /// whether any was there.
+    pub fn clear_model(&mut self, model: usize) -> bool {
+        let Some(m) = self.models.get(model) else { return false };
+        let mut cleared = false;
+        for &fi in &m.faces {
+            let f = &mut self.faces[fi];
+            if f.luxels.iter().any(|b| b & AMOUNT_MASK != 0) {
+                f.luxels.fill(0);
+                f.dirty = true;
+                cleared = true;
+            }
+        }
+        cleared
+    }
+
     /// Every face that holds paint, for saves.
     pub fn snapshot(&self) -> Vec<(usize, Vec<u8>)> {
         self.faces.iter().filter(|f| f.luxels.iter().any(|b| b & AMOUNT_MASK != 0)).map(|f| (f.face, f.luxels.clone())).collect()
@@ -717,6 +734,16 @@ mod tests {
         map.paint_sphere(0, Vec3::new(128.0, 128.0, 0.1), 80.0, 0.4, PaintType::Erase, &quiet());
         let f = &map.faces[0];
         assert_eq!(f.luxels[f.index(8, 8)], 2 << TYPE_SHIFT);
+    }
+
+    #[test]
+    fn clearing_a_model_removes_its_paint() {
+        let mut map = floor();
+        assert!(!map.clear_model(0));
+        map.paint_sphere(0, Vec3::new(128.0, 128.0, 0.1), 60.0, 0.4, PaintType::Bounce, &quiet());
+        assert!(map.clear_model(0));
+        assert_eq!(map.query(0, Vec3::new(128.0, 128.0, 0.1), 60.0, 0.0), [0; 5]);
+        assert!(!map.clear_model(7));
     }
 
     #[test]

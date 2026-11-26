@@ -105,6 +105,7 @@ fn burst_bombs(
     contacts: Res<avian3d::prelude::ContactGraph>,
     console: Res<Console>,
     map: Option<ResMut<PaintMap>>,
+    (current, brushes): (Option<Res<portal2_world::CurrentMap>>, Query<(&MapEntity, &GlobalTransform)>),
     mut outputs: MessageWriter<FireOutput>,
     mut sounds: MessageWriter<SoundRequest>,
 ) {
@@ -170,11 +171,14 @@ fn burst_bombs(
         );
         // The splash faces away from the last surface a burst trace
         // reached (CPropPaintBomb's explosion: VectorAngles of its normal).
+        // Brush entities take the paint as the world does (sp_a3_crazy_box's
+        // floor under the cleansing gel is a func_brush).
         let mut facing = probe.hit().then_some(probe.normal);
+        let bsp = current.as_ref().map(|c| &*c.bsp);
         for d in &dirs {
             let tr = physics.trace(pos, pos + *d * reach, Vec3::ZERO, Vec3::ZERO, mask::SOLID_BRUSH_ONLY, &[e]);
             if tr.hit() && !tr.start_solid {
-                map.paint_sphere(0, tr.end + tr.normal * 0.1, radius, coat, bomb.paint, &settings);
+                super::blobs::paint_impact(&mut map, &brushes, bsp, tr.end, tr.normal, bomb.paint, &settings, radius, coat);
                 facing = Some(tr.normal);
             }
         }
