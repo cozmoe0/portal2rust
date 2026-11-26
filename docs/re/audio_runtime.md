@@ -97,8 +97,8 @@ Operators whose exact formulas were not traced yet are implemented from
 their parameters and the way the stacks use them: `calc_source_distance`
 (distance to the listener), `calc_occlusion` (no occlusion yet: 1),
 `calc_distant_dsp`, `math_func1`, `math_random`, `math_delta`,
-`math_speakers` (per-speaker `math_float`), `iterate_merge_speakers` (one
-source), `sys_stop_entries` (other playing sounds matching entry name or
+`math_speakers` (per-speaker `math_float`), `iterate_merge_speakers` and
+`util_pos_vec8` (below), `sys_stop_entries` (other playing sounds matching entry name or
 substring, entity and channel; the oldest beyond `input_max_entries` stop;
 with `stop_this_entry` it stops its own sound instead, running the stop
 stack: `update_stop_at_time` ends a looping music part after
@@ -108,6 +108,28 @@ stack: `update_stop_at_time` ends a looping music part after
 `sys_block_entries`, `sys_mixlayer`, `game_view_info`,
 `calc_angles_facing`, `math_logic_switch`, opvars, `get_map_name`,
 `sys_platform`.
+
+Several positions per sound (engine.dll `CSosOperatorPosVec8`,
+`CSosOperatorIterateAndMergeSpeakers`):
+
+- `util_pos_vec8` outputs `input_position_<n>` for `n` = `input_index`.
+  The index is clamped to `input_entry_count - 1` and to 0; defaults are
+  index 0 and count 1. It also outputs `output_max_index` = count - 1.
+- `iterate_merge_speakers` keeps the per-speaker maximum of its `input`
+  (reset at index 0). While `output_index` is below
+  `input_max_iterations` (capped at 8), it increments the index and runs
+  the stack again from `iterate_operator` up to itself.
+- The two stacks that use them, `update_music_spatial` and
+  `p2_update_dialog_spatial_cave`, wire `position_array.input_index` to
+  `@speakers_multi_origin.output_index` and the merge's maximum to
+  `@position_array.output_max_index`.
+- Entries add speakers through `position_array`. For example,
+  `cavejohnson.fifties_waiting01` sets count 3 and positions 1 and 2. Each
+  position gets its own distance, falloff and panning, and the loudest
+  wins per speaker.
+- Before 2026-11-25 ours left the position at (0, 0, 0). Cave Johnson
+  and the ~165 spatial music cues were measured from the map origin,
+  about 9000 units away in `sp_a3_03`.
 
 ## Mix groups, mixers and layers (`scripts/soundmixers.txt`)
 

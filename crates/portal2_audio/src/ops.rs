@@ -241,6 +241,8 @@ impl Kind {
             Self::GetOpvar => &["output", "output_opvar_exists"],
             Self::ViewInfo => &["output_position", "output_angles", "output_velocity", "output_velocity_vector"],
             Self::Facing => &["output"],
+            Self::PosVec8 => &["output_position", "output_max_index"],
+            Self::IterateMerge => &["output", "output_index"],
             _ => &["output"],
         }
     }
@@ -595,7 +597,12 @@ pub fn spatialize(listener: &Listener, dir: Vec3, mono: f32, rear_scale: f32, mo
 impl Stack {
     /// Runs every operator once (an update, or a start/stop pass).
     pub fn run(&self, inst: &mut Instance, chan: &mut Chan, env: &mut Env) {
-        for i in 0..self.ops.len() {
+        let mut next = 0;
+        while next < self.ops.len() {
+            let i = next;
+            next += 1;
+            // Where an `iterate_merge_speakers` sends the run back to.
+            let mut jump = None;
             let op = &self.ops[i];
             if op.execute_once && inst.ran[i] {
                 continue;
@@ -733,8 +740,38 @@ impl Stack {
                     let dir = Vec3::new(p[0], p[1], p[2]) - env.listener.origin;
                     out[0] = spatialize(env.listener, dir, mono, rear, env.speaker_mode);
                 }
+                // Reruns the operators from `iterate_operator` up to here once
+                // per index up to `input_max_iterations` (at most 8), keeping
+                // the loudest of the passes per speaker
+                // (CSosOperatorIterateAndMergeSpeakers). With
+                // `util_pos_vec8` that plays a sound from several places.
                 Kind::IterateMerge => {
-                    out[0] = input("input", [0.0; 6], inst);
+                    let index = out[1][0].max(0.0) as usize;
+                    let max = (f("input_max_iterations", 0.0, inst).max(0.0) as usize).min(8);
+                    if index == 0 {
+                        out[0] = [0.0; 6];
+                    }
+                    let v = input("input", [0.0; 6], inst);
+                    for (o, v) in out[0].iter_mut().zip(v) {
+                        *o = o.max(v);
+                    }
+                    let start = op.s("iterate_operator").and_then(|name| self.ops[..i].iter().position(|o| o.name.eq_ignore_ascii_case(name)));
+                    match start {
+                        Some(start) if index < max => {
+                            out[1][0] = (index + 1) as f32;
+                            jump = Some(start);
+                        }
+                        _ => out[1][0] = 0.0,
+                    }
+                }
+                // One of up to eight positions, picked by `input_index`
+                // (clamped to the entry count), and the last index.
+                Kind::PosVec8 => {
+                    let count = f("input_entry_count", 1.0, inst);
+                    let index = (f("input_index", 0.0, inst) as i32).min(count as i32 - 1).max(0);
+                    let p = input(&format!("input_position_{index}"), [0.0; 6], inst);
+                    out[0] = [p[0], p[1], p[2], 0.0, 0.0, 0.0];
+                    out[1][0] = count - 1.0;
                 }
                 Kind::Output => output(op, chan, &input, &f, inst),
                 Kind::EntryTime => {
@@ -831,10 +868,13 @@ impl Stack {
                 // overlay; full while the game has the screen. Both music
                 // stacks scale their volume by it.
                 Kind::Dashboard => out[0][0] = 1.0,
-                Kind::PrintFloat | Kind::PosVec8 | Kind::Unknown => {}
+                Kind::PrintFloat | Kind::Unknown => {}
             }
             if op.kind != Kind::Output {
                 inst.outputs[i] = out;
+            }
+            if let Some(j) = jump {
+                next = j;
             }
         }
     }
@@ -1122,5 +1162,52 @@ mod install_tests {
             "{:?}",
             env.effects
         );
+    }
+
+    /// Cave Johnson's lines play from every position in their entry's
+    /// `position_array` (the speaker actor and the extra speakers), as loud
+    /// as the nearest one: `sp_a3_03`'s waiting room line, heard right next
+    /// to its third speaker, is as loud as from a speaker actor standing
+    /// there (skipped without an install).
+    #[test]
+    fn cave_line_plays_from_its_nearest_speaker() {
+        let Some(root) = GameFileSystem::find_install() else { return };
+        let Ok(fs) = GameFileSystem::portal2(root) else { return };
+        let scripts = SoundScripts::load(&fs).unwrap();
+        let lib = Library::load(&fs);
+        let mut mix = MixData::load(&fs);
+        mix.update_layers(false);
+        let entry = scripts.get("cavejohnson.fifties_waiting01").unwrap();
+        let update = lib.compile(StackKind::Update, entry.operator_stacks.as_ref(), Some("update_default")).unwrap();
+        let near = Vec3::new(-6656.0, 1079.0, -4603.0);
+        let listener = Listener { origin: near + Vec3::new(100.0, 0.0, 0.0), forward: Vec3::X, right: Vec3::NEG_Y, velocity: Vec3::ZERO };
+        let cvar = |n: &str| match n {
+            "snd_gain" | "snd_mixer_master_level" | "snd_gain_max" => 1.0,
+            "snd_refdist" => 36.0,
+            _ => 0.0,
+        };
+        let opvars = HashMap::new();
+        let loudest = |origin: Vec3| {
+            let mut env = Env {
+                listener: &listener,
+                mix: &mix,
+                cvar: &cvar,
+                opvars: &opvars,
+                others: &[],
+                now: 1.0,
+                map: "",
+                speaker_mode: 0,
+                effects: Vec::new(),
+            };
+            let mut inst = update.instance();
+            let mut chan = Chan { entry: entry.name.clone(), origin, volume: 1.0, level: 90.0, pitch: 1.0, ..Default::default() };
+            update.run(&mut inst, &mut chan, &mut env);
+            chan.speakers.expect("speakers output").iter().copied().fold(0.0f32, f32::max)
+        };
+        // The waiting room's speaker actor is about 1700 units away.
+        let from_actor = loudest(Vec3::new(-4979.09, 984.93, -4744.3));
+        let from_near = loudest(near);
+        assert!(from_near > 0.1, "{from_near}");
+        assert!((from_actor - from_near).abs() < 1e-4, "actor {from_actor} vs nearest speaker {from_near}");
     }
 }
