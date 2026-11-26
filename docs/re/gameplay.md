@@ -187,6 +187,40 @@ and horizontally slower than 64 u/s:
   `scenes/npc/sp_proto_sphere/sphere_plug_attach.vcd` / `sphere_plug_lock.vcd`.
   Triggers that admit NPCs (spawnflag 2) take them.
 
+## Finding what `+use` uses (`CBasePlayer::FindUseEntity`, server.dll sub_10105820)
+
+- Eight traces from the eye, against MASK_SOLID plus debris and player
+  clip (0x0601400B). The first is a line 1024 units along the view. The
+  rest are 16-unit hulls, 72 units long, aimed at 45, 30, 20, 15 and 10
+  degrees below the view and 10 and 15 degrees above it.
+- A hit that cannot be used passes to its move parents until one can.
+  It is taken if it is within 100 units. The distance is measured
+  horizontally from the trace start, plus how far the end lies above or
+  below the player's box. The forward line wins outright. A hit from a
+  later trace is kept only as the starting guess for the next step.
+- Next, a usable ground entity flagged use-on-ground (0x10), then a sphere
+  query of 100 units for entities flagged use-in-radius (0x20). A
+  candidate's nearest point to the eye must be at least 0.8 (cosine) along
+  the view. The candidate nearest the view line wins, if a line trace to
+  that point is clear or ends on it. Last, a 100-unit trace for player
+  allies.
+- Usable means ObjectCaps (vtable +156) has a use type in its low four
+  bits, plus the required flags (vtable +1764 on the player).
+  - `CBaseButton` and `CRotButton`: 0x21 with spawnflag 1024, locked or
+    not. `CMomentaryRotButton` also sets 0x2.
+  - `prop_button` (`CPropButton`): 0x1 only, so it is never found by
+    radius.
+  - `CPhysicsProp`: 0x1 when it can be picked up or has spawnflag 0x100,
+    and 0x20 with spawnflag 0x4000. `CPropWeightedCube` adds 0x1, and 0x20
+    while an inner object's check (+0x714, vfunc 16) is false.
+  - `prop_dynamic`: nothing.
+- `sp_a3_01`'s push bar door behind the vault depends on the radius
+  pass. Its `func_button` is two 4-unit grate strips at the door's edges,
+  so aiming at the door's middle hits only the door model.
+- Ours keeps its 80-unit box trace and catching. A hit that cannot be
+  used goes to a usable parent, and then to the radius pass over use
+  buttons. Props and the hull traces are left out of the radius pass.
+
 ## Weighted cubes (`CPropWeightedCube`)
 
 From server.dll (`sub_103EEEE0` sets the model, `sub_103EE8E0` the skin,

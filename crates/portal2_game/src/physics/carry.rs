@@ -156,6 +156,83 @@ impl Holding {
     }
 }
 
+/// Radius of the use search's second pass (Portal 2's PLAYER_USE_RADIUS).
+const USE_RADIUS: f32 = 100.0;
+/// How squarely the view must face a radius candidate (cosine).
+const USE_RADIUS_CONE: f32 = 0.8;
+
+/// What `+use` can press other than props it picks up: brush buttons with
+/// "use activates" and pedestal buttons.
+#[derive(bevy::ecs::system::SystemParam)]
+struct UseTargets<'w, 's> {
+    buttons: Query<
+        'w,
+        's,
+        (Entity, &'static crate::entities::buttons::BrushButton, &'static portal2_core::entity::BrushBounds, &'static GlobalTransform),
+    >,
+    pedestals: Query<'w, 's, (), With<crate::entities::props::PedestalButton>>,
+    parents: Query<'w, 's, &'static ChildOf>,
+}
+
+impl UseTargets<'_, '_> {
+    fn usable(&self, e: Entity) -> bool {
+        self.buttons.get(e).is_ok_and(|(_, b, ..)| b.use_activates()) || self.pedestals.contains(e)
+    }
+
+    /// `e` or the nearest entity it hangs from that can be used.
+    fn usable_from(&self, e: Entity) -> Option<Entity> {
+        std::iter::successors(Some(e), |&e| self.parents.get(e).ok().map(ChildOf::parent)).find(|&e| self.usable(e))
+    }
+
+    /// The engine's radius pass (CBasePlayer::FindUseEntity): of the use
+    /// buttons whose bounds come within the radius of the eye, the one
+    /// whose nearest point lies closest to the view line, at most about 37
+    /// degrees off it and not hidden behind something else. It finds the
+    /// push bar door behind `sp_a3_01`'s vault, whose button is two thin
+    /// strips at the door's edges with the door model between them.
+    fn in_radius(&self, physics: &Physics, pe: Entity, eye: Vec3, dir: Vec3) -> Option<Entity> {
+        let mut best: Option<(Entity, f32)> = None;
+        for (e, button, bounds, gt) in &self.buttons {
+            if !button.use_activates() {
+                continue;
+            }
+            let (lo, hi) = world_box(bounds, gt);
+            let point = eye.clamp(lo, hi);
+            let to = point - eye;
+            if to.length() > USE_RADIUS || to.normalize_or_zero().dot(dir) < USE_RADIUS_CONE {
+                continue;
+            }
+            let off_line = (to - dir * to.dot(dir)).length();
+            if best.is_some_and(|(_, d)| d <= off_line) {
+                continue;
+            }
+            let tr = physics.trace(eye, point, Vec3::ZERO, Vec3::ZERO, mask::SOLID_ALL, &[pe]);
+            if tr.fraction >= 1.0 || tr.entity == Some(e) {
+                best = Some((e, off_line));
+            }
+        }
+        best.map(|(e, _)| e)
+    }
+}
+
+/// World-space box around a brush entity's model bounds.
+fn world_box(bounds: &portal2_core::entity::BrushBounds, gt: &GlobalTransform) -> (Vec3, Vec3) {
+    let affine = gt.affine();
+    let mut lo = Vec3::splat(f32::MAX);
+    let mut hi = Vec3::splat(f32::MIN);
+    for i in 0..8 {
+        let corner = Vec3::new(
+            if i & 1 == 0 { bounds.mins.x } else { bounds.maxs.x },
+            if i & 2 == 0 { bounds.mins.y } else { bounds.maxs.y },
+            if i & 4 == 0 { bounds.mins.z } else { bounds.maxs.z },
+        );
+        let p = affine.transform_point3(corner);
+        lo = lo.min(p);
+        hi = hi.max(p);
+    }
+    (lo, hi)
+}
+
 fn prop_radius(col: &TraceCollider) -> f32 {
     ((col.shape.maxs - col.shape.mins) * 0.5).length()
 }
@@ -176,7 +253,7 @@ fn use_or_grab(
     mut forced: ResMut<ForcedPickup>,
     console: Res<portal2_core::console::Console>,
     map: Res<portal2_core::LoadedMap>,
-    candidates: Query<Entity, With<PhysicsProp>>,
+    (candidates, usables): (Query<Entity, With<PhysicsProp>>, UseTargets),
 ) {
     let pressed = buttons.just_pressed("use") || std::mem::take(&mut auto.0);
     let Ok((pe, p)) = players.single() else { return };
@@ -232,7 +309,16 @@ fn use_or_grab(
         }
         _ => None,
     };
-    let Some(target) = caught.or(tr.entity) else {
+    // As the engine's use search: a hit that cannot be used passes to the
+    // first usable entity it hangs from, and failing that the radius pass
+    // looks for a use button around the view. Anything else hit keeps
+    // getting the input, as before.
+    let hit = caught.or(tr.entity);
+    let target = match hit {
+        Some(e) if pickable(e) => Some(e),
+        _ => hit.and_then(|e| usables.usable_from(e)).or_else(|| usables.in_radius(&physics, pe, eye, dir)).or(hit),
+    };
+    let Some(target) = target else {
         sounds.write(portal2_audio::SoundRequest::on("PortalPlayer.UseDeny", pe));
         return;
     };

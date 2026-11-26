@@ -65,6 +65,15 @@ pub struct BrushButton {
     activator: Option<Entity>,
 }
 
+impl BrushButton {
+    /// Whether `+use` presses it (spawnflag 1024). Such buttons can also be
+    /// found by the use search's radius pass (CBaseButton::ObjectCaps adds
+    /// FCAP_USE_IN_RADIUS with the impulse use, locked or not).
+    pub fn use_activates(&self) -> bool {
+        self.use_activates
+    }
+}
+
 fn spawn_button(world: &mut World, e: Entity) {
     let Some(me) = world.get::<MapEntity>(e).cloned() else { return };
     let out_pose = world.get::<Transform>(e).copied().unwrap_or_default();
