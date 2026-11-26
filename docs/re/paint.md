@@ -182,6 +182,12 @@ in tangent space:
   body's own position, so a crossing in the same tick counts (2026-11-25).
   In `sp_a3_bomb_flings` the floor portal under the dropper sends the
   bomb out the wall portal.
+- Bombs burst on contact. Ours probes a tick ahead, and also bursts on a
+  sudden drop in speed, but only while touching something. In
+  `sp_a3_bomb_flings` a `trigger_catapult` in front of the second ledge's
+  wall re-aims bombs coming out of a portal there toward
+  `catapult_target2` (352, 288, 168) at 500 u/s; that speed change alone
+  burst them in mid-air before.
 
 ## Bounce gel (player)
 

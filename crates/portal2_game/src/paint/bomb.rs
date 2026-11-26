@@ -102,6 +102,7 @@ fn burst_bombs(
     mut bombs: Query<(Entity, &mut PaintBomb, &GlobalTransform, Option<&Position>, Option<&LinearVelocity>, Option<&CollisionLayers>)>,
     physics: Physics,
     holes: Res<PortalHoles>,
+    contacts: Res<avian3d::prelude::ContactGraph>,
     console: Res<Console>,
     map: Option<ResMut<PaintMap>>,
     mut outputs: MessageWriter<FireOutput>,
@@ -144,7 +145,16 @@ fn burst_bombs(
         let probe = physics.trace(pos, pos + ahead, Vec3::ZERO, Vec3::ZERO, mask::SOLID_ALL, &[e]);
         let through_portal = holes.holes.iter().any(|h| in_tunnel(&h.frame, pos) || into_opening(&h.frame, pos, probe.end));
         let hit = speed > BURST_SPEED && probe.hit() && !through_portal;
-        let stopped = bomb.last_speed > BURST_SPEED && bomb.last_speed - speed > BURST_SPEED && !through_portal;
+        // A hard stop counts only against something it actually touches: a
+        // `trigger_catapult` re-aiming it (sp_a3_bomb_flings flings bombs
+        // coming out of a wall portal) changes its speed just as much.
+        let stopped = bomb.last_speed > BURST_SPEED
+            && bomb.last_speed - speed > BURST_SPEED
+            && !through_portal
+            && contacts.active_pairs().iter().any(|p| {
+                (p.collider1 == e || p.collider2 == e || p.body1 == Some(e) || p.body2 == Some(e))
+                    && p.manifolds.iter().any(|m| !m.points.is_empty())
+            });
         bomb.last_speed = speed;
         if !hit && !stopped {
             continue;
@@ -171,7 +181,7 @@ fn burst_bombs(
         let n = facing.unwrap_or(Vec3::Z);
         let at = Transform::from_translation(pos).with_rotation(Quat::from_rotation_arc(Vec3::X, -n.normalize_or(Vec3::Z)));
         portal2_particles::spawn_effect(&mut commands, splash_effect(bomb.paint), at, true);
-        debug!("paint bomb {e} burst at {pos} ({:?})", bomb.paint);
+        debug!("paint bomb {e} burst at {pos} ({:?}): hit {hit} stopped {stopped} speed {speed:.0}", bomb.paint);
         sounds.write(SoundRequest::at("PaintBomb.Splat", pos));
         outputs.write(FireOutput { entity: e, output: "OnExploded".into(), activator: None, value: None });
         bomb.burst = true;
