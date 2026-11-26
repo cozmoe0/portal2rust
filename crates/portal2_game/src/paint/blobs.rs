@@ -2,11 +2,13 @@
 //! fall under gravity with a little drag, 60 steps a second, and paint a
 //! sphere where they hit (the world and any brush entity it reaches), or
 //! slide along the surface first when they streak. Each sprayer draws its
-//! live blobs as small spheres lit by the ambient light at the nozzle.
-//! Rules from the game's (docs/re/paint.md).
+//! live blobs as one merged liquid surface (`super::surface`) lit by the
+//! ambient light at the nozzle; bombs draw the same way, from twenty blobs
+//! bouncing about inside them. Rules from the game's (docs/re/paint.md).
 
 use bevy::asset::RenderAssetUsages;
 use bevy::math::Affine3A;
+use bevy::platform::collections::HashMap;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::pbr::{Material, MaterialPlugin};
 use bevy::prelude::*;
@@ -28,9 +30,6 @@ use portal2_world::paint_map::{PaintMap, PaintType, SplatSettings};
 
 pub const BLOB_SHADER: &str = "embedded://portal2_game/paint/paint_blob.wesl";
 const TICK: f32 = 1.0 / 60.0;
-/// Drawn radius of a blob per unit of its `radius` (the game renders blobs
-/// as one merged liquid surface; spheres of this size stand in).
-const DRAW_SCALE: f32 = 8.0;
 /// Blobs this far below the world are gone.
 const KILL_DEPTH: f32 = -32768.0;
 const MAX_LIFETIME: f32 = 30.0;
@@ -160,26 +159,6 @@ pub struct Blob {
 }
 
 impl Blob {
-    /// A short streaking blob of a paint bomb's splash; it only draws.
-    pub fn splash(pos: Vec3, vel: Vec3, paint: PaintType, owner: Entity) -> Self {
-        Self {
-            pos,
-            vel,
-            paint,
-            sprayer: owner,
-            start_radius: 0.7,
-            end_radius: 0.5,
-            grow_time: 0.3,
-            age: 0.0,
-            streak_time: 0.15,
-            streak_dampen: 650.0,
-            streak_normal: None,
-            last_paint: Vec3::splat(f32::MAX),
-            draw_only: true,
-            silent: true,
-        }
-    }
-
     pub fn radius(&self) -> f32 {
         let t = if self.grow_time > 0.0 { (self.age / self.grow_time).min(1.0) } else { 1.0 };
         self.start_radius + (self.end_radius - self.start_radius) * t
@@ -514,87 +493,13 @@ impl Material for PaintBlobMaterial {
     }
 }
 
-/// Unit sphere: an icosahedron subdivided once.
-fn unit_sphere() -> (Vec<Vec3>, Vec<u32>) {
-    let t = (1.0 + 5f32.sqrt()) / 2.0;
-    let mut verts: Vec<Vec3> = [
-        (-1.0, t, 0.0),
-        (1.0, t, 0.0),
-        (-1.0, -t, 0.0),
-        (1.0, -t, 0.0),
-        (0.0, -1.0, t),
-        (0.0, 1.0, t),
-        (0.0, -1.0, -t),
-        (0.0, 1.0, -t),
-        (t, 0.0, -1.0),
-        (t, 0.0, 1.0),
-        (-t, 0.0, -1.0),
-        (-t, 0.0, 1.0),
-    ]
-    .iter()
-    .map(|&(x, y, z)| Vec3::new(x, y, z).normalize())
-    .collect();
-    let faces: [[u32; 3]; 20] = [
-        [0, 11, 5],
-        [0, 5, 1],
-        [0, 1, 7],
-        [0, 7, 10],
-        [0, 10, 11],
-        [1, 5, 9],
-        [5, 11, 4],
-        [11, 10, 2],
-        [10, 7, 6],
-        [7, 1, 8],
-        [3, 9, 4],
-        [3, 4, 2],
-        [3, 2, 6],
-        [3, 6, 8],
-        [3, 8, 9],
-        [4, 9, 5],
-        [2, 4, 11],
-        [6, 2, 10],
-        [8, 6, 7],
-        [9, 8, 1],
-    ];
-    let mut mid = std::collections::HashMap::new();
-    let mut split = |a: u32, b: u32, verts: &mut Vec<Vec3>| -> u32 {
-        *mid.entry((a.min(b), a.max(b))).or_insert_with(|| {
-            verts.push(((verts[a as usize] + verts[b as usize]) * 0.5).normalize());
-            verts.len() as u32 - 1
-        })
-    };
-    let mut indices = Vec::with_capacity(80 * 3);
-    for [a, b, c] in faces {
-        let ab = split(a, b, &mut verts);
-        let bc = split(b, c, &mut verts);
-        let ca = split(c, a, &mut verts);
-        indices.extend([a, ab, ca, b, bc, ab, c, ca, bc, ab, bc, ca]);
-    }
-    (verts, indices)
-}
-
-/// A sphere to draw: centre, radius, linear colour.
-type Sphere = (Vec3, f32, [f32; 4]);
-
-fn spheres_mesh(spheres: &[Sphere], unit: &[Vec3], tris: &[u32]) -> Mesh {
-    let mut positions = Vec::with_capacity(spheres.len() * unit.len());
-    let mut normals = Vec::with_capacity(spheres.len() * unit.len());
-    let mut colors = Vec::with_capacity(spheres.len() * unit.len());
-    let mut indices = Vec::with_capacity(spheres.len() * tris.len());
-    for &(center, r, color) in spheres {
-        let base = positions.len() as u32;
-        for v in unit {
-            positions.push((center + *v * r).to_array());
-            normals.push(v.to_array());
-            colors.push(color);
-        }
-        indices.extend(tris.iter().map(|i| base + i));
-    }
+fn surface_mesh(particles: &[super::surface::Particle], params: &super::surface::SurfaceParams) -> Mesh {
+    let m = super::surface::build(particles, params);
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
-    mesh.insert_indices(Indices::U32(indices));
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, m.positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, m.normals);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, m.colors);
+    mesh.insert_indices(Indices::U32(m.indices));
     mesh
 }
 
@@ -615,11 +520,62 @@ impl Palette {
     }
 }
 
-fn blob_sphere(b: &Blob, palette: &Palette) -> Sphere {
-    (b.pos, b.radius() * DRAW_SCALE, palette.get(b.paint))
+/// A blob for the surface; a streaking blob thins to
+/// `paintblob_radius_while_streaking`.
+fn blob_particle(b: &Blob, palette: &Palette, streak_radius: f32) -> super::surface::Particle {
+    let radius = if b.streak_normal.is_some() { b.radius().min(streak_radius) } else { b.radius() };
+    super::surface::Particle { center: b.pos, radius, color: palette.get(b.paint) }
 }
 
-/// A drawn group of spheres: its entity and how many it showed last.
+/// The blobs a paint bomb is drawn with (C_PropPaintBomb): they start on a
+/// sphere of `paintbomb_draw_sphere_radius` around the bomb, heading inward
+/// at `paintbomb_draw_blob_speed_min`..`max`, ride along with it, and turn
+/// back whenever they leave the sphere moving outward, stepped
+/// `paintblob_update_per_second` times a second. Their radii are
+/// `paintbomb_draw_min_blob_radius`..`max`.
+struct BombBlobs {
+    last_center: Vec3,
+    blobs: Vec<(Vec3, Vec3, f32)>,
+    pending: f32,
+}
+
+impl BombBlobs {
+    fn new(center: Vec3, seed: u32, console: &Console) -> Self {
+        let mut rng = Rng(seed.wrapping_mul(0x9e37_79b9) | 1);
+        let n = console.i32("paintbomb_draw_num_paint_blobs").max(0) as usize;
+        let sphere = console.f32("paintbomb_draw_sphere_radius");
+        let speed = Range { min: console.f32("paintbomb_draw_blob_speed_min"), max: console.f32("paintbomb_draw_blob_speed_max") };
+        let radius = Range { min: console.f32("paintbomb_draw_min_blob_radius"), max: console.f32("paintbomb_draw_max_blob_radius") };
+        let blobs = (0..n)
+            .map(|_| {
+                let d = Vec3::new(rng.next() * 2.0 - 1.0, rng.next() * 2.0 - 1.0, rng.next() * 2.0 - 1.0).normalize_or(Vec3::Z);
+                (center + d * sphere, -d * speed.pick(&mut rng), radius.pick(&mut rng))
+            })
+            .collect();
+        Self { last_center: center, blobs, pending: 0.0 }
+    }
+
+    fn advance(&mut self, center: Vec3, dt: f32, console: &Console) {
+        let step = 1.0 / console.f32("paintblob_update_per_second").max(1.0);
+        let sphere2 = console.f32("paintbomb_draw_sphere_radius").powi(2);
+        self.pending += dt;
+        while self.pending > 0.0 {
+            let h = step.min(self.pending);
+            let moved = center - self.last_center;
+            for (p, v, _) in &mut self.blobs {
+                *p += moved;
+                if p.distance_squared(center) > sphere2 && v.dot(center - *p) < 0.0 {
+                    *v = -*v;
+                }
+                *p += *v * h;
+            }
+            self.last_center = center;
+            self.pending -= h;
+        }
+    }
+}
+
+/// A drawn group of blobs: its entity and how many it showed last.
 #[derive(Default)]
 struct DrawSlot {
     entity: Option<Entity>,
@@ -639,24 +595,21 @@ struct FreeDraw {
 struct DrawTargets<'a> {
     meshes: &'a mut Assets<Mesh>,
     materials: &'a mut Assets<PaintBlobMaterial>,
-    unit: &'a [Vec3],
-    tris: &'a [u32],
 }
 
 impl DrawTargets<'_> {
-    /// Puts `spheres` into the slot's mesh, spawning its entity on first use.
+    /// Puts a group's surface (built from `count` blobs) into the slot's
+    /// mesh, spawning its entity on first use.
     fn show(
         &mut self,
         slot: &mut DrawSlot,
-        spheres: &[Sphere],
+        mesh: Option<Mesh>,
+        count: usize,
         commands: &mut Commands,
         handles: &Query<&Mesh3d>,
         make_material: impl FnOnce(&mut Assets<PaintBlobMaterial>) -> Handle<PaintBlobMaterial>,
     ) {
-        if spheres.is_empty() && slot.drawn == 0 {
-            return;
-        }
-        let mesh = spheres_mesh(spheres, self.unit, self.tris);
+        let Some(mesh) = mesh else { return };
         match slot.entity.and_then(|d| handles.get(d).ok()) {
             Some(handle) => {
                 if let Some(mut m) = self.meshes.get_mut(&handle.0) {
@@ -664,7 +617,7 @@ impl DrawTargets<'_> {
                 }
             }
             None => {
-                if spheres.is_empty() {
+                if count == 0 {
                     return;
                 }
                 let material = make_material(self.materials);
@@ -681,7 +634,7 @@ impl DrawTargets<'_> {
                 slot.entity = Some(id);
             }
         }
-        slot.drawn = spheres.len();
+        slot.drawn = count;
     }
 }
 
@@ -699,40 +652,62 @@ fn draw_blobs(
     (mut meshes, mut materials, handles): (ResMut<Assets<Mesh>>, ResMut<Assets<PaintBlobMaterial>>, Query<&Mesh3d>),
     (console, time, current): (Res<Console>, Res<Time>, Option<Res<CurrentMap>>),
     (fs, mut textures, mut images): (Res<GameFs>, ResMut<TextureCache>, ResMut<Assets<Image>>),
-    (mut sphere, mut free): (Local<Option<(Vec<Vec3>, Vec<u32>)>>, Local<FreeDraw>),
+    (mut bomb_blobs, mut free): (Local<HashMap<Entity, BombBlobs>>, Local<FreeDraw>),
 ) {
-    let (unit, tris) = sphere.get_or_insert_with(unit_sphere);
     let envmap = textures.load(&fs, &mut images, "materials/paint/paint_envmap_hdr.vtf", false).map(|t| t.handle);
-    let mut targets = DrawTargets { meshes: &mut meshes, materials: &mut materials, unit, tris };
+    let surface = super::surface::SurfaceParams::from_console(&console);
     let palette = Palette::new(&console);
+    let streak_radius = console.f32("paintblob_radius_while_streaking");
+    // Each sprayer's blobs, then everything else (bomb splashes, bombs).
     let mut owned = std::collections::HashSet::new();
-    for (e, mut s) in &mut sprayers {
+    let mut groups: Vec<(Vec<super::surface::Particle>, usize)> = Vec::new();
+    for (e, s) in &sprayers {
         owned.insert(e);
-        let spheres: Vec<Sphere> = blobs.list.iter().filter(|b| b.sprayer == e).map(|b| blob_sphere(b, &palette)).collect();
+        groups.push((blobs.list.iter().filter(|b| b.sprayer == e).map(|b| blob_particle(b, &palette, streak_radius)).collect(), s.drawn));
+    }
+    let mut spheres: Vec<super::surface::Particle> =
+        blobs.list.iter().filter(|b| !owned.contains(&b.sprayer)).map(|b| blob_particle(b, &palette, streak_radius)).collect();
+    let dt = time.delta_secs();
+    bomb_blobs.retain(|e, _| bombs.contains(*e));
+    if console.bool("cl_draw_paint_bomb_with_blobs") {
+        for (e, bomb, gt) in &bombs {
+            let center = gt.translation();
+            let state = bomb_blobs.entry(e).or_insert_with(|| BombBlobs::new(center, e.index_u32(), &console));
+            state.advance(center, dt, &console);
+            let color = palette.get(bomb.paint);
+            spheres.extend(state.blobs.iter().map(|&(p, _, r)| super::surface::Particle { center: p, radius: r, color }));
+        }
+    }
+    groups.push((spheres, free.slot.drawn));
+    // The surfaces are built side by side; a group with nothing to show,
+    // and nothing shown before, is skipped.
+    let built: Vec<Option<Mesh>> = bevy::tasks::ComputeTaskPool::get().scope(|scope| {
+        for (particles, drawn) in &groups {
+            scope.spawn(async move { (!particles.is_empty() || *drawn > 0).then(|| surface_mesh(particles, &surface)) });
+        }
+    });
+    let mut built = built.into_iter();
+    let mut counts = groups.iter().map(|(p, _)| p.len());
+    let mut targets = DrawTargets { meshes: &mut meshes, materials: &mut materials };
+    for (_, mut s) in &mut sprayers {
+        let (mesh, count) = (built.next().flatten(), counts.next().unwrap_or(0));
         let ambient = s.ambient;
         let mut slot = DrawSlot { entity: s.draw, drawn: s.drawn };
         let env = envmap.clone();
-        targets.show(&mut slot, &spheres, &mut commands, &handles, |m| {
+        targets.show(&mut slot, mesh, count, &mut commands, &handles, |m| {
             m.add(PaintBlobMaterial { params: ambient_params(ambient), envmap: env })
         });
         s.draw = slot.entity;
         s.drawn = slot.drawn;
     }
-    let mut spheres: Vec<Sphere> = blobs.list.iter().filter(|b| !owned.contains(&b.sprayer)).map(|b| blob_sphere(b, &palette)).collect();
-    let t = time.elapsed_secs();
-    for (e, bomb, gt) in &bombs {
-        let color = palette.get(bomb.paint);
-        for o in super::bomb::cluster_offsets(e.index_u32(), t) {
-            spheres.push((gt.translation() + o, 0.7 * DRAW_SCALE, color));
-        }
-    }
+    let (mesh, count) = (built.next().flatten(), counts.next().unwrap_or(0));
     // Light the free group where it is, now and then.
     let mut relight = None;
     if free.relight_in == 0
-        && let Some(first) = spheres.first()
+        && let Some(first) = groups.last().and_then(|(p, _)| p.first())
         && let Some(map) = current.as_ref()
     {
-        relight = Some(portal2_render::models::lighting::compute(&map.bsp, first.0).ambient);
+        relight = Some(portal2_render::models::lighting::compute(&map.bsp, first.center).ambient);
         free.relight_in = 30;
     }
     free.relight_in = free.relight_in.saturating_sub(1);
@@ -742,7 +717,7 @@ fn draw_blobs(
         mat.params = ambient_params(ambient);
     }
     let FreeDraw { slot, material, .. } = &mut *free;
-    targets.show(slot, &spheres, &mut commands, &handles, |m| {
+    targets.show(slot, mesh, count, &mut commands, &handles, |m| {
         let h = m.add(PaintBlobMaterial { params: ambient_params(relight.unwrap_or([Vec3::splat(0.2); 6])), envmap });
         *material = Some(h.clone());
         h
@@ -752,14 +727,6 @@ fn draw_blobs(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn sphere_is_closed_and_unit() {
-        let (v, i) = unit_sphere();
-        assert_eq!(v.len(), 42);
-        assert_eq!(i.len(), 80 * 3);
-        assert!(v.iter().all(|p| (p.length() - 1.0).abs() < 1e-5));
-    }
 
     #[test]
     fn radius_grows_to_end_radius() {

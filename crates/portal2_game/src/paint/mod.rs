@@ -8,6 +8,7 @@ pub mod blobs;
 pub mod bomb;
 pub mod power;
 pub mod props;
+pub mod surface;
 
 use bevy::prelude::*;
 

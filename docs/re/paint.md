@@ -138,6 +138,51 @@ in tangent space:
   Blobs that hit props paint the prop instead (a light bridge takes the
   paint along its length).
 
+## Drawing blobs (client.dll's Blobulator)
+
+- Blobs are drawn as one metaball surface, so streams pour and nearby
+  blobs flow together.
+- Each blob goes in as {world centre, radius `r`, field scale `1/r²`},
+  with radius clamped to (0.001, 1].
+- Sizes are in units of `paintblob_isosurface_box_width` (8), times
+  `r_paintblob_blr_scale` (1):
+  - a lone blob shows `r_paintblob_blr_render_radius` (1.3) of them
+    across its radius;
+  - its field reaches `r_paintblob_blr_cutoff_radius` (5.5);
+  - the main view samples every `r_paintblob_highres_cube` (0.8); other
+    views use 2.5 times that.
+- A streaking blob draws at `paintblob_radius_while_streaking` (0.3).
+- The falloff inside the Blobulator was not traced. Ours
+  (`paint/surface.rs`):
+  - metaball `(1 - d²/R²)²` with the game's radii;
+  - surface nets over 8³ bricks;
+  - normals from the field gradient;
+  - each sprayer's group built in parallel.
+- Paint bombs (`C_PropPaintBomb`, `cl_draw_paint_bomb_with_blobs` 1):
+  - `paintbomb_draw_num_paint_blobs` (20) blobs with radii
+    `paintbomb_draw_min_blob_radius`..`max` (0.6..0.8);
+  - each starts at a random direction × `paintbomb_draw_sphere_radius`
+    (25) from the bomb, moving inward at `paintbomb_draw_blob_speed_min`
+    ..`max` (50..80);
+  - they ride along with the bomb and reverse when outside the sphere
+    while moving outward, stepped 60 times a second;
+  - the result is one wobbling ball about the pipe's width.
+
+## Paint bombs (`prop_paint_bomb`, server.dll sub_103AB060)
+
+- Burst: sound `PaintBomb.Splat`. Traces over the
+  `paintbomb_*_angle_split` directions out to
+  `paintbomb_explosion_radius` paint where they land, and players within
+  that radius are painted.
+- The splash is the particle effect `paint_bomb_bounce` / `_stick` /
+  `_speed` / `_erase` (portal paint uses erase). It faces away from the
+  last surface a burst trace reached.
+- Bombs are physics props and cross portals like any other. Ours does
+  not burst a bomb heading into an open portal's opening, and reads the
+  body's own position, so a crossing in the same tick counts (2026-11-25).
+  In `sp_a3_bomb_flings` the floor portal under the dropper sends the
+  bomb out the wall portal.
+
 ## Bounce gel (player)
 
 - `sv_press_jump_to_bounce` is 3: in the air the player bounces when

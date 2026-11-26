@@ -1,30 +1,30 @@
 //! Paint bombs (`prop_paint_bomb`): physics balls of gel that burst when
 //! they hit something. The burst traces the `paintbomb_*_angle_split`
 //! directions out to `paintbomb_explosion_radius` and paints where they
-//! land; a ring of short-lived streaking blobs shows the splash. The ball
-//! itself is drawn as a cluster of blobs, as the game draws it
-//! (`cl_draw_paint_bomb_with_blobs`), over its hidden editor model.
+//! land, and the splash is the game's `paint_bomb_<paint>` particle
+//! effect. The ball itself is drawn as merged blobs bouncing about inside
+//! it, as the game draws it (`cl_draw_paint_bomb_with_blobs`, see
+//! `super::blobs`), over its hidden editor model.
 //! A bomb spawns inside its dropper's pipe (one solid hull); like objects
 //! the game's physics finds already overlapping something, it passes
 //! through until it is clear.
 
-use avian3d::prelude::{CollisionLayers, LinearVelocity};
+use avian3d::prelude::{CollisionLayers, LinearVelocity, Position};
 use bevy::prelude::*;
 
-use super::blobs::{Blob, Blobs};
 use crate::entities::SpawnHandlers;
 use crate::entities::io::FireOutput;
 use portal2_audio::SoundRequest;
 use portal2_core::console::Console;
 use portal2_core::entity::MapEntity;
 use portal2_core::sets::ThinkSet;
+use portal2_world::collision::portal::{CARVE_DEPTH, PortalFrame, PortalHoles};
 use portal2_world::collision::{Physics, mask};
 use portal2_world::paint_map::{PaintMap, PaintType, SplatSettings};
 
 const TICK: f32 = 1.0 / 60.0;
-/// The ball's size for impact tests and drawing.
+/// The ball's size for impact tests.
 const BALL_RADIUS: f32 = 12.0;
-const CLUSTER_BLOBS: usize = 20;
 /// Slower bumps (resting in a dropper, rolling) do not burst the bomb.
 const BURST_SPEED: f32 = 100.0;
 
@@ -97,21 +97,23 @@ fn burst_directions(h: usize, v: usize) -> Vec<Vec3> {
 
 fn burst_bombs(
     mut commands: Commands,
-    mut bombs: Query<(Entity, &mut PaintBomb, &GlobalTransform, Option<&LinearVelocity>, Option<&CollisionLayers>)>,
+    mut bombs: Query<(Entity, &mut PaintBomb, &GlobalTransform, Option<&Position>, Option<&LinearVelocity>, Option<&CollisionLayers>)>,
     physics: Physics,
+    holes: Res<PortalHoles>,
     console: Res<Console>,
     map: Option<ResMut<PaintMap>>,
-    mut blobs: ResMut<Blobs>,
     mut outputs: MessageWriter<FireOutput>,
     mut sounds: MessageWriter<SoundRequest>,
 ) {
     let Some(mut map) = map else { return };
-    for (e, mut bomb, gt, velocity, layers) in &mut bombs {
+    for (e, mut bomb, gt, position, velocity, layers) in &mut bombs {
         if bomb.burst {
             commands.entity(e).try_despawn();
             continue;
         }
-        let pos = gt.translation();
+        // The body's own position: a portal crossing this tick has moved it
+        // already, its drawn transform not yet.
+        let pos = position.map_or_else(|| gt.translation(), |p| p.0);
         let v = velocity.map(|v| v.0).unwrap_or(Vec3::ZERO);
         let speed = v.length();
         if bomb.passing {
@@ -132,11 +134,15 @@ fn burst_bombs(
             bomb.last_speed = speed;
             continue;
         }
-        // About to hit something along its path, or just stopped hard.
+        // About to hit something along its path, or just stopped hard. The
+        // surface behind an open portal is no hit: the bomb goes through
+        // (crossing over is `portal_travel`'s), and it bursts wherever it
+        // lands on the other side.
         let ahead = v.normalize_or_zero() * (speed * TICK * 1.5 + BALL_RADIUS);
         let probe = physics.trace(pos, pos + ahead, Vec3::ZERO, Vec3::ZERO, mask::SOLID_ALL, &[e]);
-        let hit = speed > BURST_SPEED && probe.hit();
-        let stopped = bomb.last_speed > BURST_SPEED && bomb.last_speed - speed > BURST_SPEED;
+        let through_portal = holes.holes.iter().any(|h| into_opening(&h.frame, pos, probe.end));
+        let hit = speed > BURST_SPEED && probe.hit() && !through_portal;
+        let stopped = bomb.last_speed > BURST_SPEED && bomb.last_speed - speed > BURST_SPEED && !through_portal;
         bomb.last_speed = speed;
         if !hit && !stopped {
             continue;
@@ -150,16 +156,19 @@ fn burst_bombs(
             console.i32("paintbomb_horizontal_angle_split").max(1) as usize,
             console.i32("paintbomb_vertical_angle_split").max(1) as usize,
         );
-        let (smin, smax) = (console.f32("paintbomb_streak_speed_min"), console.f32("paintbomb_streak_speed_max"));
-        for (i, d) in dirs.iter().enumerate() {
+        // The splash faces away from the last surface a burst trace
+        // reached (CPropPaintBomb's explosion: VectorAngles of its normal).
+        let mut facing = probe.hit().then_some(probe.normal);
+        for d in &dirs {
             let tr = physics.trace(pos, pos + *d * reach, Vec3::ZERO, Vec3::ZERO, mask::SOLID_BRUSH_ONLY, &[e]);
             if tr.hit() && !tr.start_solid {
                 map.paint_sphere(0, tr.end + tr.normal * 0.1, radius, coat, bomb.paint, &settings);
+                facing = Some(tr.normal);
             }
-            // A ring of splash blobs (they only draw).
-            let t = (i as f32 * 0.618_034).fract();
-            blobs.list.push(Blob::splash(pos, *d * (smin + (smax - smin) * t), bomb.paint, e));
         }
+        let n = facing.unwrap_or(Vec3::Z);
+        let at = Transform::from_translation(pos).with_rotation(Quat::from_rotation_arc(Vec3::X, -n.normalize_or(Vec3::Z)));
+        portal2_particles::spawn_effect(&mut commands, splash_effect(bomb.paint), at, true);
         debug!("paint bomb {e} burst at {pos} ({:?})", bomb.paint);
         sounds.write(SoundRequest::at("PaintBomb.Splat", pos));
         outputs.write(FireOutput { entity: e, output: "OnExploded".into(), activator: None, value: None });
@@ -168,16 +177,23 @@ fn burst_bombs(
     }
 }
 
-/// Positions of the cluster drawn for a bomb at time `t`, around its centre.
-pub fn cluster_offsets(seed: u32, t: f32) -> [Vec3; CLUSTER_BLOBS] {
-    let mut out = [Vec3::ZERO; CLUSTER_BLOBS];
-    for (i, o) in out.iter_mut().enumerate() {
-        let k = (seed.wrapping_mul(2654435761) ^ (i as u32).wrapping_mul(40503)) as f32;
-        let (a, b, c) = ((k * 0.000_13).sin(), (k * 0.000_29).cos(), (k * 0.000_47).sin());
-        let wobble = Vec3::new((t * 3.1 + a * 5.0).sin(), (t * 2.7 + b * 5.0).sin(), (t * 3.7 + c * 5.0).sin()) * 0.25;
-        *o = (Vec3::new(a, b, c).normalize_or(Vec3::X) * (0.35 + 0.4 * ((k * 0.0007).sin().abs())) + wobble) * BALL_RADIUS;
+/// The splash effect of a bomb's paint (`paint_bomb_bounce`, `_stick`,
+/// `_speed`; portal paint and erasers use `paint_bomb_erase`).
+fn splash_effect(paint: PaintType) -> &'static str {
+    match paint {
+        PaintType::Bounce => "paint_bomb_bounce",
+        PaintType::Reflect => "paint_bomb_stick",
+        PaintType::Speed => "paint_bomb_speed",
+        PaintType::Portal | PaintType::Erase => "paint_bomb_erase",
     }
-    out
+}
+
+/// Whether the path from `from` to `to` (on a surface) runs into a linked
+/// portal's opening from its front: the surface hit lies behind the portal,
+/// inside the opening and within the depth the opening cuts away.
+fn into_opening(frame: &PortalFrame, from: Vec3, to: Vec3) -> bool {
+    let (a, b) = (frame.to_local(from), frame.to_local(to));
+    a.x > -1.0 && b.x <= 1.0 && b.x > -CARVE_DEPTH && frame.in_opening(b, 0.0)
 }
 
 #[cfg(test)]
