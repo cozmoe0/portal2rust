@@ -136,7 +136,14 @@ in tangent space:
   within ±0.5) or comes in within `paintblob_streak_angle_threshold` (45°)
   of the surface keeps sliding along it; otherwise it paints and dies.
   Blobs that hit props paint the prop instead (a light bridge takes the
-  paint along its length).
+  paint along its length). An entity that is not paintable takes the
+  paint's colour as its render colour (CPaintDatabase's `PaintEntity`,
+  server.dll sub_103A2960).
+- Blob collision (server.dll sub_1039D5C0 and its callers) traces with
+  mask 0x46004001: solid, moveable, monster, debris and hitbox, but not
+  window or grate. Blobs fall through grates and glass brushes:
+  `sp_a3_crazy_box`'s hanging box has a grate lid and floor, so the gel
+  falls in onto the cube and out onto the floor beneath.
 - Splashes where blobs land (client.dll sub_1039B5E0 / sub_1039A780):
   - The effect is `paint_splat_bounce_01`, `_stick_01` or `_speed_01`;
     portal paint and erasers use `paint_splat_erase_01`. It faces away
@@ -280,6 +287,56 @@ in tangent space:
   wall re-aims bombs coming out of a portal there toward
   `catapult_target2` (352, 288, 168) at 500 u/s; that speed change alone
   burst them in mid-air before.
+
+## Bounce gel on props (`PropPaintPowerUser`)
+
+- A prop's paint power works like the player's: each tick its contacts
+  pick a power, and a power that turns on is "activated" once, used while
+  it stays on and deactivated when the prop touches nothing.
+- Bounce (activate, server.dll sub_10329810): the velocity loses its part
+  along the surface normal; a push is built like the player's (up ×
+  `bounce_paint_wall_jump_upward_speed` and normal ×
+  `bounce_paint_min_speed`, blended by `1 - up·n` and
+  `sv_wall_bounce_trade`); a push with no horizontal part gets a random
+  ±80 on x and y; the result is the tangential velocity, less its part
+  along the push, plus the push. Use (sub_104D9E10) does nothing, so a
+  painted cube at rest leaps 500 straight away and then bounces once off
+  each surface it next lands on.
+- Speed (sub_103AC430 / sub_103AC480) swaps the physics material for the
+  slippery one and back.
+- A weighted cube's paint power switch (sub_103ECB90) gives a bounce-
+  painted cube the `WeightedCube_Bounce` physics surface, so its impacts
+  play `WeightedCube.JumpPowerActivateLong` / `Short`.
+- `prop_weighted_cube`'s `PaintPower` keyvalue (4: none) paints it at
+  spawn. `sp_a3_crazy_box`'s cube has 3 (portal), which does nothing
+  visible.
+
+## `sp_a3_crazy_box`'s glass box
+
+- The box is a `func_physbox` (`@box_chamber_base`, 874.8 × `massscale`
+  0.5 from the physics lump's key data) hung from a
+  `phys_ragdollconstraint` at z 2040: up to 90° of tilt, none about the
+  vertical (`zmin`/`zmax` 0). Its motion is enabled when the player enters
+  the second chamber.
+- Eight glass panels ride it: an intact `prop_dynamic`, a cracked one and
+  a `lowend` copy at `renderamt` 0 (rendermode 2), and a shattered edge.
+  Each has a `trigger_multiple` (physics objects, filter
+  `prop_weighted_cube`) adding 1 to a `math_counter` and playing
+  `Glass.Break` (at most two at once). A `logic_case` cracks the panel at
+  2 (kill the intact one, `Alpha 255` on the cracked ones) and breaks it at
+  4 (`Break` the cracked one, play
+  `ScriptedSequence.CrazyBoxGlasstastrophe01`, push with an
+  `env_physexplosion`; `OnBreak` shows the edge).
+- The panels are pinned shadow objects in the game: the cube bounces off
+  them without pushing the box. Here they are weightless parts of the
+  box's body, so the box swings wider: measured at about ±13° against the
+  game's ±4.7° (period about 4.5 s, no turn about the vertical in either).
+- Measured in the game after the gel first reaches the cube: first panel
+  hit, first crack 0.6 s later, first break 3.0 s, the cube leaves the box
+  4.1 s (`trigger_once` stopping `ambient_sp_a3_crazy_box_x1`) and lands
+  on the floor trigger at 7.2 s. Ours, from a fresh map with the same
+  portals: cracks after 1–1.6 s, breaks 3.4–4.6 s, out 4–5.4 s, floor
+  6.1–8.4 s.
 
 ## Bounce gel (player)
 

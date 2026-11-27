@@ -490,7 +490,7 @@ fn move_blobs(
             }
             b.vel = b.vel.normalize_or_zero() * speed;
             let next = b.pos + b.vel * TICK;
-            let tr = physics.trace(next, next + inward * 20.0, Vec3::ZERO, Vec3::ZERO, mask::SOLID_BRUSH_ONLY, &[]);
+            let tr = physics.trace(next, next + inward * 20.0, Vec3::ZERO, Vec3::ZERO, mask::PAINT_BLOB, &[]);
             if !tr.hit() {
                 return false;
             }
@@ -517,7 +517,7 @@ fn move_blobs(
             let f = &frames[slot];
             let (lb, la) = (f.to_local(b.pos), f.to_local(next));
             let crossing = b.pos.lerp(next, lb.x / (lb.x - la.x)) + f.forward * 0.5;
-            if !physics.trace(b.pos, crossing, Vec3::ZERO, Vec3::ZERO, mask::SOLID_ALL, &[]).hit() {
+            if !physics.trace(b.pos, crossing, Vec3::ZERO, Vec3::ZERO, mask::PAINT_BLOB, &[]).hit() {
                 let m = transfer(f, &frames[1 - slot]);
                 b.pos = m.transform_point3(next);
                 b.vel = m.transform_vector3(b.vel);
@@ -525,7 +525,7 @@ fn move_blobs(
                 return true;
             }
         }
-        let tr = physics.trace(b.pos, next, Vec3::ZERO, Vec3::ZERO, mask::SOLID_ALL, &[]);
+        let tr = physics.trace(b.pos, next, Vec3::ZERO, Vec3::ZERO, mask::PAINT_BLOB, &[]);
         if !tr.hit() {
             b.pos = next;
             return true;

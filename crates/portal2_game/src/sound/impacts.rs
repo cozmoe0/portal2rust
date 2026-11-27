@@ -68,13 +68,16 @@ pub fn impact_sounds(
     fs: Res<GameFs>,
     mut starts: MessageReader<CollisionStart>,
     contacts: Res<ContactGraph>,
-    mut props: Query<(Entity, &MapEntity, &LinearVelocity, Option<&mut ImpactState>), With<PhysicsProp>>,
+    mut props: Query<
+        (Entity, &MapEntity, &LinearVelocity, Option<&mut ImpactState>, Option<&crate::paint::props::PaintedProp>),
+        With<PhysicsProp>,
+    >,
     mut commands: Commands,
     mut sounds: MessageWriter<SoundRequest>,
     mut surfaces: Local<ImpactSurfaces>,
 ) {
     let now = clock.curtime;
-    let before = |e: Entity| props.get(e).ok().map(|(_, _, v, s)| s.map_or(v.0, |s| s.velocity));
+    let before = |e: Entity| props.get(e).ok().map(|(_, _, v, s, _)| s.map_or(v.0, |s| s.velocity));
     // (prop, what it hit, speed)
     let mut hits = Vec::new();
     for ev in starts.read() {
@@ -97,16 +100,21 @@ pub fn impact_sounds(
         surfaces.props = Some(SurfaceProps::load(&fs.0));
     }
     for (prop, other, speed) in hits {
-        let hit_surface = props.get(other).ok().map(|(_, me, _, _)| me.clone());
-        let Ok((_, me, _, state)) = props.get_mut(prop) else { continue };
+        let hit_surface = props.get(other).ok().map(|(_, me, _, _, _)| me.clone());
+        let Ok((_, me, _, state, painted)) = props.get_mut(prop) else { continue };
         let me = me.clone();
+        // A bounce-painted weighted cube takes the `WeightedCube_Bounce`
+        // physics surface (CPropWeightedCube's paint power switch), whose
+        // impacts are the jump power sounds.
+        let bounce_cube =
+            me.classname == "prop_weighted_cube" && painted.is_some_and(|p| p.paint == portal2_world::paint_map::PaintType::Bounce);
         let Some(mut state) = state else { continue };
         let since = now - state.last;
         state.last = now;
         if since < MIN_INTERVAL || speed < MIN_SPEED {
             continue;
         }
-        let own_name = surfaces.of(&fs, &me);
+        let own_name = if bounce_cube { "weightedcube_bounce".to_owned() } else { surfaces.of(&fs, &me) };
         let hit_name = hit_surface.map_or_else(|| "default".to_owned(), |m| surfaces.of(&fs, &m));
         let table = surfaces.props.as_mut().expect("loaded above");
         let (own, hit) = (table.sounds(&own_name), table.sounds(&hit_name));
@@ -119,7 +127,7 @@ pub fn impact_sounds(
         request.params.volume_scale = Some(volume);
         sounds.write(request);
     }
-    for (e, _, v, state) in &mut props {
+    for (e, _, v, state, _) in &mut props {
         match state {
             Some(mut s) => s.velocity = v.0,
             None => {

@@ -467,7 +467,10 @@ fn restore(world: &mut World, file: &SaveFile) -> Result<(), String> {
             }
         }
         em.insert(s.transform);
-        em.insert(if s.hidden { Visibility::Hidden } else { Visibility::Visible });
+        // Saves from before models honoured `renderamt` kept alpha-0 models
+        // visible; their keyvalues still say they are not drawn.
+        let alpha_hidden = em.get::<MapEntity>().is_some_and(crate::entities::props::render_alpha_hidden);
+        em.insert(if s.hidden || alpha_hidden { Visibility::Hidden } else { Visibility::Visible });
     }
     let (components, resources) = {
         let r = world.resource::<SaveRegistry>();

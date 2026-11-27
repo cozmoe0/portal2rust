@@ -1,11 +1,11 @@
 //! Paint on entities. Blobs that hit a physics prop paint it: it takes the
-//! paint's colour, bounce gel makes it spring off whatever it hits (the
+//! paint's colour, bounce gel makes it spring off whatever it touches (the
 //! player's bounce push, plus a random sideways nudge on floors so it does
 //! not bounce in place), speed gel takes its friction away, erase cleans
 //! it. Other entities hit by paint just take on the paint's colour, as the
 //! game sets their render colour. Rules in docs/re/paint.md.
 
-use avian3d::prelude::{Friction, LinearVelocity};
+use avian3d::prelude::{ContactGraph, Friction, LinearVelocity};
 use bevy::prelude::*;
 
 use super::power::GelSettings;
@@ -13,14 +13,9 @@ use crate::entities::props::PhysicsProp;
 use portal2_core::console::Console;
 use portal2_core::sets::ThinkSet;
 use portal2_render::source_material::ModelMaterial;
-use portal2_world::collision::{Collider, Physics, mask};
+use portal2_world::collision::Physics;
 use portal2_world::paint_map::PaintType;
 
-const TICK: f32 = 1.0 / 60.0;
-/// A painted prop bounces at most this often.
-const BOUNCE_COOLDOWN: f32 = 0.1;
-/// Coming into a surface slower than this does not bounce.
-const MIN_INTO_SPEED: f32 = 20.0;
 /// Random sideways push of a floor bounce, either way on each axis.
 const FLOOR_JITTER: f32 = 80.0;
 
@@ -45,8 +40,11 @@ pub struct PaintEntity {
 #[derive(Component, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct PaintedProp {
     pub paint: PaintType,
-    #[serde(default)]
-    next_bounce: f32,
+    /// Bounce gel's power is active: the prop touched something and
+    /// bounced, and has not been free of contacts since. Contacts come
+    /// back with the physics after a load, so it is not saved.
+    #[serde(skip)]
+    touching: bool,
 }
 
 /// The colour an entity is drawn with (paint landed on it); `None` restores it.
@@ -82,7 +80,7 @@ fn apply_paint(
             continue;
         }
         debug!("prop {} painted {:?}", ev.entity, ev.paint);
-        e.try_insert(PaintedProp { paint: ev.paint, next_bounce: 0.0 });
+        e.try_insert(PaintedProp { paint: ev.paint, touching: false });
         e.try_insert(Friction::new(if ev.paint == PaintType::Speed { 0.0 } else { 0.8 }));
     }
 }
@@ -136,37 +134,51 @@ fn prop_bounce(v: Vec3, normal: Vec3, g: &GelSettings, jitter: Vec2) -> Vec3 {
     flat - along + push
 }
 
+/// Bounce gel on a prop (`PropPaintPowerUser`, server.dll sub_10329810):
+/// its power turns on when the prop touches something, and turning on
+/// throws it off that surface once; the power stays on while the prop
+/// keeps touching anything and goes off once it touches nothing. So a
+/// painted cube at rest leaps at once, and bounces off each surface it
+/// next lands on.
 fn bounce_props(
-    time: Res<Time<Fixed>>,
+    mut commands: Commands,
     console: Res<Console>,
-    physics: Physics,
-    mut props: Query<(Entity, &mut PaintedProp, &GlobalTransform, &mut LinearVelocity, Option<&Collider>)>,
+    contacts: Res<ContactGraph>,
+    mut props: Query<(Entity, &mut PaintedProp, &mut LinearVelocity)>,
     mut rng: Local<u32>,
 ) {
-    let now = time.elapsed_secs();
     let g = GelSettings::from_console(&console);
-    for (e, mut painted, gt, mut v, collider) in &mut props {
-        if painted.paint != PaintType::Bounce || now < painted.next_bounce {
+    for (e, mut painted, mut v) in &mut props {
+        if painted.paint != PaintType::Bounce {
+            painted.touching = false;
             continue;
         }
-        let speed = v.0.length();
-        if speed < MIN_INTO_SPEED {
+        // The surface's normal, out of what the prop touches (a prop at
+        // rest keeps its contacts among the sleeping ones).
+        let surface = contacts.active_pairs().iter().chain(contacts.sleeping_pairs()).find_map(|p| {
+            let first = p.collider1 == e || p.body1 == Some(e);
+            if !first && p.collider2 != e && p.body2 != Some(e) {
+                return None;
+            }
+            let m = p.manifolds.iter().find(|m| !m.points.is_empty())?;
+            Some(if first { -m.normal } else { m.normal })
+        });
+        let Some(normal) = surface else {
+            painted.touching = false;
+            continue;
+        };
+        if painted.touching {
             continue;
         }
-        let reach = collider.map(|c| (c.shape.maxs - c.shape.mins).max_element() * 0.5).unwrap_or(16.0);
-        let center = gt.translation();
-        let tr = physics.trace(center, center + v.0 / speed * (speed * TICK * 1.5 + reach), Vec3::ZERO, Vec3::ZERO, mask::SOLID_ALL, &[e]);
-        if !tr.hit() || tr.start_solid || v.0.dot(tr.normal) > -MIN_INTO_SPEED {
-            continue;
-        }
+        painted.touching = true;
         let mut next = || {
             *rng = rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
             (*rng >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0
         };
         let jitter = Vec2::new(next(), next()) * FLOOR_JITTER;
-        v.0 = prop_bounce(v.0, tr.normal, &g, jitter);
-        debug!("painted prop {e} bounced off {} -> {}", tr.normal, v.0);
-        painted.next_bounce = now + BOUNCE_COOLDOWN;
+        v.0 = prop_bounce(v.0, normal, &g, jitter);
+        commands.entity(e).remove::<avian3d::prelude::Sleeping>();
+        debug!("painted prop {e} bounced off {normal} -> {}", v.0);
     }
 }
 

@@ -191,21 +191,8 @@ fn physics_prop_input(world: &mut World, call: &InputCall) -> bool {
         return true;
     }
     let e = call.target;
-    // `Break` (CBreakableProp): the pieces its collision model lists fly
-    // off, `OnBreak` fires and the prop is gone (`sp_a2_core`'s juggled
-    // turret when Wheatley stops juggling).
     if call.input == "break" {
-        let Some(model) = world.get::<MapEntity>(e).and_then(|me| me.studio_model()) else { return true };
-        let at = super::world_transform(world, e).compute_transform();
-        let velocity = world.get::<avian3d::prelude::LinearVelocity>(e).map_or(Vec3::ZERO, |v| v.0);
-        if let Some(mut holding) = world.get_resource_mut::<crate::physics::carry::Holding>()
-            && holding.entity == Some(e)
-        {
-            holding.entity = None;
-        }
-        fire_output(world, e, "OnBreak", call.activator, None);
-        super::despawn_entity(world, e);
-        crate::devices::turret_break::spawn_pieces(world, &model, at, velocity);
+        break_prop(world, e, call.activator);
         return true;
     }
     let cube = world.get::<MapEntity>(e).is_some_and(|me| me.classname == "prop_weighted_cube");
@@ -228,6 +215,32 @@ fn physics_prop_input(world: &mut World, call: &InputCall) -> bool {
     fire_output(world, e, "OnFizzled", call.activator, None);
     super::despawn_entity(world, e);
     true
+}
+
+/// `Break` (CBreakableProp, physics and dynamic props alike): the pieces
+/// its collision model lists fly off, `OnBreak` fires and the prop is gone
+/// (`sp_a2_core`'s juggled turret when Wheatley stops juggling,
+/// `sp_a3_crazy_box`'s cracked glass panels).
+fn break_prop(world: &mut World, e: Entity, activator: Option<Entity>) {
+    let Some(model) = world.get::<MapEntity>(e).and_then(|me| me.studio_model()) else { return };
+    let at = super::world_transform(world, e).compute_transform();
+    let velocity = world.get::<avian3d::prelude::LinearVelocity>(e).map_or(Vec3::ZERO, |v| v.0);
+    if let Some(mut holding) = world.get_resource_mut::<crate::physics::carry::Holding>()
+        && holding.entity == Some(e)
+    {
+        holding.entity = None;
+    }
+    fire_output(world, e, "OnBreak", activator, None);
+    super::despawn_entity(world, e);
+    crate::devices::turret_break::spawn_pieces(world, &model, at, velocity);
+}
+
+/// `rendermode` and `renderamt`: a model in any render mode but normal with
+/// no alpha is not drawn (models are not drawn see-through here, so any
+/// other alpha shows them whole). `sp_a3_crazy_box`'s cracked glass panels
+/// wait at alpha 0 until a hit sets 255.
+pub fn render_alpha_hidden(me: &MapEntity) -> bool {
+    me.get_i32("rendermode").unwrap_or(0) != 0 && me.get_f32("renderamt").unwrap_or(255.0) <= 0.0
 }
 
 // ------------------------------------------------------------------ prop_dynamic
@@ -258,7 +271,7 @@ fn spawn_dynamic(world: &mut World, e: Entity) {
             anim.cycle = 0.0;
         }
     }
-    if me.get_bool("startdisabled")
+    if (me.get_bool("startdisabled") || render_alpha_hidden(&me))
         && let Some(mut v) = world.get_mut::<Visibility>(e)
     {
         *v = Visibility::Hidden;
@@ -272,6 +285,7 @@ fn dynamic_input(world: &mut World, call: &InputCall) -> bool {
         "disable" | "turnoff" => set_visible(world, e, false),
         "enablecollision" | "disablecollision" => set_collision(world, e, call.input == "enablecollision"),
         "becomeragdoll" => {}
+        "break" => break_prop(world, e, call.activator),
         // The engine's `SUB_StartFadeOut(0, true)`: not solid at once, the
         // alpha falls 256 a second and the prop is removed once it is gone
         // (`sp_a4_finale4`'s debris). Models are not drawn see-through
@@ -355,6 +369,18 @@ fn model_inputs(world: &mut World, call: &InputCall) -> bool {
                 anim.finished = false;
                 anim.playing = true;
             }
+            true
+        }
+        // `Alpha` sets `renderamt` (see `render_alpha_hidden`).
+        "alpha" => {
+            if world.get::<MapEntity>(e).and_then(|m| m.studio_model()).is_none() {
+                return false;
+            }
+            let amount = source_formats::kv::parse_f32_lenient(&call.param).clamp(0.0, 255.0);
+            let Some(mut me) = world.get_mut::<MapEntity>(e) else { return false };
+            me.set("renderamt", &(amount as i32).to_string());
+            let hidden = render_alpha_hidden(&me);
+            set_visible(world, e, !hidden);
             true
         }
         "skin" | "setbodygroup" => {

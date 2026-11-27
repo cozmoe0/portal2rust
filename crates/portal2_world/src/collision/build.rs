@@ -106,6 +106,31 @@ pub fn model_physics(bsp: &Bsp) -> Vec<Option<Vec<ConvexVolume>>> {
     out
 }
 
+/// The mass vbsp gave a brush model's physics (its solids' `"mass"` keys in
+/// `LUMP_PHYSCOLLIDE`'s key data: volume times the surface's density),
+/// before an entity's `massscale`.
+pub fn model_physics_mass(bsp: &Bsp, model: usize) -> Option<f32> {
+    let data = bsp.phys_collide.as_slice();
+    let read = |at: usize| data.get(at..at + 4).map(|b| i32::from_le_bytes(b.try_into().expect("four bytes")));
+    let mut at = 0;
+    while let (Some(m), Some(size), Some(key_size)) = (read(at), read(at + 4), read(at + 8)) {
+        if m < 0 || size < 0 || key_size < 0 {
+            break;
+        }
+        let start = at + 16;
+        at = start + size as usize + key_size as usize;
+        if m as usize != model {
+            continue;
+        }
+        let keys = String::from_utf8_lossy(data.get(start + size as usize..at)?).into_owned();
+        let tokens: Vec<&str> = keys.split('"').skip(1).step_by(2).collect();
+        let total: f32 =
+            tokens.windows(2).filter(|w| w[0].eq_ignore_ascii_case("mass")).filter_map(|w| w[1].trim().parse::<f32>().ok()).sum();
+        return (total > 0.0).then_some(total);
+    }
+    None
+}
+
 /// Every displacement (terrain) triangle in world space.
 pub fn displacement_triangles(bsp: &Bsp) -> Vec<[Vec3; 3]> {
     let mut out = Vec::new();

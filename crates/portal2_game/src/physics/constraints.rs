@@ -340,7 +340,9 @@ fn drive_motors(
 /// `addlength`; spawnflag 2 makes it rigid). `sp_a2_bts5`'s cut panels hang
 /// from one corner by a ball socket once the laser has cut the weld, until
 /// the socket is cut too. Spawnflags 4 and 16 wait for `TurnOn`; `TurnOff`,
-/// `Break` and `Kill` let go.
+/// `Break` and `Kill` let go. A ragdoll constraint also limits the turn
+/// about each of its axes (`xmin`..`zmax`, degrees): `sp_a3_crazy_box`'s
+/// glass box swings up to 90° but never spins about its rope (z 0..0).
 #[derive(Component)]
 pub struct PointConstraint {
     attach1: Option<String>,
@@ -353,6 +355,22 @@ pub struct PointConstraint {
     rigid: bool,
     active: bool,
     built: bool,
+    limits: Option<RagdollLimits>,
+}
+
+/// A ragdoll constraint's limits as a cone around its z axis (the largest
+/// of the x and y ranges) and a twist range about that axis, in radians.
+#[derive(Clone, Copy, Debug)]
+struct RagdollLimits {
+    axes: Quat,
+    swing: f32,
+    twist: (f32, f32),
+}
+
+fn ragdoll_limits(me: &MapEntity) -> RagdollLimits {
+    let deg = |k: &str| me.get_f32(k).unwrap_or(0.0).to_radians();
+    let swing = [deg("xmin"), deg("xmax"), deg("ymin"), deg("ymax")].into_iter().map(f32::abs).fold(0.0, f32::max);
+    RagdollLimits { axes: portal2_core::coords::angles_to_quat(me.angles()), swing, twist: (deg("zmin"), deg("zmax")) }
 }
 
 const SF_CONSTRAINT_START_INACTIVE: u32 = 4;
@@ -372,6 +390,7 @@ fn spawn_point_constraint(world: &mut World, e: Entity) {
         rigid: length && me.has_flag(SF_LENGTH_RIGID),
         active: !(me.has_flag(SF_CONSTRAINT_START_INACTIVE) || me.has_flag(SF_CONSTRAINT_NO_CONNECT_UNTIL_ACTIVE)),
         built: false,
+        limits: (me.classname == "phys_ragdollconstraint").then(|| ragdoll_limits(me)),
     };
     world.entity_mut(e).insert(c);
 }
@@ -436,6 +455,16 @@ fn build_point_constraints(
                 let mut joint = SphericalJoint::new(b1, b2);
                 joint.frame1 = to_frame(frame1);
                 joint.frame2 = to_frame(frame1);
+                if let Some(l) = c.limits {
+                    let frame = |p: Vec3| JointFrame::global(Isometry3d::new(p, l.axes));
+                    joint.frame1 = frame(frame1);
+                    joint.frame2 = frame(frame1);
+                    // Avian measures the swing cone about the axis it picks at
+                    // right angles to `twist_axis` (-Z for its default Y) and
+                    // the twist about that cone axis, so the default Y gives a
+                    // tilt cone about the constraint's z and a turn about it.
+                    joint = joint.with_twist_axis(Vec3::Y).with_swing_limits(0.0, l.swing).with_twist_limits(l.twist.0, l.twist.1);
+                }
                 commands.entity(e).insert(joint);
             }
             Some(_) => {

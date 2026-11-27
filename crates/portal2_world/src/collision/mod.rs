@@ -25,6 +25,10 @@ pub mod mask {
     pub const SOLID_BRUSH_ONLY: u32 = SOLID | MOVEABLE | WINDOW | GRATE;
     /// Source's `MASK_SHOT`: what bullets hit. Grates let them through.
     pub const SHOT: u32 = SOLID | MOVEABLE | MONSTER | WINDOW | DEBRIS | HITBOX;
+    /// What paint blobs hit (server.dll's blob collision, 0x46004001):
+    /// like `SHOT` but without windows, so blobs fall through grates and
+    /// glass brushes.
+    pub const PAINT_BLOB: u32 = SOLID | MOVEABLE | MONSTER | DEBRIS | HITBOX;
     /// Source's `MASK_BLOCKLOS`: what blocks an NPC's sight. Glass, grates
     /// and characters don't.
     pub const BLOCKLOS: u32 = SOLID | MOVEABLE | source_formats::bsp::contents::BLOCKLOS;

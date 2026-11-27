@@ -273,8 +273,10 @@ fn rest_new_props(mut commands: Commands, mut props: Query<(Entity, &mut StartsA
 fn attach_bodies(
     mut commands: Commands,
     fs: Res<GameFs>,
+    map: Option<Res<CurrentMap>>,
     new: Query<(Entity, &TraceCollider, &MapEntity, Has<PhysicsProp>, Has<ChildOf>), (Without<RigidBody>, Without<RidesPhysicsObject>)>,
 ) {
+    let bsp = map.as_ref().map(|m| m.bsp.as_ref());
     for (e, col, me, is_prop, parented) in &new {
         if !col.solid {
             continue;
@@ -285,7 +287,7 @@ fn attach_bodies(
         let collider = if is_prop { prop_collider(&col.shape) } else { shape_collider(&col.shape) };
         let Some(collider) = collider else { continue };
         if is_prop && !parented && !motion_disabled(me) {
-            make_dynamic(&mut commands, e, collider, prop_mass(&fs, me));
+            make_dynamic(&mut commands, e, collider, prop_mass(&fs, bsp, me));
             commands.entity(e).insert(PhysicsProp);
         } else {
             // Spawnflag 8 on physics props: start motion disabled.
@@ -353,7 +355,8 @@ pub fn prevents_pickup(me: &MapEntity) -> bool {
 /// apart, so on its own body `sp_a2_core`'s fake vault door handle stayed
 /// hanging on the wall while the door fell, and taken into the door's body
 /// it swung through the floor as it turned and threw the door about. It
-/// follows the object and still stops the player and traces.
+/// follows the object and still stops the player and traces. A model
+/// riding one keeps its collider as a weightless part of the object's body.
 #[derive(Component)]
 pub struct RidesPhysicsObject;
 
@@ -364,9 +367,9 @@ fn fold_child_bodies(world: &mut World) {
         .filter(|(_, b)| b.is_dynamic())
         .map(|(e, _)| e)
         .collect();
+    let mut riders = Vec::new();
     for body in movers {
         let mut stack: Vec<Entity> = world.get::<Children>(body).map(|c| c.iter().collect()).unwrap_or_default();
-        let mut riders = Vec::new();
         while let Some(child) = stack.pop() {
             if world.get::<PhysicsProp>(child).is_some() {
                 continue;
@@ -378,8 +381,44 @@ fn fold_child_bodies(world: &mut World) {
                 stack.extend(children.iter());
             }
         }
-        for child in riders {
-            world.entity_mut(child).remove::<(RigidBody, Collider, KinematicTrack, LinearVelocity, AngularVelocity)>().insert(RidesPhysicsObject);
+    }
+    // Bodies that join an object already moving: `sp_a3_crazy_box`'s
+    // cracked panels are parented to the box at map spawn and get theirs
+    // after it, and left on their own they did not follow it, so the cube
+    // slipped out once the intact panel in front went.
+    let late: Vec<Entity> = world
+        .query_filtered::<(Entity, &RigidBody), (Without<PhysicsProp>, Or<(Added<RigidBody>, Changed<ChildOf>)>)>()
+        .iter(world)
+        .filter(|(_, b)| b.is_kinematic())
+        .map(|(e, _)| e)
+        .collect();
+    for child in late {
+        let mut up = world.get::<ChildOf>(child).map(|c| c.parent());
+        while let Some(p) = up {
+            if world.get::<PhysicsProp>(p).is_some() {
+                if world.get::<RigidBody>(p).is_some_and(|b| b.is_dynamic()) && !riders.contains(&child) {
+                    riders.push(child);
+                }
+                break;
+            }
+            up = world.get::<ChildOf>(p).map(|c| c.parent());
+        }
+    }
+    for child in riders {
+        // A model riding the object (`sp_a3_crazy_box`'s glass panels on
+        // the hanging box) becomes part of its body, weightless, so what
+        // is inside bounces off it rather than flying through.
+        let model = world.get::<MapEntity>(child).is_some_and(|me| me.brush_model().is_none() && me.studio_model().is_some());
+        debug!(
+            "{child} ({:?}) rides a physics object; collider kept: {model}",
+            world.get::<MapEntity>(child).and_then(|m| m.targetname.clone())
+        );
+        let mut c = world.entity_mut(child);
+        c.remove::<(RigidBody, KinematicTrack, LinearVelocity, AngularVelocity)>().insert(RidesPhysicsObject);
+        if model {
+            c.insert(ColliderDensity(0.0));
+        } else {
+            c.remove::<Collider>();
         }
     }
 }
@@ -402,9 +441,17 @@ fn apply_debris(
     }
 }
 
-/// A physics prop's mass: its model's (40 without one) times `massscale`.
-pub fn prop_mass(fs: &GameFs, me: &MapEntity) -> f32 {
-    me.get_f32("massscale").filter(|s| *s > 0.0).unwrap_or(1.0) * me.studio_model().and_then(|p| model_mass(fs, &p)).unwrap_or(40.0)
+/// A physics object's mass times `massscale`: a brush entity's
+/// (`func_physbox`) is the one vbsp stored with its physics, a prop's its
+/// model's (40 without one). `sp_a3_crazy_box`'s hanging glass box weighs
+/// 875 × 0.5; taken as 40 × 0.5 a bouncing cube flung it about.
+pub fn prop_mass(fs: &GameFs, bsp: Option<&source_formats::bsp::Bsp>, me: &MapEntity) -> f32 {
+    let base = match (me.brush_model().filter(|&m| m > 0), bsp) {
+        (Some(model), Some(bsp)) => portal2_world::collision::build::model_physics_mass(bsp, model),
+        _ => None,
+    };
+    let base = base.or_else(|| me.studio_model().and_then(|p| model_mass(fs, &p))).unwrap_or(40.0);
+    me.get_f32("massscale").filter(|s| *s > 0.0).unwrap_or(1.0) * base
 }
 
 /// A physics prop given a parent rides it rather than falling.
@@ -422,7 +469,8 @@ pub fn on_unparented(world: &mut World, e: Entity) {
     if frozen || world.get::<PhysicsProp>(e).is_none() || world.get::<RigidBody>(e).is_none_or(|b| b.is_dynamic()) {
         return;
     }
-    let mass = prop_mass(world.resource::<GameFs>(), me);
+    let bsp = world.get_resource::<CurrentMap>().map(|m| m.bsp.clone());
+    let mass = prop_mass(world.resource::<GameFs>(), bsp.as_deref(), me);
     let Some(collider) = world.get::<TraceCollider>(e).and_then(|c| prop_collider(&c.shape)) else { return };
     let mut commands = world.commands();
     make_dynamic(&mut commands, e, collider, mass);
@@ -591,7 +639,10 @@ pub fn make_dynamic(commands: &mut Commands, e: Entity, collider: Collider, mass
         Restitution::new(0.05),
         LinearDamping(PROP_LINEAR_DAMPING),
         AngularDamping(PROP_ANGULAR_DAMPING),
-        SweptCcd::default(),
+        // Swept against moving objects too, as the game's continuous physics
+        // is: a bounce-painted cube at 500 u/s otherwise passed through the
+        // inch-thin lid and glass of `sp_a3_crazy_box`'s swinging box.
+        SweptCcd::default().with_filter(CcdFilter::ALL),
         // Drawn eased between physics ticks, like the player's view; a
         // carried prop would otherwise judder against it at high frame rates.
         TransformInterpolation,

@@ -289,6 +289,7 @@ fn fire_gun(
     };
     let now = time.elapsed_secs_f64();
     if !gun.can_fire[slot] || now < gun.next_fire {
+        debug!("portal {slot} not fired: can fire {:?}, next shot at {:.2} (now {now:.2})", gun.can_fire, gun.next_fire);
         return;
     }
     let (Ok((pe, p)), Some(map)) = (players.single(), map) else { return };

@@ -60,7 +60,10 @@ fn motion_input(world: &mut World, call: &InputCall) -> bool {
                 && let Some(shape) = world.get::<TraceCollider>(e).map(|c| c.shape.clone())
             {
                 let Some(collider) = super::prop_collider(&shape) else { return true };
-                let mass = world.get::<MapEntity>(e).map_or(40.0, |me| super::prop_mass(world.resource::<portal2_core::vfs::GameFs>(), me));
+                let bsp = world.get_resource::<portal2_world::CurrentMap>().map(|m| m.bsp.clone());
+                let mass = world
+                    .get::<MapEntity>(e)
+                    .map_or(40.0, |me| super::prop_mass(world.resource::<portal2_core::vfs::GameFs>(), bsp.as_deref(), me));
                 let mut commands = world.commands();
                 super::make_dynamic(&mut commands, e, collider, mass);
                 world.flush();
