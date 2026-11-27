@@ -438,7 +438,17 @@ fn build_point_constraints(
                 },
             }
         };
-        let (Ok(b1), Ok(b2)) = (find(&c.attach1), find(&c.attach2)) else { continue };
+        let (Ok(b1), Ok(b2)) = (find(&c.attach1), find(&c.attach2)) else {
+            if let Some(b) = c.attach1.as_deref().and_then(|n| registry.first_named(n)) {
+                trace!(
+                    "point constraint {e} waits: {:?} {:?} {:?}",
+                    bodies.get(b).ok(),
+                    masses.get(b).ok().map(|(m, _)| m.map(|m| m.0)),
+                    masses.get(b).ok().and_then(|(_, c)| c.map(|c| c.value()))
+                );
+            }
+            continue;
+        };
         let (b1, b2, frame1, frame2) = match (b1, b2) {
             (None, None) => continue,
             (Some(a), Some(b)) => (a, b, c.origin, c.end.unwrap_or(c.origin)),
@@ -465,6 +475,7 @@ fn build_point_constraints(
                     // tilt cone about the constraint's z and a turn about it.
                     joint = joint.with_twist_axis(Vec3::Y).with_swing_limits(0.0, l.swing).with_twist_limits(l.twist.0, l.twist.1);
                 }
+                debug!("point constraint {e} joins {b1} and {b2} at {frame1}");
                 commands.entity(e).insert(joint);
             }
             Some(_) => {

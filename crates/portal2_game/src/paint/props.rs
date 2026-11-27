@@ -18,6 +18,8 @@ use portal2_world::paint_map::PaintType;
 
 /// Random sideways push of a floor bounce, either way on each axis.
 const FLOOR_JITTER: f32 = 80.0;
+/// A contact point this close (or pressing) counts as touching.
+const TOUCH_SLOP: f32 = 0.1;
 
 pub struct PaintedPropsPlugin;
 
@@ -160,7 +162,9 @@ fn bounce_props(
             if !first && p.collider2 != e && p.body2 != Some(e) {
                 return None;
             }
-            let m = p.manifolds.iter().find(|m| !m.points.is_empty())?;
+            // Touching, not a speculative contact the solver keeps for
+            // something still on its way: the impact happens first.
+            let m = p.manifolds.iter().find(|m| m.points.iter().any(|c| c.penetration > -TOUCH_SLOP || c.normal_impulse > 0.0))?;
             Some(if first { -m.normal } else { m.normal })
         });
         let Some(normal) = surface else {

@@ -607,6 +607,8 @@ pub struct PaintBlobMaterial {
     #[texture(3)]
     #[sampler(4)]
     pub normal_map: Option<Handle<Image>>,
+    /// Erase paint is among the blobs: they read the scene behind them.
+    pub water: bool,
 }
 
 /// The textures every blob material shares.
@@ -617,8 +619,8 @@ struct BlobTextures {
 }
 
 impl BlobTextures {
-    fn material(&self, params: BlobParams) -> PaintBlobMaterial {
-        PaintBlobMaterial { params, envmap: self.envmap.clone(), normal_map: self.normal_map.clone() }
+    fn material(&self, params: BlobParams, water: bool) -> PaintBlobMaterial {
+        PaintBlobMaterial { params, envmap: self.envmap.clone(), normal_map: self.normal_map.clone(), water }
     }
 }
 
@@ -627,10 +629,11 @@ impl Material for PaintBlobMaterial {
         BLOB_SHADER.into()
     }
 
-    /// Erase paint shows the scene behind it, which puts blobs in the
-    /// transmissive pass after a copy of the opaque one.
+    /// Erase paint shows the scene behind it, which puts its blobs in the
+    /// transmissive pass after a copy of the opaque one. Other paint draws
+    /// with the opaque pass, so glass (which shows that copy) shows it.
     fn reads_view_transmission_texture(&self) -> bool {
-        true
+        self.water
     }
 
     fn enable_prepass() -> bool {
@@ -893,13 +896,21 @@ fn draw_blobs(
     for (_, mut s) in &mut sprayers {
         let (mesh, count) = (built.next().flatten(), counts.next().unwrap_or(0));
         let lighting = s.lighting;
+        let water = s.paint == PaintType::Erase;
         let mut slot = DrawSlot { entity: s.draw, drawn: s.drawn };
-        targets.show(&mut slot, mesh, count, &mut commands, &handles, |m| m.add(shared.material(BlobParams::new(&lighting, rows))));
+        targets.show(&mut slot, mesh, count, &mut commands, &handles, |m| m.add(shared.material(BlobParams::new(&lighting, rows), water)));
         set_portals(&mut targets, slot.entity, &material_handles, rows);
         s.draw = slot.entity;
         s.drawn = slot.drawn;
     }
     let (mesh, count) = (built.next().flatten(), counts.next().unwrap_or(0));
+    let free_water = blobs.list.iter().any(|b| !owned.contains(&b.sprayer) && b.paint == PaintType::Erase);
+    if let Some(m) = free.material.as_ref()
+        && targets.materials.get(m).is_some_and(|mat| mat.water != free_water)
+        && let Some(mut mat) = targets.materials.get_mut(m)
+    {
+        mat.water = free_water;
+    }
     // Light the free group where it is, now and then.
     let mut relight = None;
     if free.relight_in == 0
@@ -917,7 +928,7 @@ fn draw_blobs(
     }
     let FreeDraw { slot, material, .. } = &mut *free;
     targets.show(slot, mesh, count, &mut commands, &handles, |m| {
-        let h = m.add(shared.material(BlobParams::new(&relight.unwrap_or_default(), rows)));
+        let h = m.add(shared.material(BlobParams::new(&relight.unwrap_or_default(), rows), free_water));
         *material = Some(h.clone());
         h
     });

@@ -258,6 +258,9 @@ in tangent space:
     diffuse + amb) + spec1 × 2, opaque layer, 0.082)`, with the same
     sixteenth on the reflection. In the opaque layer
     the rim boost is 300 and the exponent 8.
+- Opaque paint draws with the opaque pass; only blobs with erase paint
+  among them draw after the frame copy (which glass and water show), so
+  blue blobs show through `sp_a3_crazy_box`'s glass.
 - Everything, the copied frame included, is multiplied by `cLightScale.x`
   (the tonemap scale). That is why the water reads brighter than what is
   behind it.
@@ -301,7 +304,9 @@ in tangent space:
   ±80 on x and y; the result is the tangential velocity, less its part
   along the push, plus the push. Use (sub_104D9E10) does nothing, so a
   painted cube at rest leaps 500 straight away and then bounces once off
-  each surface it next lands on.
+  each surface it next lands on. The contact is a real one: the impact
+  happens (and pushes what it hits) before the bounce, so contacts the
+  physics keeps for something still a little way off do not count.
 - Speed (sub_103AC430 / sub_103AC480) swaps the physics material for the
   slippery one and back.
 - A weighted cube's paint power switch (sub_103ECB90) gives a bounce-
@@ -327,10 +332,16 @@ in tangent space:
   4 (`Break` the cracked one, play
   `ScriptedSequence.CrazyBoxGlasstastrophe01`, push with an
   `env_physexplosion`; `OnBreak` shows the edge).
-- The panels are pinned shadow objects in the game: the cube bounces off
-  them without pushing the box. Here they are weightless parts of the
-  box's body, so the box swings wider: measured at about ±13° against the
-  game's ±4.7° (period about 4.5 s, no turn about the vertical in either).
+- The panels are shadow objects in the game, not joined to the box. Here
+  they are kinematic bodies following it, and a quarter of each prop's
+  push on them is handed to the box at the contact: the box then swings
+  about ±5° while the cube rattles round inside, as measured in the game
+  (±4.7°, at most 7°, period about 4.5 s, no turn about the vertical).
+  Taken whole (the panels as part of the box) it swung ±25°; not at all,
+  ±0.5°.
+- The painted cube never stops bouncing in the game either: still
+  hopping round the room 60 s on (about 250 units high each time). The
+  chamber's clear gel stream washes it.
 - Measured in the game after the gel first reaches the cube: first panel
   hit, first crack 0.6 s later, first break 3.0 s, the cube leaves the box
   4.1 s (`trigger_once` stopping `ambient_sp_a3_crazy_box_x1`) and lands

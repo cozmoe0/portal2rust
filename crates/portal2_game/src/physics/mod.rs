@@ -51,7 +51,7 @@ impl Plugin for GamePhysicsPlugin {
             .add_systems(Update, (attach_bodies, attach_follower_bodies, attach_player_body, sync_portal_slabs, sync_disabled_colliders))
             .add_systems(PostUpdate, apply_debris)
             .add_systems(Update, fold_child_bodies.after(attach_bodies))
-            .add_systems(FixedUpdate, rest_new_props)
+            .add_systems(FixedUpdate, (rest_new_props, couple_shadow_riders))
             .add_systems(
                 FixedPostUpdate,
                 drive_kinematic_bodies.in_set(PhysicsSystems::Prepare).after(avian3d::physics_transform::PhysicsTransformSystems::TransformToPosition),
@@ -367,7 +367,8 @@ fn fold_child_bodies(world: &mut World) {
         .filter(|(_, b)| b.is_dynamic())
         .map(|(e, _)| e)
         .collect();
-    let mut riders = Vec::new();
+    // (rider, the object it rides)
+    let mut riders: Vec<(Entity, Entity)> = Vec::new();
     for body in movers {
         let mut stack: Vec<Entity> = world.get::<Children>(body).map(|c| c.iter().collect()).unwrap_or_default();
         while let Some(child) = stack.pop() {
@@ -375,7 +376,7 @@ fn fold_child_bodies(world: &mut World) {
                 continue;
             }
             if world.get::<RigidBody>(child).is_some_and(|b| b.is_kinematic()) {
-                riders.push(child);
+                riders.push((child, body));
             }
             if let Some(children) = world.get::<Children>(child) {
                 stack.extend(children.iter());
@@ -383,11 +384,10 @@ fn fold_child_bodies(world: &mut World) {
         }
     }
     // Bodies that join an object already moving: `sp_a3_crazy_box`'s
-    // cracked panels are parented to the box at map spawn and get theirs
-    // after it, and left on their own they did not follow it, so the cube
-    // slipped out once the intact panel in front went.
+    // cracked panels are parented to the box at map spawn and may get
+    // their bodies after it.
     let late: Vec<Entity> = world
-        .query_filtered::<(Entity, &RigidBody), (Without<PhysicsProp>, Or<(Added<RigidBody>, Changed<ChildOf>)>)>()
+        .query_filtered::<(Entity, &RigidBody), (Without<PhysicsProp>, Without<ShadowRider>, Or<(Added<RigidBody>, Changed<ChildOf>)>)>()
         .iter(world)
         .filter(|(_, b)| b.is_kinematic())
         .map(|(e, _)| e)
@@ -396,29 +396,77 @@ fn fold_child_bodies(world: &mut World) {
         let mut up = world.get::<ChildOf>(child).map(|c| c.parent());
         while let Some(p) = up {
             if world.get::<PhysicsProp>(p).is_some() {
-                if world.get::<RigidBody>(p).is_some_and(|b| b.is_dynamic()) && !riders.contains(&child) {
-                    riders.push(child);
+                if world.get::<RigidBody>(p).is_some_and(|b| b.is_dynamic()) && !riders.iter().any(|(c, _)| *c == child) {
+                    riders.push((child, p));
                 }
                 break;
             }
             up = world.get::<ChildOf>(p).map(|c| c.parent());
         }
     }
-    for child in riders {
-        // A model riding the object (`sp_a3_crazy_box`'s glass panels on
-        // the hanging box) becomes part of its body, weightless, so what
-        // is inside bounces off it rather than flying through.
+    for (child, body) in riders {
         let model = world.get::<MapEntity>(child).is_some_and(|me| me.brush_model().is_none() && me.studio_model().is_some());
         debug!(
-            "{child} ({:?}) rides a physics object; collider kept: {model}",
+            "{child} ({:?}) rides physics object {body}; shadow: {model}",
             world.get::<MapEntity>(child).and_then(|m| m.targetname.clone())
         );
         let mut c = world.entity_mut(child);
-        c.remove::<(RigidBody, KinematicTrack, LinearVelocity, AngularVelocity)>().insert(RidesPhysicsObject);
         if model {
-            c.insert(ColliderDensity(0.0));
+            // A model riding the object (`sp_a3_crazy_box`'s glass panels on
+            // the hanging box) is a pinned shadow, as the engine makes a
+            // parented prop's physics: a kinematic body following it that
+            // what is inside bounces off. Its collider is put back so it
+            // belongs to its own body: given before that body, it had joined
+            // the object's, and the box weighed half a million.
+            c.insert((ColliderDensity(0.0), ShadowRider { body }));
+            if let Some(collider) = c.take::<Collider>() {
+                c.insert(collider);
+            }
         } else {
-            c.remove::<Collider>();
+            c.remove::<(RigidBody, Collider, KinematicTrack, LinearVelocity, AngularVelocity)>().insert(RidesPhysicsObject);
+        }
+    }
+}
+
+/// A model riding a moving physics object as a pinned shadow (see
+/// `fold_child_bodies`), and the object it rides.
+#[derive(Component)]
+pub struct ShadowRider {
+    pub body: Entity,
+}
+
+/// How much of a hit on a pinned shadow reaches the object it rides. The
+/// engine's shadows are not joined to the object, yet `sp_a3_crazy_box`'s
+/// box swings about ±5° (at most 7°) while a bounce-painted cube rattles
+/// round inside, measured over several runs; all of each hit makes it ±25°,
+/// none ±0.5°.
+const SHADOW_COUPLING: f32 = 0.25;
+
+/// Passes part of what props do to a pinned shadow on to the object it
+/// rides, at the point of contact, a step after the hit.
+fn couple_shadow_riders(
+    contacts: Res<ContactGraph>,
+    riders: Query<&ShadowRider>,
+    props: Query<(), With<PhysicsProp>>,
+    mut forces: Query<Forces>,
+) {
+    for pair in contacts.active_pairs() {
+        let (rider, first, other) = match (riders.get(pair.collider1), riders.get(pair.collider2)) {
+            (Ok(r), Err(_)) => (r, true, pair.body2.unwrap_or(pair.collider2)),
+            (Err(_), Ok(r)) => (r, false, pair.body1.unwrap_or(pair.collider1)),
+            _ => continue,
+        };
+        if other == rider.body || props.get(other).is_err() {
+            continue;
+        }
+        let Ok(mut body) = forces.get_mut(rider.body) else { continue };
+        for m in &pair.manifolds {
+            // The normal points from the first collider to the second, and
+            // the impulse pushes the second along it.
+            let along = if first { -m.normal } else { m.normal };
+            for p in m.points.iter().filter(|p| p.normal_impulse > 0.0) {
+                body.apply_linear_impulse_at_point(along * p.normal_impulse * SHADOW_COUPLING, p.point);
+            }
         }
     }
 }
