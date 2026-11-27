@@ -42,11 +42,6 @@ pub struct PaintEntity {
 #[derive(Component, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct PaintedProp {
     pub paint: PaintType,
-    /// Bounce gel's power is active: the prop touched something and
-    /// bounced, and has not been free of contacts since. Contacts come
-    /// back with the physics after a load, so it is not saved.
-    #[serde(skip)]
-    touching: bool,
 }
 
 /// The colour an entity is drawn with (paint landed on it); `None` restores it.
@@ -82,7 +77,7 @@ fn apply_paint(
             continue;
         }
         debug!("prop {} painted {:?}", ev.entity, ev.paint);
-        e.try_insert(PaintedProp { paint: ev.paint, touching: false });
+        e.try_insert(PaintedProp { paint: ev.paint });
         e.try_insert(Friction::new(if ev.paint == PaintType::Speed { 0.0 } else { 0.8 }));
     }
 }
@@ -137,22 +132,21 @@ fn prop_bounce(v: Vec3, normal: Vec3, g: &GelSettings, jitter: Vec2) -> Vec3 {
 }
 
 /// Bounce gel on a prop (`PropPaintPowerUser`, server.dll sub_10329810):
-/// its power turns on when the prop touches something, and turning on
-/// throws it off that surface once; the power stays on while the prop
-/// keeps touching anything and goes off once it touches nothing. So a
-/// painted cube at rest leaps at once, and bounces off each surface it
-/// next lands on.
+/// every physics tick in which the prop touches something its bounce
+/// power is activated again, throwing it off that surface (activation
+/// leaves the power about to switch off, so it never settles into "in
+/// use"). A painted cube therefore cannot come to rest against anything;
+/// only washing or catching it stops it.
 fn bounce_props(
     mut commands: Commands,
     console: Res<Console>,
     contacts: Res<ContactGraph>,
-    mut props: Query<(Entity, &mut PaintedProp, &mut LinearVelocity)>,
+    mut props: Query<(Entity, &PaintedProp, &mut LinearVelocity)>,
     mut rng: Local<u32>,
 ) {
     let g = GelSettings::from_console(&console);
-    for (e, mut painted, mut v) in &mut props {
+    for (e, painted, mut v) in &mut props {
         if painted.paint != PaintType::Bounce {
-            painted.touching = false;
             continue;
         }
         // The surface's normal, out of what the prop touches (a prop at
@@ -167,14 +161,7 @@ fn bounce_props(
             let m = p.manifolds.iter().find(|m| m.points.iter().any(|c| c.penetration > -TOUCH_SLOP || c.normal_impulse > 0.0))?;
             Some(if first { -m.normal } else { m.normal })
         });
-        let Some(normal) = surface else {
-            painted.touching = false;
-            continue;
-        };
-        if painted.touching {
-            continue;
-        }
-        painted.touching = true;
+        let Some(normal) = surface else { continue };
         let mut next = || {
             *rng = rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
             (*rng >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0

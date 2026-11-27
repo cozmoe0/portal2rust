@@ -293,20 +293,30 @@ in tangent space:
 
 ## Bounce gel on props (`PropPaintPowerUser`)
 
-- A prop's paint power works like the player's: each tick its contacts
-  pick a power, and a power that turns on is "activated" once, used while
-  it stays on and deactivated when the prop touches nothing.
+- A prop's paint power is updated from its physics contacts on every
+  physics tick it is awake (`CPhysicsProp::VPhysicsUpdate` override
+  sub_103AC230 then sub_103AC4B0: the friction snapshot, one entry per
+  contact with an entity, normal and point; `PaintPowerUser::
+  UpdatePaintPowers` sub_103ABD90). A painted prop touching anything
+  takes the first contact's normal with its own paint. Each power slot
+  has a state: 0 activate, 1 in use, 2 deactivate, 3 off. A slot with a
+  contact goes to "in use" only if it was in use with the same power,
+  the same field at +32 and a normal within 10 ulps of the last one;
+  otherwise it is activated again. A slot without a contact is
+  deactivated. The handler's return value is the new state.
 - Bounce (activate, server.dll sub_10329810): the velocity loses its part
   along the surface normal; a push is built like the player's (up ×
   `bounce_paint_wall_jump_upward_speed` and normal ×
   `bounce_paint_min_speed`, blended by `1 - up·n` and
   `sv_wall_bounce_trade`); a push with no horizontal part gets a random
   ±80 on x and y; the result is the tangential velocity, less its part
-  along the push, plus the push. Use (sub_104D9E10) does nothing, so a
-  painted cube at rest leaps 500 straight away and then bounces once off
-  each surface it next lands on. The contact is a real one: the impact
-  happens (and pushes what it hits) before the bounce, so contacts the
-  physics keeps for something still a little way off do not count.
+  along the push, plus the push. Activate and use (sub_104D9E10) both
+  return 2, so bounce never stays in use: every tick the prop touches
+  something it is thrown off again. A painted cube at rest leaps 500
+  straight away and can never settle against a floor, wall or corner.
+  The contact is a real one: the impact happens (and pushes what it
+  hits) before the bounce, so contacts the physics keeps for something
+  still a little way off do not count.
 - Speed (sub_103AC430 / sub_103AC480) swaps the physics material for the
   slippery one and back.
 - A weighted cube's paint power switch (sub_103ECB90) gives a bounce-
@@ -342,8 +352,12 @@ in tangent space:
 - The painted cube never stops bouncing by itself in the game either:
   with both sprayer timers running and nobody touching it, it was still
   hopping round the room 196 s on (about 250 units high each time) and
-  never wandered into the clear gel stream's alcove. Washing it in that
-  stream (or catching it with the gun) is what stops it.
+  never wandered into the clear gel stream's alcove. The bounce rule
+  above rules out settling. Only paint removal stops it: the timed clear
+  gel stream (`paint_sprayer_erase_02`, 2 s on, 2 s off), a
+  `trigger_paint_cleanser` or a fizzler. Catching it with the gun holds
+  it; carried through the clear gel it is washed and can go on the
+  button.
 - `func_clip_vphysics` blocks physics objects only. The chamber is lidded
   with one at z 2056 and has more along its -y side and round the
   sprayer nozzles.
