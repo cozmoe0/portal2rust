@@ -150,15 +150,11 @@ fn proxy_input(world: &mut World, call: &InputCall) -> bool {
         world.resource_mut::<crate::physics::carry::Holding>().forced_controller = forced;
         return true;
     }
-    matches!(
-        call.input.as_str(),
-        "setmotionbluramount"
-            | "addpotatostoportalgun"
-            | "removepotatosfromportalgun"
-            | "lowerweapon"
-            | "paintplayerwithportalpaint"
-            | "requestplayerhealth"
-    )
+    if matches!(call.input.as_str(), "addpotatostoportalgun" | "removepotatosfromportalgun") {
+        crate::portals::gun::set_potatos(world, call.input == "addpotatostoportalgun");
+        return true;
+    }
+    matches!(call.input.as_str(), "setmotionbluramount" | "lowerweapon" | "paintplayerwithportalpaint" | "requestplayerhealth")
 }
 
 // ---------------------------------------------------------- player_speedmod

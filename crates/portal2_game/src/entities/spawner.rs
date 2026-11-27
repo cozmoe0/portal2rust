@@ -277,6 +277,9 @@ fn physics_solid_brush(me: &MapEntity) -> bool {
     }
 }
 
+/// `func_movelinear` spawnflag: the mover is not solid.
+const SF_MOVELINEAR_NOTSOLID: u32 = 8;
+
 /// Attaches collision to brush entities (solid or touch-only) and to solid
 /// studio-model entities.
 pub fn attach_collider(world: &mut World, e: Entity) {
@@ -289,7 +292,11 @@ pub fn attach_collider(world: &mut World, e: Entity) {
         }
         // func_brush "solidity": 0 = solid while enabled, 1 = never, 2 = always.
         let solidity = (me.classname == "func_brush").then(|| me.get_i32("solidity").unwrap_or(0));
-        let solid = brush_class_is_solid(&me.classname) && solidity != Some(1);
+        // `func_movelinear` spawnflag 8 (`SF_MOVELINEAR_NOTSOLID`): it moves
+        // through everything (`sp_a3_transition01`'s button base rises
+        // through PotatOS asleep in the bird's nest).
+        let not_solid = me.classname == "func_movelinear" && me.has_flag(SF_MOVELINEAR_NOTSOLID);
+        let solid = brush_class_is_solid(&me.classname) && solidity != Some(1) && !not_solid;
         let enabled = solidity == Some(2) || world.get::<super::movers::Toggleable>(e).is_none_or(|t| t.enabled);
         let mut collider = Collider::new(shape, enabled, solid);
         if physics_solid_brush(&me) {

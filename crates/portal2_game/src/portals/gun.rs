@@ -49,7 +49,10 @@ impl Plugin for GunPlugin {
         app.init_resource::<PortalGun>()
             .init_resource::<PortalableCache>()
             .add_systems(Startup, spawn_viewmodel_camera)
-            .add_systems(Update, (reset_gun_on_map, pick_up_gun, fire_gun, attach_viewmodel).chain())
+            .add_systems(
+                Update,
+                (reset_gun_on_map, pick_up_gun, fire_gun, swap_potatos, attach_viewmodel, carry_pose, holding_beam).chain(),
+            )
             .add_systems(Update, show_viewmodel)
             .add_systems(PostUpdate, place_viewmodel.after(PlayerCameraSet).before(TransformSystems::Propagate));
         let world = app.world_mut();
@@ -71,6 +74,43 @@ pub struct PortalGun {
     /// Map entity to walk into to receive the gun.
     #[serde(with = "portal2_core::save::ids::opt_entity")]
     pub pickup: Option<Entity>,
+    /// PotatOS rides the gun (`CWeaponPortalgun`'s `m_bPotatos`): the view
+    /// model shows its `potatos_vmodel` body part.
+    #[serde(default)]
+    pub potatos: bool,
+    /// A potato change under way, on this run's clock: when the gun went
+    /// down and when it comes back up with the change.
+    #[serde(skip)]
+    swap: Option<(f64, f64)>,
+    /// The body the drawn view model shows.
+    #[serde(skip)]
+    viewmodel_body: i32,
+    /// The prongs are open around a held object (`m_bOpenProngs`).
+    #[serde(skip)]
+    prongs_open: bool,
+}
+
+/// How long a potato change keeps the gun down: the game holsters it and
+/// deploys it again two seconds later with the new body (server.dll
+/// `sub_103FD550`, `sub_103FD230`).
+const POTATOS_SWAP: f64 = 2.0;
+
+/// `AddPotatosToPortalgun` / `RemovePotatosFromPortalgun`, the potato gun
+/// upgrade: the gun is holstered and comes back up two seconds later with
+/// PotatOS on it, or without.
+pub fn set_potatos(world: &mut World, on: bool) {
+    let now = world.resource::<Time>().elapsed_secs_f64();
+    let mut gun = world.resource_mut::<PortalGun>();
+    if gun.potatos == on {
+        return;
+    }
+    gun.potatos = on;
+    gun.swap = Some((now, now + POTATOS_SWAP));
+    if let Some(vm) = gun.viewmodel
+        && let Some(mut a) = world.get_mut::<StudioAnimator>(vm)
+    {
+        a.set_sequence("holster");
+    }
 }
 
 /// `player_weaponstrip`: the player loses the portal gun.
@@ -144,6 +184,12 @@ fn reset_gun_on_map(
         _ if load == portal2_world::MapLoadType::NewGame => [false, false],
         _ => gun.can_fire,
     };
+    // A new game starts without PotatOS (the map's transition script puts
+    // it back with the potato gun upgrade).
+    if load == portal2_world::MapLoadType::NewGame {
+        gun.potatos = false;
+    }
+    gun.swap = None;
 }
 
 fn pick_up_gun(
@@ -288,6 +334,9 @@ fn fire_gun(
         return;
     };
     let now = time.elapsed_secs_f64();
+    if gun.swap.is_some() {
+        return;
+    }
     if !gun.can_fire[slot] || now < gun.next_fire {
         debug!("portal {slot} not fired: can fire {:?}, next shot at {:.2} (now {now:.2})", gun.can_fire, gun.next_fire);
         return;
@@ -409,22 +458,24 @@ type ViewmodelParams<'w, 's> = (
 );
 
 /// Spawns the first-person gun (model named by the weapon script) when the
-/// player can fire, and removes it otherwise.
+/// player can fire, and removes it otherwise. A change of body (PotatOS
+/// put on or taken off) brings a new gun up with the draw animation.
 fn attach_viewmodel(world: &mut World) {
-    let has_gun = {
+    let (has_gun, body, drawn_body, open) = {
         let gun = world.resource::<PortalGun>();
-        gun.can_fire.iter().any(|c| *c)
+        let body = if gun.swap.is_some() { gun.viewmodel_body } else { i32::from(gun.potatos) };
+        (gun.can_fire.iter().any(|c| *c), body, gun.viewmodel_body, gun.prongs_open)
     };
     let current = world.resource::<PortalGun>().viewmodel;
     let alive = current.is_some_and(|e| world.get_entity(e).is_ok());
-    if has_gun == alive {
+    if has_gun == alive && (!alive || drawn_body == body) {
         return;
     }
+    if let Some(e) = current.filter(|_| alive) {
+        world.entity_mut(e).despawn();
+    }
+    world.resource_mut::<PortalGun>().viewmodel = None;
     if !has_gun {
-        if let Some(e) = current {
-            world.entity_mut(e).despawn();
-        }
-        world.resource_mut::<PortalGun>().viewmodel = None;
         return;
     }
     if world.get_resource::<CurrentMap>().is_none() {
@@ -455,7 +506,7 @@ fn attach_viewmodel(world: &mut World) {
     let joints = spawn_model_parts(
         &mut commands,
         root,
-        SpawnModel { model: &model, skin: 0, body: 0, vhv: None, animated: true, lighting: Some(light), envmap: None },
+        SpawnModel { model: &model, skin: 0, body, vhv: None, animated: true, lighting: Some(light), envmap: None },
         &fs,
         &mut ctx,
         &mut mats,
@@ -464,8 +515,9 @@ fn attach_viewmodel(world: &mut World) {
         &mut refract_mats,
     );
     let mut animator = StudioAnimator::new(model.clone(), joints);
-    animator.set_default_sequence("idle");
-    animator.set_sequence("idle");
+    let idle = if open { "idle_carrying" } else { "idle" };
+    animator.set_default_sequence(idle);
+    animator.set_sequence(if alive { "draw" } else { idle });
     commands.entity(root).insert(animator);
     state.apply(world);
     // Every part of the gun renders on the viewmodel layer only.
@@ -478,8 +530,140 @@ fn attach_viewmodel(world: &mut World) {
             stack.extend(children.iter());
         }
     }
-    world.resource_mut::<PortalGun>().viewmodel = Some(root);
-    info!("viewmodel ready ({} bones)", model.bone_count());
+    let mut gun = world.resource_mut::<PortalGun>();
+    gun.viewmodel = Some(root);
+    gun.viewmodel_body = body;
+    info!("viewmodel ready ({} bones, body {body})", model.bone_count());
+}
+
+/// A potato change in progress: the gun goes out of view once its holster
+/// animation is over and comes back with the draw animation when the
+/// change is done.
+fn swap_potatos(
+    time: Res<Time>,
+    mut gun: ResMut<PortalGun>,
+    mut viewmodels: Query<(&mut Visibility, &mut StudioAnimator), With<Viewmodel>>,
+) {
+    let Some((start, back)) = gun.swap else { return };
+    let now = time.elapsed_secs_f64();
+    let Some(Ok((mut shown, mut anim))) = gun.viewmodel.map(|e| viewmodels.get_mut(e)) else {
+        if now >= back {
+            gun.swap = None;
+        }
+        return;
+    };
+    if now >= back {
+        gun.swap = None;
+        // Coming back with the same body (the change was undone in time):
+        // the gun is only drawn again.
+        if *shown == Visibility::Hidden {
+            *shown = Visibility::Visible;
+            anim.set_sequence("draw");
+        }
+        return;
+    }
+    let holster = anim.model.studio.find_sequence("holster").map_or(0.0, |i| {
+        let (fps, frames) = anim.model.studio.sequence_timing(i);
+        if fps > 0.0 { (frames.max(2) - 1) as f64 / fps as f64 } else { 0.0 }
+    });
+    if now - start >= holster && *shown != Visibility::Hidden {
+        *shown = Visibility::Hidden;
+    }
+}
+
+/// The prongs open around a held object and close when it is let go
+/// (server.dll `sub_103FDE90`, `OpenProngs`: `ACT_VM_PICKUP` then the
+/// carrying idle, `ACT_VM_RELEASE` back to the plain idle).
+fn carry_pose(holding: Res<crate::physics::carry::Holding>, mut gun: ResMut<PortalGun>, mut animators: Query<&mut StudioAnimator>) {
+    let open = holding.entity.is_some();
+    if open == gun.prongs_open {
+        return;
+    }
+    gun.prongs_open = open;
+    let Some(Ok(mut a)) = gun.viewmodel.map(|e| animators.get_mut(e)) else { return };
+    a.set_default_sequence(if open { "idle_carrying" } else { "idle" });
+    if gun.swap.is_none() {
+        a.set_sequence(if open { "idle_to_carrying" } else { "carrying_to_idle" });
+    }
+}
+
+/// The lightning between the gun's prongs while it holds something:
+/// `portalgun_beam_holding_FP` on the view model's `muzzle`, its control
+/// points 1 to 3 on the prongs' tips (`Arm1_attach3` .. `Arm3_attach3`) and 5
+/// on the held object (client.dll `sub_103DB4D0`, the holding effect state).
+/// Letting go stops it emitting; its last arcs die out.
+#[derive(Default)]
+struct HoldBeam {
+    /// The view model it rides, the system and its prong markers.
+    current: Option<(Entity, Entity, Vec<Entity>)>,
+    /// Stopped systems still fading, with their markers.
+    dying: Vec<(Entity, Vec<Entity>)>,
+}
+
+const HOLD_BEAM: &str = "portalgun_beam_holding_FP";
+const HOLD_BEAM_ARMS: [&str; 3] = ["Arm1_attach3", "Arm2_attach3", "Arm3_attach3"];
+
+fn holding_beam(
+    mut commands: Commands,
+    gun: Res<PortalGun>,
+    holding: Res<crate::physics::carry::Holding>,
+    viewmodels: Query<&StudioAnimator, With<Viewmodel>>,
+    mut effects: Query<&mut portal2_particles::ParticleEffect>,
+    mut beam: Local<HoldBeam>,
+) {
+    let beam = &mut *beam;
+    // Arcs gone (with their system or the view model): their markers go too.
+    beam.dying.retain(|(fx, markers)| {
+        if effects.contains(*fx) {
+            return true;
+        }
+        for &m in markers {
+            commands.entity(m).try_despawn();
+        }
+        false
+    });
+    let vm = gun.viewmodel.filter(|&e| viewmodels.contains(e));
+    if let Some((owner, fx, _)) = &beam.current
+        && (Some(*owner) != vm || !effects.contains(*fx))
+    {
+        beam.current = None;
+    }
+    let want = gun.prongs_open && gun.swap.is_none() && vm.is_some();
+    match (want, beam.current.is_some()) {
+        (true, false) => {
+            let Some(vm) = vm else { return };
+            let Ok(anim) = viewmodels.get(vm) else { return };
+            let mdl = &anim.model.studio.mdl;
+            let at = |name: &str| -> Option<(Entity, Transform)> {
+                let a = mdl.attachments.get(mdl.find_attachment(name)?)?;
+                Some((*anim.joints.get(a.bone.max(0) as usize)?, Transform::from_matrix(a.local)))
+            };
+            let Some((muzzle_joint, muzzle)) = at("muzzle") else { return };
+            let mut markers = Vec::new();
+            let mut fx = portal2_particles::ParticleEffect::new(HOLD_BEAM, true);
+            for (k, arm) in HOLD_BEAM_ARMS.iter().enumerate() {
+                let Some((joint, local)) = at(arm) else { continue };
+                let m = commands.spawn((Name::new(format!("hold beam {arm}")), local, Visibility::default(), ChildOf(joint))).id();
+                markers.push(m);
+                fx.cp_entities.push((k + 1, m));
+            }
+            if let Some(held) = holding.entity {
+                fx.cp_entities.push((5, held));
+            }
+            let e = commands.spawn((Name::new("hold beam"), muzzle, Visibility::default(), fx, ChildOf(muzzle_joint))).id();
+            beam.current = Some((vm, e, markers));
+        }
+        (false, true) => {
+            if let Some((_, fx, markers)) = beam.current.take() {
+                if let Ok(mut f) = effects.get_mut(fx) {
+                    f.stop();
+                    f.one_shot = true;
+                }
+                beam.dying.push((fx, markers));
+            }
+        }
+        _ => {}
+    }
 }
 
 /// `r_drawviewmodel 0` hides the first-person weapon, as does a scripted

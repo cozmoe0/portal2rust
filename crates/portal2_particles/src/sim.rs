@@ -348,6 +348,25 @@ pub struct Collection {
     accel: Vec<Vec3>,
     /// The parent's particle positions (current, previous) this frame.
     parent_cache: Vec<(Vec3, Vec3)>,
+    /// The parent's particles this frame, for `Inherit Attribute From
+    /// Parent Particle`.
+    parent_snapshot: Option<Box<Particles>>,
+    /// The parent particle `Inherit Attribute From Parent Particle` takes
+    /// next (the operator's context, kept from frame to frame).
+    inherit_next: i32,
+    /// Particles `Position Along Epitrochoid` has placed, when it counts
+    /// them instead of reading their creation time.
+    epitrochoid_count: u32,
+    /// When this frame's simulation started and how long it covers: control
+    /// points move from their previous to their current place over it.
+    frame_start: f32,
+    frame_dt: f32,
+    /// Particles made since the system last (re)started, and that count
+    /// when the particles being initialized were made.
+    batch_count: u32,
+    batch_base: u32,
+    /// When the system last (re)started.
+    started_at: f32,
     /// The box of the model the effect rides, in control point 0's space
     /// (for `Position on Model Random`).
     pub model_box: Option<(Vec3, Vec3)>,
@@ -428,6 +447,14 @@ impl Collection {
             linear: 0,
             accel: Vec::new(),
             parent_cache: Vec::new(),
+            parent_snapshot: None,
+            inherit_next: 0,
+            epitrochoid_count: 0,
+            frame_start: 0.0,
+            frame_dt: 0.0,
+            batch_count: 0,
+            batch_base: 0,
+            started_at: 0.0,
             model_box: None,
             hitboxes: None,
             prev_hitboxes: None,
@@ -477,8 +504,16 @@ impl Collection {
         }
         self.cps[i] = cp;
         self.cps_used = self.cps_used.max(i + 1);
+        // Children take the point where it is now, but keep where theirs
+        // was: one may move its own copy (`Set Control Point Positions`;
+        // `portalgun_beam_holding_2` draws from the gun's second prong by
+        // putting its point 1 there), and its point moved from there.
         for c in &mut self.children {
-            c.collection.set_cp(i, cp);
+            let mut own = cp;
+            if c.collection.cps_used > i {
+                own.prev_position = c.collection.cps[i].prev_position;
+            }
+            c.collection.set_cp(i, own);
         }
     }
 
@@ -523,6 +558,8 @@ impl Collection {
     pub fn restart(&mut self) {
         self.emitting = true;
         self.end_cap = false;
+        self.batch_count = 0;
+        self.started_at = self.time;
         self.start_emitters();
         for c in &mut self.children {
             c.collection.restart();
@@ -606,6 +643,8 @@ impl Collection {
         if dt >= 1e-22 {
             let max = self.def.max_time_step;
             let mut remaining = if dt >= max * 10.0 { max } else { dt };
+            self.frame_start = self.time;
+            self.frame_dt = remaining;
             while remaining > 0.0 {
                 let mut step = remaining.min(max);
                 if remaining <= max && self.def.min_time_step > remaining {
@@ -642,6 +681,9 @@ impl Collection {
                     parent = (0..p.count).map(|i| (p.v[field::POSITION][i], p.v[field::PREV_POSITION][i])).collect();
                 }
                 c.collection.parent_cache.clone_from(&parent);
+            }
+            if c.collection.def.operators.iter().any(|o| matches!(o.kind, OpKind::InheritFromParent { .. })) {
+                c.collection.parent_snapshot = Some(Box::new(self.particles.clone()));
             }
             c.collection.simulate(dt, env, _library);
         }
@@ -702,6 +744,11 @@ fn noise01(p: Vec3, absolute: bool, invert: bool) -> f32 {
 impl Collection {
     fn cp(&self, i: i32) -> ControlPoint {
         self.cps[(i.max(0) as usize).min(MAX_CONTROL_POINTS - 1)]
+    }
+
+    /// Share of this frame's control point movement done by time `t`.
+    fn frame_fraction(&self, t: f32) -> f32 {
+        if self.frame_dt > 0.0 { ((t - self.frame_start) / self.frame_dt).clamp(0.0, 1.0) } else { 1.0 }
     }
 
     /// Fraction of the current step at time `t`.
@@ -861,6 +908,8 @@ impl Collection {
 
     fn init_particles(&mut self, first: usize, env: &dyn Env) {
         let def = self.def.clone();
+        self.batch_base = self.batch_count;
+        self.batch_count = self.batch_count.wrapping_add(self.particles.count.saturating_sub(first) as u32);
         let mut unwritten: u32 = !(1 << field::CREATED);
         for init in def.initializers.iter().filter(|i| !i.kind.modifies()) {
             let w = init.kind.writes();
@@ -1098,21 +1147,31 @@ impl Collection {
                     self.particles.v[PREV_POSITION][i] += o;
                 }
             }
-            InitKind::Warp { min, max, cp, transition, start, reverse } => {
-                let c = self.cp(cp).position;
+            // `C_INIT_PositionWarp` (client.dll `sub_105D19A0`): the offset
+            // from the control point is scaled per axis of the point's own
+            // frame, by a random scale between the two sizes, or by one
+            // running from the first to the second over the transition (in
+            // seconds of the system's life, or in particles made since it
+            // last started).
+            InitKind::Warp { min, max, cp, transition, start, reverse, use_count } => {
+                let (min, max) = if reverse { (max, min) } else { (min, max) };
                 for i in first..n {
-                    let w = if transition > 0.0 {
-                        let mut t = ((self.time - start) / transition).clamp(0.0, 1.0);
-                        if reverse {
-                            t = 1.0 - t;
-                        }
+                    let w = if transition != 0.0 {
+                        let at = if use_count {
+                            (self.batch_base + (i - first) as u32) as f32
+                        } else {
+                            self.particles.s[CREATED][i] - self.started_at
+                        };
+                        let t = ((at - start) / transition).clamp(0.0, 1.0);
                         min.lerp(max, t)
                     } else {
                         rand_vec(self, min, max)
                     };
+                    let c = self.cp(cp);
                     for f in [POSITION, PREV_POSITION] {
-                        let p = self.particles.v[f][i];
-                        self.particles.v[f][i] = c + (p - c) * w;
+                        let d = self.particles.v[f][i] - c.position;
+                        let local = Vec3::new(d.dot(c.forward), d.dot(c.left), d.dot(c.up)) * w;
+                        self.particles.v[f][i] = c.position + c.rotate(local);
                     }
                 }
             }
@@ -1178,8 +1237,7 @@ impl Collection {
                     self.set_velocity(i, v);
                 }
             }
-            InitKind::AlongPath { sequential, max_distance, bulge, start_cp, end_cp, mid, steps, looping } => {
-                let (a, b) = (self.cp(start_cp).position, self.cp(end_cp).position);
+            InitKind::AlongPath { sequential, max_distance, bulge, bulge_control, start_cp, end_cp, mid, steps, looping, save_offset } => {
                 for i in first..n {
                     let t = if sequential {
                         let steps = steps.max(1.0);
@@ -1189,9 +1247,50 @@ impl Collection {
                     } else {
                         self.rand()
                     };
-                    let pos = path_point(self, a, b, t, mid, bulge, max_distance);
+                    let at = self.frame_fraction(self.particles.s[CREATED][i]);
+                    let (a, m, b) = path_frame(self, start_cp, end_cp, bulge_control, bulge, mid, at);
+                    let jitter = Vec3::new(self.rand(), self.rand(), self.rand()) * (2.0 * max_distance) - Vec3::splat(max_distance);
+                    let pos = quadratic(a, m, b, t) + jitter;
                     self.particles.v[POSITION][i] = pos;
                     self.particles.v[PREV_POSITION][i] = pos;
+                    if save_offset {
+                        self.particles.v[HITBOX_OFFSET][i] = Vec3::new(t, start_cp as f32, end_cp as f32);
+                    }
+                }
+            }
+            InitKind::Epitrochoid { cp, components, radius1, radius2, offset, density, use_count, local, from_existing } => {
+                let c = self.cp(cp);
+                let big = radius1 + radius2;
+                let small = radius2 + f32::EPSILON;
+                if big == 0.0 || small == 0.0 {
+                    return;
+                }
+                for i in first..n {
+                    let u = if use_count {
+                        let k = self.epitrochoid_count;
+                        self.epitrochoid_count = self.epitrochoid_count.wrapping_add(1);
+                        k as f32 * density
+                    } else {
+                        self.particles.s[CREATED][i] * density
+                    };
+                    let turn = u / small * big;
+                    let mut v = Vec3::ZERO;
+                    if components.0 >= 0 {
+                        v[components.0 as usize] = offset * turn.cos() + big * u.cos();
+                    }
+                    if components.1 >= 0 {
+                        v[components.1 as usize] = offset * turn.sin() + big * u.sin();
+                    }
+                    if local {
+                        v = c.rotate(v);
+                    }
+                    let (p, prev) = if from_existing {
+                        (self.particles.v[POSITION][i], self.particles.v[PREV_POSITION][i])
+                    } else {
+                        (c.position, c.position)
+                    };
+                    self.particles.v[POSITION][i] = p + v;
+                    self.particles.v[PREV_POSITION][i] = prev + v;
                 }
             }
             // Missing the ground, a particle still goes to the end of the
@@ -1921,7 +2020,7 @@ impl Collection {
                         continue;
                     }
                     let mut c = self.cp(parent);
-                    c.prev_position = self.cps[cp as usize].position;
+                    c.prev_position = self.cps[cp as usize].prev_position;
                     c.position = if world { loc } else { base.position + base.rotate(loc) };
                     self.set_cp(cp as usize, c);
                 }
@@ -1949,6 +2048,82 @@ impl Collection {
                     self.particles.v[POSITION][i] += m;
                     self.particles.v[PREV_POSITION][i] += m;
                 }
+            }
+            OpKind::LockToSavedPath { bulge, bulge_control, start_cp, end_cp, mid } => {
+                if dt <= 0.0 {
+                    return;
+                }
+                // The path where it was at the start of this step and where
+                // it is now; each particle rides along with the point at its
+                // saved place on it.
+                let (from, to) = (self.frame_fraction(self.prev_time), self.frame_fraction(time));
+                let (a0, m0, b0) = path_frame(self, start_cp, end_cp, bulge_control, bulge, mid, from);
+                let (a1, m1, b1) = path_frame(self, start_cp, end_cp, bulge_control, bulge, mid, to);
+                for i in 0..n {
+                    let t = self.particles.v[HITBOX_OFFSET][i].x;
+                    let age = time - self.particles.s[CREATED][i];
+                    let share = age.min(dt).max(0.0) / dt;
+                    let m = (quadratic(a1, m1, b1, t) - quadratic(a0, m0, b0, t)) * share;
+                    self.particles.v[POSITION][i] += m;
+                    self.particles.v[PREV_POSITION][i] += m;
+                }
+            }
+            OpKind::DifferencePrevious { input, output, in_range, out_range, scale_initial, within_only, set_previous } => {
+                let out_range = if output == ALPHA || output == ALPHA2 {
+                    (out_range.0.clamp(0.0, 1.0), out_range.1.clamp(0.0, 1.0))
+                } else {
+                    out_range
+                };
+                let value = |p: &Particles, i: usize| if is_vector(input) { p.v[input][i] } else { Vec3::new(p.get(input, i), 0.0, 0.0) };
+                let mut previous: Option<(usize, Vec3)> = None;
+                for i in 0..n {
+                    let here = value(&self.particles, i);
+                    if let Some((j, there)) = previous {
+                        let d = here.distance(there);
+                        if within_only && (d < in_range.0 || d > in_range.1) {
+                            continue;
+                        }
+                        let v = if in_range.0 == in_range.1 {
+                            if d - in_range.1 < 0.0 { out_range.0 } else { out_range.1 }
+                        } else {
+                            let f = ((d - in_range.0) / (in_range.1 - in_range.0)).clamp(0.0, 1.0);
+                            out_range.0 + (out_range.1 - out_range.0) * f
+                        };
+                        let out = if scale_initial { self.particles.get(output, i) * v } else { v };
+                        self.particles.set(output, i, out);
+                        if set_previous {
+                            let before = self.particles.get(output, j);
+                            self.particles.set(output, j, before * v);
+                        }
+                    }
+                    previous = Some((i, here));
+                }
+            }
+            OpKind::InheritFromParent { field, scale, random, increment } => {
+                let Some(parent) = self.parent_snapshot.take() else { return };
+                let count = parent.count;
+                if count > 0 {
+                    let last = count as i32 - 1;
+                    for i in 0..n {
+                        if random {
+                            self.inherit_next = (self.rand() * (last + 1) as f32) as i32;
+                        } else if self.inherit_next > last {
+                            self.inherit_next = 0;
+                        }
+                        let k = self.inherit_next.clamp(0, last) as usize;
+                        if is_vector(field) {
+                            self.particles.v[field][i] = parent.v[field][k] * scale;
+                        } else {
+                            let mut v = parent.get(field, k) * scale;
+                            if field == ALPHA || field == ALPHA2 {
+                                v = v.clamp(0.0, 1.0);
+                            }
+                            self.particles.set(field, i, v);
+                        }
+                        self.inherit_next += increment;
+                    }
+                }
+                self.parent_snapshot = Some(parent);
             }
             OpKind::CullPlane { cp, offset, normal } => {
                 let c = self.cp(cp).position;
@@ -2069,7 +2244,13 @@ impl Collection {
                 }
                 self.set_cp(output as usize, o);
             }
+            // `C_OP_RestartAfterDuration` (client.dll `sub_10609AE0`): nothing
+            // once emission has stopped; otherwise the system (and its
+            // children) starts over, or only its children.
             OpKind::RestartAfter { time: (lo, hi), children_only } => {
+                if !self.emitting {
+                    return;
+                }
                 let r = self.rand_range(lo, hi);
                 let st = &mut self.ops[k];
                 if st.value == 0.0 {
@@ -2084,7 +2265,7 @@ impl Collection {
                             c.collection.restart();
                         }
                     } else {
-                        self.start_emitters();
+                        self.restart();
                     }
                 }
             }
@@ -2231,22 +2412,40 @@ fn overlay(base: f32, top: f32) -> f32 {
     if top >= 0.5 { 1.0 - 2.0 * (1.0 - base) * (1.0 - top) } else { 2.0 * base * top }
 }
 
-/// A point at `t` along a bulging path from `a` to `b`, scattered within
-/// `max_distance`.
-fn path_point(c: &mut Collection, a: Vec3, b: Vec3, t: f32, mid: f32, bulge: f32, max_distance: f32) -> Vec3 {
-    let (dir, _) = random_in_sphere(c);
-    let (jitter, r) = random_in_sphere(c);
-    let control = a.lerp(b, mid) + dir * bulge * a.distance(b);
-    quadratic(a, control, b, t) + jitter * r * max_distance
-}
-
-/// Like `path_point`, with the scatter fixed per particle.
+/// A point at `t` along a path from `a` to `b`, its middle bulged and the
+/// point scattered within `max_distance` in directions fixed per particle.
 fn path_point_stable(c: &Collection, i: usize, a: Vec3, b: Vec3, t: f32, mid: f32, bulge: f32, max_distance: f32) -> Vec3 {
     let r = |s: u32| c.particle_rand(i, s) * 2.0 - 1.0;
     let dir = Vec3::new(r(51), r(52), r(53)).normalize_or_zero();
     let jitter = Vec3::new(r(54), r(55), r(56));
     let control = a.lerp(b, mid) + dir * bulge * a.distance(b);
     quadratic(a, control, b, t) + jitter * max_distance
+}
+
+/// A path's start, middle and end (`CPathParameters`, client.dll
+/// `sub_1059BAB0`), with its control points `at` that share of this frame's
+/// movement. The middle sits `mid` of the way along and bulges: with
+/// control 0 by a random offset of up to `bulge` per axis (the same for the
+/// whole system), with 1 or 2 along the start or end point's forward axis,
+/// by `bulge` times the path's length times how far that axis is from
+/// lying along the path.
+fn path_frame(c: &Collection, start_cp: i32, end_cp: i32, control: i32, bulge: f32, mid: f32, at: f32) -> (Vec3, Vec3, Vec3) {
+    let a = c.cp(start_cp).at(at);
+    let b = c.cp(end_cp).at(at);
+    let mut m = a.lerp(b, mid);
+    if control == 0 {
+        let r = |k: u32| rand_at(c.seed.wrapping_add(k)) * (2.0 * bulge) - bulge;
+        m += Vec3::new(r(0), r(1), r(2));
+    } else {
+        let forward = c.cp(if control == 2 { end_cp } else { start_cp }).forward;
+        let span = b - a;
+        let length = span.length();
+        let across = if length > 1e-6 { 1.0 - forward.dot(span / length).abs() } else { 0.0 };
+        if forward.length() > 1e-6 {
+            m += forward.normalize() * (bulge * length * across);
+        }
+    }
+    (a, m, b)
 }
 
 fn quadratic(a: Vec3, c: Vec3, b: Vec3, t: f32) -> Vec3 {
@@ -2314,6 +2513,55 @@ mod tests {
         }
         assert_eq!(c.particles.count, 0);
         assert!(c.finished());
+    }
+
+    #[test]
+    fn saved_path_particles_ride_the_path() {
+        let pcf = source_formats::pcf::ParticleSystemDefinition::default();
+        let mut d = Def::compile(&pcf, |_| None);
+        d.emitters = vec![op(EmitterKind::Instant {
+            start: 0.0,
+            start_max: -1.0,
+            count: 4,
+            count_min: -1,
+            per_step: -1,
+            scale_cp: -1,
+            scale_cp_field: 0,
+        })];
+        d.initializers = vec![op(InitKind::AlongPath {
+            sequential: true,
+            max_distance: 0.0,
+            bulge: 0.0,
+            bulge_control: 1,
+            start_cp: 1,
+            end_cp: 0,
+            mid: 0.5,
+            steps: 4.0,
+            looping: true,
+            save_offset: true,
+        })];
+        d.operators = vec![op(OpKind::LockToSavedPath { bulge: 0.0, bulge_control: 1, start_cp: 1, end_cp: 0, mid: 0.5 })];
+        let mut c = Collection::new(std::sync::Arc::new(d), &Lib, 1);
+        let at = |p: Vec3| ControlPoint { position: p, prev_position: p, ..Default::default() };
+        c.set_cp(0, at(Vec3::ZERO));
+        c.set_cp(1, at(Vec3::new(8.0, 0.0, 0.0)));
+        c.simulate(0.05, &NoEnv, &Lib);
+        assert_eq!(c.particles.count, 4);
+        let before: Vec<Vec3> = c.particles.v[field::POSITION].clone();
+        // Spread from the start point (1) toward the end (0).
+        assert!((before[0] - Vec3::new(8.0, 0.0, 0.0)).length() < 1e-4);
+        assert!((before[2] - Vec3::new(4.0, 0.0, 0.0)).length() < 1e-4);
+        // The path moves; the particles go with it.
+        let shift = Vec3::new(0.0, 5.0, 0.0);
+        c.set_cp(0, ControlPoint { position: shift, prev_position: Vec3::ZERO, ..Default::default() });
+        c.set_cp(
+            1,
+            ControlPoint { position: Vec3::new(8.0, 0.0, 0.0) + shift, prev_position: Vec3::new(8.0, 0.0, 0.0), ..Default::default() },
+        );
+        c.simulate(0.05, &NoEnv, &Lib);
+        for (b, a) in before.iter().zip(&c.particles.v[field::POSITION]) {
+            assert!((*a - (*b + shift)).length() < 1e-3, "{b} -> {a}");
+        }
     }
 
     #[test]

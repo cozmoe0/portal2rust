@@ -702,9 +702,22 @@ pub fn set_floor_button(world: &mut World, e: Entity, pressed: bool, activator: 
 #[derive(Component)]
 pub struct PhysicsProp;
 
+/// Physics prop spawnflag: the prop starts asleep, still where the map put
+/// it until something wakes it (`sp_a3_transition01`'s PotatOS sits in the
+/// bird's nest that way, over the nest's collision).
+pub const SF_START_ASLEEP: u32 = 1;
+
+/// Spawned before this much map time, an entity came with the map (not a
+/// saved game, whose clock runs on from where it was saved).
+const MAP_START_SPAWN: f64 = 0.05;
+
 pub(crate) fn spawn_physics_prop(world: &mut World, e: Entity) {
     attach_entity_model(world, e, false);
     world.entity_mut(e).insert(PhysicsProp);
+    let asleep = world.get::<MapEntity>(e).is_some_and(|m| m.has_flag(SF_START_ASLEEP));
+    if asleep && world.resource::<portal2_core::clock::GameClock>().curtime < MAP_START_SPAWN {
+        world.entity_mut(e).insert(crate::physics::StartsAtRest::default());
+    }
 }
 
 /// Redraws a physics prop with another skin (its collision stays).

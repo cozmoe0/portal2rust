@@ -203,6 +203,9 @@ pub enum InitKind {
         transition: f32,
         start: f32,
         reverse: bool,
+        /// The transition runs over the particles made since the system
+        /// (re)started instead of over time.
+        use_count: bool,
     },
     VelocityNoise {
         cp: i32,
@@ -239,11 +242,29 @@ pub enum InitKind {
         sequential: bool,
         max_distance: f32,
         bulge: f32,
+        /// 0 random, 1 along the start point's forward, 2 the end point's.
+        bulge_control: i32,
         start_cp: i32,
         end_cp: i32,
         mid: f32,
         steps: f32,
         looping: bool,
+        /// Keep each particle's place on the path (for `Movement Lock to
+        /// Saved Position Along Path`).
+        save_offset: bool,
+    },
+    /// `Position Along Epitrochoid` (`C_INIT_CreateInEpitrochoid`).
+    Epitrochoid {
+        cp: i32,
+        /// Position components the curve's two coordinates go to (-1: none).
+        components: (i32, i32),
+        radius1: f32,
+        radius2: f32,
+        offset: f32,
+        density: f32,
+        use_count: bool,
+        local: bool,
+        from_existing: bool,
     },
     PlaceOnGround {
         offset: f32,
@@ -660,6 +681,34 @@ pub enum OpKind {
     NormalLock {
         cp: i32,
     },
+    /// `Movement Lock to Saved Position Along Path`
+    /// (`C_OP_LockToSavedSequentialPath`).
+    LockToSavedPath {
+        bulge: f32,
+        bulge_control: i32,
+        start_cp: i32,
+        end_cp: i32,
+        mid: f32,
+    },
+    /// `Remap Difference of Sequential Particle Vector to Scalar`
+    /// (`C_OP_DifferencePreviousParticle`).
+    DifferencePrevious {
+        input: usize,
+        output: usize,
+        in_range: (f32, f32),
+        out_range: (f32, f32),
+        scale_initial: bool,
+        within_only: bool,
+        set_previous: bool,
+    },
+    /// `Inherit Attribute From Parent Particle`
+    /// (`C_OP_InheritFromParentParticles`).
+    InheritFromParent {
+        field: usize,
+        scale: f32,
+        random: bool,
+        increment: i32,
+    },
     Unsupported(String),
 }
 
@@ -953,6 +1002,7 @@ fn initializer(op: &ParticleOperator) -> InitKind {
             transition: p.f("warp transition time (treats min/max as start/end sizes)", 0.0),
             start: p.f("warp transition start time", 0.0),
             reverse: p.b("reverse warp (0/1)", false),
+            use_count: p.b("use particle count instead of time", false),
         },
         "velocity noise" => InitKind::VelocityNoise {
             cp: p.cp("Control Point Number", 0),
@@ -991,11 +1041,27 @@ fn initializer(op: &ParticleOperator) -> InitKind {
             sequential: name.ends_with("sequential"),
             max_distance: p.f("maximum distance", 0.0),
             bulge: p.f("bulge", 0.0),
+            bulge_control: p.i("bulge control 0=random 1=orientation of start pnt 2=orientation of end point", 0),
             start_cp: p.cp("start control point number", 0),
             end_cp: p.cp("end control point number", 0),
             mid: p.f("mid point position", 0.5),
             steps: p.f("particles to map from start to end", 100.0),
             looping: p.b("restart behavior (0 = bounce, 1 = loop )", true),
+            save_offset: name.ends_with("sequential") && p.b("Save Offset", false),
+        },
+        "position along epitrochoid" => InitKind::Epitrochoid {
+            cp: p.cp("control point number", 0),
+            components: (
+                p.i("first dimension 0-2 (-1 disables)", 0).clamp(-1, 2),
+                p.i("second dimension 0-2 (-1 disables)", 1).clamp(-1, 2),
+            ),
+            radius1: p.f("radius 1", 40.0),
+            radius2: p.f("radius 2", 24.0),
+            offset: p.f("point offset", 4.0),
+            density: p.f("particle density", 10.0),
+            use_count: p.b("use particle count instead of creation time", false),
+            local: p.b("local space", false),
+            from_existing: p.b("offset from existing position", false),
         },
         "position modify place on ground" => InitKind::PlaceOnGround {
             offset: p.f("offset", 0.0),
@@ -1406,6 +1472,28 @@ fn operator(op: &ParticleOperator) -> OpKind {
             children_only: p.b("Only Restart Children", false),
         },
         "normal lock to control point" => OpKind::NormalLock { cp: p.cp("control_point_number", 0) },
+        "movement lock to saved position along path" => OpKind::LockToSavedPath {
+            bulge: p.f("bulge", 0.0),
+            bulge_control: p.i("bulge control 0=random 1=orientation of start pnt 2=orientation of end point", 0),
+            start_cp: p.cp("start control point number", 0),
+            end_cp: p.cp("end control point number", 1),
+            mid: p.f("mid point position", 0.5),
+        },
+        "remap difference of sequential particle vector to scalar" => OpKind::DifferencePrevious {
+            input: p.field("input field", POSITION),
+            output: p.field("output field", RADIUS),
+            in_range: (p.f("difference minimum", 0.0), p.f("difference maximum", 128.0)),
+            out_range: (p.f("output minimum", 0.0), p.f("output maximum", 1.0)),
+            scale_initial: p.b("output is scalar of initial random range", false),
+            within_only: p.b("only active within specified difference", false),
+            set_previous: p.b("also set ouput to previous particle", false),
+        },
+        "inherit attribute from parent particle" => OpKind::InheritFromParent {
+            field: p.field("Inherited Field", RADIUS),
+            scale: p.f("Scale", 1.0),
+            random: p.b("Random Parent Particle Distribution", false),
+            increment: p.i("Particle Increment Amount", 1),
+        },
         _ => OpKind::Unsupported(op.function_name.clone()),
     }
 }

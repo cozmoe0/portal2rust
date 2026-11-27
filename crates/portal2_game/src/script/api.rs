@@ -96,7 +96,7 @@ pub fn register(vm: &mut Vm) -> ScriptClasses {
         ("PrecacheMovie", ignore, 2),
         ("GivePlayerPortalgun", give_portalgun, 1),
         ("UpgradePlayerPortalgun", upgrade_portalgun, 1),
-        ("UpgradePlayerPotatogun", upgrade_portalgun, 1),
+        ("UpgradePlayerPotatogun", upgrade_potatogun, 1),
         ("TryDLC1InstalledOrCatch", yes, 1),
         ("GetPlayerSilenceDuration", zero_float, 2),
         ("GetCoopSectionIndex", zero, 1),
@@ -163,6 +163,14 @@ fn give_portalgun(ctx: &mut Ctx, _args: &[Value]) -> Result<Value> {
 fn upgrade_portalgun(ctx: &mut Ctx, _args: &[Value]) -> Result<Value> {
     let (_, world) = parts(ctx);
     crate::portals::gun::enable_portals(world, [true, true]);
+    Ok(Value::Null)
+}
+
+/// Both portals and PotatOS on the gun (server.dll `sub_103498A0`).
+fn upgrade_potatogun(ctx: &mut Ctx, _args: &[Value]) -> Result<Value> {
+    let (_, world) = parts(ctx);
+    crate::portals::gun::enable_portals(world, [true, true]);
+    crate::portals::gun::set_potatos(world, true);
     Ok(Value::Null)
 }
 

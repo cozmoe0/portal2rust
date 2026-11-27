@@ -92,6 +92,10 @@ pub struct ParticleEffect {
     /// kept up to date by that code every frame.
     #[serde(skip)]
     pub cp_frames: Vec<(usize, Transform)>,
+    /// Control points that follow other entities' placement (the game's
+    /// `PATTACH_POINT_FOLLOW` on an attachment: an entity riding it).
+    #[serde(skip)]
+    pub cp_entities: Vec<(usize, Entity)>,
     /// The box of the model the effect rides, in its own space (for
     /// `Position on Model Random`).
     #[serde(skip)]
@@ -150,6 +154,7 @@ impl ParticleEffect {
             cp_names: Vec::new(),
             cp_values: Vec::new(),
             cp_frames: Vec::new(),
+            cp_entities: Vec::new(),
             model_box: None,
             follow: None,
             one_shot: false,
@@ -324,7 +329,10 @@ fn simulate(
             }
         }
         let gt = &gt;
-        if fx.collection.is_none() {
+        // A new system's control points start where they are, not moving in
+        // from the origin.
+        let fresh = fx.collection.is_none();
+        if fresh {
             if !fx.active {
                 continue;
             }
@@ -362,20 +370,33 @@ fn simulate(
             let target = registry.first_named(name);
             if let Some(t) = target.and_then(|t| transforms.get(t).ok()) {
                 let mut cp = control_point(t);
-                cp.prev_position = c.cps[*i].position;
+                if !fresh {
+                    cp.prev_position = c.cps[*i].position;
+                }
                 c.set_cp(*i, cp);
             }
         }
         for (i, p) in &fx.cp_values {
             let mut cp = c.cps[*i];
-            cp.prev_position = cp.position;
+            cp.prev_position = if fresh { *p } else { cp.position };
             cp.position = *p;
             c.set_cp(*i, cp);
         }
         for (i, t) in &fx.cp_frames {
             let mut cp = control_point(&GlobalTransform::from(*t));
-            cp.prev_position = c.cps[(*i).min(sim::MAX_CONTROL_POINTS - 1)].position;
+            if !fresh {
+                cp.prev_position = c.cps[(*i).min(sim::MAX_CONTROL_POINTS - 1)].position;
+            }
             c.set_cp(*i, cp);
+        }
+        for (i, target) in &fx.cp_entities {
+            if let Ok(t) = transforms.get(*target) {
+                let mut cp = control_point(t);
+                if !fresh {
+                    cp.prev_position = c.cps[(*i).min(sim::MAX_CONTROL_POINTS - 1)].position;
+                }
+                c.set_cp(*i, cp);
+            }
         }
         if c.model_box != fx.model_box {
             c.set_model_box(fx.model_box);
@@ -438,6 +459,9 @@ fn draw(
         let fx = &mut *fx;
         let mut slot = 0usize;
         if let Some(c) = fx.collection.as_deref() {
+            // Children draw with their root (the game renders them through
+            // it), so a view model effect's children are view model too.
+            let view_model = c.def.view_model;
             let mut stack: Vec<&Collection> = vec![c];
             while let Some(c) = stack.pop() {
                 stack.extend(c.children.iter().map(|ch| &ch.collection));
@@ -468,7 +492,7 @@ fn draw(
                     if slot == fx.meshes.len() {
                         let mesh = meshes.add(render::empty_mesh());
                         // View model effects draw with the first-person weapon.
-                        let layer = if c.def.view_model {
+                        let layer = if view_model || c.def.view_model {
                             RenderLayers::layer(portal2_core::layers::VIEWMODEL_LAYER)
                         } else {
                             RenderLayers::layer(0)

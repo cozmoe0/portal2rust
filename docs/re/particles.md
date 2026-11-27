@@ -160,6 +160,38 @@ Each operator has a strength in [0, 1] from the collection time `t`:
   both the position and the previous position.
 - `Sequence Random`: a uniform integer from `sequence_min` to
   `sequence_max`; `shuffle` and `linear` deal from a deck instead.
+- `Position Along Path Sequential` / `Random` (`C_INIT_CreateSequentialPath`,
+  client.dll `sub_105C4EC0`): the path runs from the start to the end control
+  point (where they are at the particle's creation time) through a middle
+  point `mid point position` of the way along, bulged (`CPathParameters`,
+  `sub_1059BAB0`): with bulge control 0 by a random offset of up to `bulge`
+  per axis, the same for the whole system (from the system's random seed,
+  not the running sequence); with 1 or 2 along the start or end point's
+  forward vector, by `bulge × path length × (1 - |forward · path
+  direction|)`. The particle sits on the quadratic curve through the
+  three at its `t` (sequential: stepped by `1 / particles to map`), plus a
+  random offset of up to `maximum distance` per axis. `Save Offset` keeps
+  `t` and the two control point numbers in attribute 15 for `Movement
+  Lock to Saved Position Along Path`.
+- `Position Along Epitrochoid` (`C_INIT_CreateInEpitrochoid`,
+  `sub_105B2F10`): with `u` the particle's creation time (or, with `use
+  particle count instead of creation time`, a count of the particles it
+  has placed) × `particle density`, `R = radius 1 + radius 2` and `r =
+  radius 2`, the coordinates `point offset × cos(u R / r) + R cos u` and
+  the same with sines go to the two chosen position components (-1 skips
+  one), turned into the control point's frame with `local space`, and are
+  added to the control point, or with `offset from existing position` to
+  the particle's position and previous position.
+- `Position Modify Warp Random` (`C_INIT_PositionWarp`, `sub_105D19A0`):
+  the particle's offset from the control point, in the point's own frame,
+  is scaled per axis: by a random size between `warp min` and `warp max`,
+  or with a transition time by one running from min to max (swapped by
+  `reverse warp`) over `transition time` after `transition start time`,
+  counted in seconds since the system (re)started from the particle's
+  creation, or with `use particle count instead of time` in particles
+  made since then. `portalgun_beam_holding_*` taper their arcs that way:
+  the first three particles grow out of the prong's tip, the last five
+  shrink into the muzzle.
 - `Position on Model Random` (`C_INIT_CreateOnModel`, client.dll
   `sub_105CF640`, through `GetRandomPointsOnControllingObjectHitBox`,
   `sub_1017F060`): a point in a hitbox of the model of the entity at
@@ -187,6 +219,12 @@ transform takes local x along forward, y along left (minus right) and z
 along up. Effects on entities take control point 0 from the entity's
 origin and angles.
 
+A child system takes its parent's control points as they are set, but
+keeps its own previous positions: a child can move its copy (`Set Control
+Point Positions`; each `portalgun_beam_holding_*` puts point 1 on its own
+prong), and operators that follow a point's movement over the frame read
+where that copy was.
+
 ## Operators
 
 - `Movement Basic`: drag `d` (at least 0) gives a velocity factor
@@ -196,6 +234,35 @@ origin and angles.
   constraint passes` times.
 - `Lifespan Decay` kills particles whose age reaches their lifetime (or
   whose lifetime is not positive). The lifetime defaults to 1 second.
+- `Movement Lock to Saved Position Along Path`
+  (`C_OP_LockToSavedSequentialPath`, `sub_105FB230`): the path (its own
+  start, end, middle and bulge settings) is worked out where its control
+  points were at the start of the step and where they are now; each
+  particle and its previous position move by how far the point at its
+  saved `t` moved, times `min(dt, age) / dt`.
+- `Remap Difference of Sequential Particle Vector to Scalar`
+  (`C_OP_DifferencePreviousParticle`, `sub_106027D0`): going through the
+  particles in order, the distance between a particle's input vector and
+  the previous particle's is remapped from the difference range to the
+  output range (a step at the range when its ends are equal; outputs for
+  alpha and alpha2 clamped to 0..1), times the current output value with
+  `output is scalar of initial random range`, and written; with the
+  option to also set the previous particle's output, that output is
+  multiplied by the remapped value too. With `only active within
+  specified difference`, a particle outside the range is skipped and does
+  not become the previous one.
+- `Inherit Attribute From Parent Particle`
+  (`C_OP_InheritFromParentParticles`, `sub_106097C0`): each particle takes
+  the field from a parent particle times `Scale` (alpha fields clamped to
+  0..1). The parent particle is random, or with no `Random Parent Particle
+  Distribution` a running index kept from frame to frame, stepped by
+  `Particle Increment Amount` and back to 0 past the parent's last.
+- `Restart Effect after Duration` (`C_OP_RestartAfterDuration`,
+  `sub_10609AE0`): does nothing once the system's emission has stopped.
+  When the time runs out the whole system restarts (`sub_1059DA20`:
+  emitters and initializers start over, and every child restarts), or
+  with `Only Restart Children` only its children; the next duration is
+  random between the minimum and maximum.
 - `Movement Lock to Bone` (`C_OP_LockToBone`, client.dll `sub_10608260`):
   once the control point's hitboxes are known for this frame and the last,
   each particle younger than `lifetime fade end` seconds (no limit when
@@ -273,6 +340,11 @@ origin and angles.
   with `constrain radius to length` the radius is at most the length. The
   head takes the particle colour, the tail the colour × `tail color and
   alpha scale factor`.
+- `render_rope` (`C_OP_RenderRope`, which reads position, radius, tint,
+  alpha and alpha2): the particles in creation order are beam segments
+  (`sub_10612C00`) with the particle's tint, alpha × alpha2, and its
+  radius as the segment's full width, drawn half to each side of the
+  line (`CBeamSegDraw`, `sub_1063BC50`).
 - Visibility proxies: with `Visibility Proxy Input Control Point Number`
   the visible share of a sphere of `Visibility Proxy Radius` at that
   control point is mapped from the input range to 0..1 and picks the
@@ -289,6 +361,17 @@ origin and angles.
   length. Shots from the player's gun use `portal_projectile_stream` with
   the portal colour on control point 2 (0..255); pedestal launchers use
   `portal_1/2_projectile_stream_pedestal`.
+- The portal gun's prongs while it holds something (client.dll
+  `sub_103DB4D0`, the weapon's holding effect state, 2): the view model
+  runs `portalgun_beam_holding_FP` on its `muzzle` attachment, following
+  it, with control points 1 to 3 on `Arm1_attach3`, `Arm2_attach3` and
+  `Arm3_attach3`, 4 on the player (it draws only for their view) and 5 on
+  the held object. Letting go (state 1, or 0) stops its emission, and
+  what is left dies out. The world model runs `portalgun_beam_holding_TP`
+  the same way. `portalgun_top_light_firstperson` / `_thirdperson` ride
+  `Body_light` with control points 3 and 4 on `Beam_point1` and
+  `Beam_point5` and the last portal's colour on 1 (`sub_103DB170`); the
+  port does not draw that light yet.
 - Portal colours on effects: blue (0, 60, 255), orange (233, 78, 2).
 - Placement results make `portal_success` (opened), `portal_badsurface`
   (a surface that takes no portals) or `portal_close` (closed), at the

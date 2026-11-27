@@ -129,6 +129,25 @@ and horizontally slower than 64 u/s:
   turns by `vertical × 0.5`° of roll, `-vertical × 0.4`° of pitch and
   `-sideways × 0.3`° of yaw (as turns about its own axes).
 
+## Portal gun view model states
+
+- Holding: picking something up opens the prongs (server.dll
+  `sub_103FDE90`, `OpenProngs`): the weapon's effect state becomes 2
+  (holding) and the view model plays `ACT_VM_PICKUP` (`idle_to_carrying`),
+  idling in `idle_carrying` (`ACT_VM_PICKUP_IDLE`). Letting go closes them:
+  state 1 and `ACT_VM_RELEASE` (`carrying_to_idle`). The client starts the
+  arcs between the prongs on state 2 (see particles.md, "Effects started
+  by code").
+- PotatOS (`m_bPotatos`): `logic_playerproxy`'s `AddPotatosToPortalgun` /
+  `RemovePotatosFromPortalgun` (`sub_101958A0` → `sub_103FD550`),
+  `upgrade_potatogun` (`sub_103FD6C0`) and the script function
+  `UpgradePlayerPotatogun` (`sub_103498A0`, which also gives both
+  portals) change it. A change holsters the gun (`ACT_VM_HOLSTER`, then
+  hidden) and, two seconds later, sets the view model's and world model's
+  `potatos_vmodel` body part to it and deploys the gun again (`draw`,
+  `sub_103FD230`). The flag stays with the weapon across level changes;
+  later maps do not add it again (`sp_a4_finale4` removes it).
+
 ## Carrying objects (`CGrabController`)
 
 - Single player uses the physics grab controller for everything except

@@ -259,10 +259,22 @@ pub fn model_mass(fs: &GameFs, path: &str) -> Option<f32> {
 #[derive(Component, Default)]
 pub struct StartsAtRest(pub u8);
 
-fn rest_new_props(mut commands: Commands, mut props: Query<(Entity, &mut StartsAtRest), With<RigidBody>>) {
-    for (e, mut rest) in &mut props {
+fn rest_new_props(
+    mut commands: Commands,
+    mut props: Query<(Entity, &mut StartsAtRest, Option<&mut LinearVelocity>, Option<&mut AngularVelocity>), With<RigidBody>>,
+) {
+    for (e, mut rest, linear, angular) in &mut props {
         rest.0 += 1;
         if rest.0 >= 2 {
+            // It goes to sleep still, keeping nothing of what those ticks
+            // gave it. Changed the usual way, the velocity would count as
+            // set by hand and wake it again at once.
+            if let Some(mut v) = linear {
+                v.bypass_change_detection().0 = Vec3::ZERO;
+            }
+            if let Some(mut w) = angular {
+                w.bypass_change_detection().0 = Vec3::ZERO;
+            }
             commands.entity(e).insert(Sleeping).remove::<StartsAtRest>();
         }
     }

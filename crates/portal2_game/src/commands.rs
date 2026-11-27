@@ -35,7 +35,7 @@ fn register(c: &mut Console) {
     c.register_command("give", give);
     c.register_command("give_portalgun", give_portalgun);
     c.register_command("upgrade_portalgun", upgrade_portalgun);
-    c.register_command("upgrade_potatogun", upgrade_portalgun);
+    c.register_command("upgrade_potatogun", upgrade_potatogun);
     c.register_command("portal_place", portal_place);
 }
 
@@ -266,5 +266,13 @@ fn give_portalgun(world: &mut World, args: &CommandArgs) {
 fn upgrade_portalgun(world: &mut World, args: &CommandArgs) {
     if cheats(world, args) {
         crate::portals::gun::enable_portals(world, [true, true]);
+    }
+}
+
+/// Both portals and PotatOS on the gun (server.dll `sub_103FD6C0`).
+fn upgrade_potatogun(world: &mut World, args: &CommandArgs) {
+    if cheats(world, args) {
+        crate::portals::gun::enable_portals(world, [true, true]);
+        crate::portals::gun::set_potatos(world, true);
     }
 }

@@ -36,8 +36,9 @@ pub fn main() {
                 .join(",");
         let (fps, frames) = model.sequence_timing(i);
         println!(
-            "seq {i}: {} [{flags}] grid {:?} params {:?} {:?}..{:?} anims {} fade {}/{} frames {frames} at {fps} fps",
+            "seq {i}: {} {} [{flags}] grid {:?} params {:?} {:?}..{:?} anims {} fade {}/{} frames {frames} at {fps} fps",
             s.label,
+            s.activity_name,
             s.group_size,
             s.param_index,
             s.param_start,

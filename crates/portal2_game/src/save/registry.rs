@@ -188,14 +188,21 @@ fn load_animator(world: &mut World, e: Entity, bytes: &[u8]) -> Result<(), Strin
 struct PhysicsSave {
     linear: Vec3,
     angular: Vec3,
+    /// The body was asleep (or about to be put to sleep where the map left
+    /// it): it is asleep again once loaded, as the engine saves a physics
+    /// object's sleep. PotatOS, asleep in `sp_a3_transition01`'s nest over
+    /// the button's brush, would otherwise be pushed out of it on load.
+    #[serde(default)]
+    asleep: bool,
 }
 
 fn save_physics(world: &World, e: Entity) -> Option<Result<Vec<u8>, String>> {
-    use avian3d::prelude::{AngularVelocity, LinearVelocity};
+    use avian3d::prelude::{AngularVelocity, LinearVelocity, Sleeping};
     world.get::<crate::entities::props::PhysicsProp>(e)?;
     let linear = world.get::<LinearVelocity>(e).map_or(Vec3::ZERO, |v| v.0);
     let angular = world.get::<AngularVelocity>(e).map_or(Vec3::ZERO, |v| v.0);
-    Some(encode(&PhysicsSave { linear, angular }))
+    let asleep = world.get::<Sleeping>(e).is_some() || world.get::<crate::physics::StartsAtRest>(e).is_some();
+    Some(encode(&PhysicsSave { linear, angular, asleep }))
 }
 
 fn load_physics(world: &mut World, e: Entity, bytes: &[u8]) -> Result<(), String> {
@@ -203,6 +210,9 @@ fn load_physics(world: &mut World, e: Entity, bytes: &[u8]) -> Result<(), String
     let s: PhysicsSave = decode(bytes)?;
     let mut em = world.entity_mut(e);
     em.insert((LinearVelocity(s.linear), AngularVelocity(s.angular)));
+    if s.asleep {
+        em.insert(crate::physics::StartsAtRest::default());
+    }
     // A body riding a parent (welded to a cart, carried on a rail) keeps
     // its transform in the parent's space and takes its physics position
     // from the transforms: set by hand, the physics position would be

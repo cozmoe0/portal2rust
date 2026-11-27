@@ -42,6 +42,13 @@ pub fn main() {
                 for t in 0..m.mdl.textures.len() {
                     println!("   material[{t}] -> {:?}", m.resolve_material(&fs, t));
                 }
+                for (i, skin) in m.mdl.skins.iter().enumerate() {
+                    println!("   skin[{i}] -> {skin:?}");
+                }
+                for bp in &m.mdl.body_parts {
+                    let models: Vec<String> = bp.models.iter().map(|x| format!("{} ({} meshes)", x.name, x.meshes.len())).collect();
+                    println!("   bodypart {} base {} -> {models:?}", bp.name, bp.base);
+                }
                 let seqs: Vec<String> =
                     (0..m.sequence_count().min(12)).filter_map(|i| m.sequence(i).map(|(o, l)| o.mdl.sequences[l].label.clone())).collect();
                 println!("   sequences: {seqs:?}");

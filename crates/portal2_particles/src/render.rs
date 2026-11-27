@@ -542,8 +542,18 @@ pub fn build(batch: &mut Batch, c: &Collection, r: usize, look: &Look, origin: V
             // Particles in creation order make the rope.
             let mut chain: Vec<usize> = (0..p.count).collect();
             chain.sort_by_key(|&i| p.id[i]);
-            let pts: Vec<(Vec3, f32, [f32; 4])> =
-                chain.iter().map(|&i| (p.v[field::POSITION][i], p.s[field::RADIUS][i] * seen.radius, colour(i))).collect();
+            // Each particle is a beam segment (client.dll `sub_10612C00`):
+            // its alpha times its second alpha, which operators fade single
+            // stretches with, and its radius as the segment's full width,
+            // half of it to either side (`CBeamSegDraw`, `sub_1063BC50`).
+            let pts: Vec<(Vec3, f32, [f32; 4])> = chain
+                .iter()
+                .map(|&i| {
+                    let mut col = colour(i);
+                    col[3] *= p.s[field::ALPHA2][i].clamp(0.0, 1.0);
+                    (p.v[field::POSITION][i], p.s[field::RADIUS][i] * seen.radius * 0.5, col)
+                })
+                .collect();
             let mut v = offset + scroll_rate * c.time;
             let mut prev_point: Option<Vec3> = None;
             let mut prev_index: Option<u32> = None;
