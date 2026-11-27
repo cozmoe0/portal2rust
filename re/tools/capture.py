@@ -54,9 +54,8 @@ def parse_shots(path):
     return shots
 
 
-def game_running():
-    out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq portal2.exe"], capture_output=True, text=True).stdout
-    return "portal2.exe" in out.lower()
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from p2game import game_pids, game_running  # noqa: E402  (only the installed game, not our build)
 
 
 class NetConsole:
@@ -225,7 +224,8 @@ def main():
             time.sleep(2)
     finally:
         if game_running():
-            subprocess.run(["taskkill", "/IM", "portal2.exe"], capture_output=True)
+            for pid in game_pids():
+                subprocess.run(["taskkill", "/PID", str(pid)], capture_output=True)
             time.sleep(5)
         for name in protected:
             dst = os.path.join(cfg_dir, name)

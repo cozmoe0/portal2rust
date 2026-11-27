@@ -28,9 +28,23 @@ def find_install():
     sys.exit("Portal 2 install not found; set PORTAL2_DIR")
 
 
-def game_running():
-    out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq portal2.exe"], capture_output=True, text=True).stdout
-    return "portal2.exe" in out.lower()
+def game_pids(root=None):
+    """Process ids of the installed game's portal2.exe (our own build is also
+    called portal2.exe and must be left alone)."""
+    root = os.path.normcase(os.path.abspath(root or find_install()))
+    ps = ("Get-Process portal2 -ErrorAction SilentlyContinue | "
+          "ForEach-Object { \"$($_.Id)|$($_.Path)\" }")
+    out = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True).stdout
+    pids = []
+    for line in out.splitlines():
+        pid, _, path = line.strip().partition("|")
+        if pid.isdigit() and os.path.normcase(path).startswith(root):
+            pids.append(int(pid))
+    return pids
+
+
+def game_running(root=None):
+    return bool(game_pids(root))
 
 
 class NetConsole:
@@ -146,8 +160,8 @@ class Game:
                 while game_running() and time.time() < end:
                     time.sleep(2)
         finally:
-            if game_running():
-                subprocess.run(["taskkill", "/IM", "portal2.exe"], capture_output=True)
+            for pid in game_pids(self.root):
+                subprocess.run(["taskkill", "/PID", str(pid)], capture_output=True)
                 time.sleep(5)
             for name in PROTECTED:
                 dst = os.path.join(self.cfg_dir, name)

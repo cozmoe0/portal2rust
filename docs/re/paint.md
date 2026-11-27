@@ -339,9 +339,14 @@ in tangent space:
   (±4.7°, at most 7°, period about 4.5 s, no turn about the vertical).
   Taken whole (the panels as part of the box) it swung ±25°; not at all,
   ±0.5°.
-- The painted cube never stops bouncing in the game either: still
-  hopping round the room 60 s on (about 250 units high each time). The
-  chamber's clear gel stream washes it.
+- The painted cube never stops bouncing by itself in the game either:
+  with both sprayer timers running and nobody touching it, it was still
+  hopping round the room 196 s on (about 250 units high each time) and
+  never wandered into the clear gel stream's alcove. Washing it in that
+  stream (or catching it with the gun) is what stops it.
+- `func_clip_vphysics` blocks physics objects only. The chamber is lidded
+  with one at z 2056 and has more along its -y side and round the
+  sprayer nozzles.
 - Measured in the game after the gel first reaches the cube: first panel
   hit, first crack 0.6 s later, first break 3.0 s, the cube leaves the box
   4.1 s (`trigger_once` stopping `ambient_sp_a3_crazy_box_x1`) and lands

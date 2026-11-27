@@ -278,6 +278,15 @@ fn attach_bodies(
 ) {
     let bsp = map.as_ref().map(|m| m.bsp.as_ref());
     for (e, col, me, is_prop, parented) in &new {
+        // `func_clip_vphysics` stops physics objects only: not the player,
+        // nor traces (`sp_a3_crazy_box` lids its second chamber with one at
+        // z 2056 and walls off the gaps along it).
+        if me.classname == "func_clip_vphysics" {
+            if let Some(collider) = shape_collider(&col.shape) {
+                commands.entity(e).insert((RigidBody::Static, collider, layers_for(layers::MOVER, layers::PROP | layers::HELD)));
+            }
+            continue;
+        }
         if !col.solid {
             continue;
         }
